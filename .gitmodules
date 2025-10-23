@@ -1,0 +1,12 @@
+[submodule "eduplay"]
+	path = eduplay
+	url = https://github.com/motadv/eduplay.git
+[submodule "sepe"]
+	path = sepe
+	url = https://github.com/motadv/se-presentation-engine.git
+[submodule "bcast"]
+	path = bcast
+	url = git@github.com:multisens/BcastService.git
+[submodule "utils"]
+	path = utils
+	url = https://github.com/multisens/TV30-Utils.git
