@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>DTV</title>
+        <style>
+            :root {
+                --base-size: 1vw; /* Unidade base baseada na largura da viewport */
+            }
+
+            body {
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+                font-family: Verdana;
+                background-color: rgb(40, 40, 40);
+                pointer-events: none;
+            }
+            .layers {
+                position: relative;
+                width: 100vw;
+                height: 100vh;
+
+                * {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                }
+            }
+
+            .popup {
+                position: absolute;
+                width: 22%;
+                height: 25%;
+                top: 5%;
+                left: 75%;
+                z-index: 99;
+
+                background-color: rgb(66 66 66);
+                color: rgb(200, 200, 200);
+                border-radius: 1vh;
+
+                font-size: calc(1vw + 0.5vh);
+                text-align: center;
+
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+
+                span {
+                    position: absolute;
+                    width: 100%;
+                    height: auto;
+                    margin-bottom: 1vw;
+                }
+
+                .text {
+                    top: 10%;
+                }
+
+                .pin {
+                    font-size: calc(2vw + 1vh);
+                    top: 50%;
+                }
+                
+                .buttons {
+                    position: absolute;
+                    top: 70%;
+                    width: 100%;
+                    height: auto;
+                    display: flex;
+                    gap: 10px;
+                    justify-content: center;
+
+                    .button {
+                        position: relative;
+                        width: auto;
+                        height: auto;
+                        padding: 8px 16px;
+                        background-color: rgb(100, 100, 100);
+                        border-radius: 5px;
+                    }
+                }
+
+                #qrcode {
+                    position: relative;
+                    top: 15%;
+                    width: 100%;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    margin: 15px 0;
+
+                    img {
+                        position: relative;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                        max-width: 100%;
+                        height: auto;
+                        width: auto;
+                        margin: auto;
+                        /* max-height: 200px; */
+                        object-fit: contain;
+                    }
+                }
+            }
+
+            .focused {
+                outline: 2px solid rgb(200, 200, 200);
+            }
+            #video {
+                z-index: 1;
+            }
+            #graphics {
+                z-index: 2;
+            }
+            #rxgui {
+                z-index: 3;
+            }
+        </style>
+        
+        <link href="/css/video-js.css" rel="stylesheet" />
+        <script src="/js/jquery-3.7.1.min.js"></script>
+        <script src="/js/mqtt.min.js"></script>
+        <script src="/js/video.min.js"></script>
+        <script src="/js/navigation.js"></script>
+        <script src="/js/popup.js"></script>
+        <script src="/js/qrcode.min.js"></script>
+
+        <script>
+            let player = null;
+            let publishTopic = null;
+
+            function connect(host) {
+                const client = mqtt.connect(`ws://${host}:9001/mqtt`, {
+                    clean: false,
+                    connectTimeout: 4000,
+                    clientId: 'rp-display',
+                });
+                client.on('connect', () => {
+                    subscribe_topics(client);
+                    fetch('ready');
+                });
+                client.on('message', (t, m) => { mqtt_message(client, t, m) });
+                publishTopic = (t, m) => { client.publish(t, m); };
+            }
+
+            function subscribe_topics(client) {
+                client.subscribe('aop/display/layers/+', { noLocal : true });
+                client.subscribe('aop/display/layers/video/+', { noLocal : true });
+                client.subscribe('aop/display/layers/popup/+/message', { noLocal : true });
+                client.subscribe('video/event', { noLocal : true });
+            }
+
+            function instance_player(mediaUrl, mediaType) {
+                if (!player) {
+                    player = videojs('video', {
+                        controls: true,
+                        autoplay: true,
+                        muted: true,
+                        playsinline: true,
+                        techOrder: ['html5'] 
+                    });
+                    
+                    player.src({ src: mediaUrl, type: mediaType });
+                    player.play();
+
+                    player.on('timeupdate', (p) => {
+                        $('#graphics').contents()[0].dispatchEvent(new CustomEvent('timeupdate', { detail: player.currentTime() }));
+                    });
+
+                    player.on('error', () => {
+                        console.warn('Player error — restarting...');
+                        setTimeout(() => {
+                            player.src({ src: mediaUrl, type: mediaType });
+                            player.play();
+                        }, 500);
+                    });
+                }
+            }
+
+            function set_video_url(url) {
+                if (url == '') {
+                    if (player && !player.isDisposed()) {
+                        player.dispose(true);
+                        player = null;
+                    }
+                    if ($('#video').length > 0) {
+                        $('#video').replaceWith('<video id="video" class="video-js" autoplay muted playsinline></video>');
+                    }
+                    else {
+                        $('#main').prepend('<video id="video" class="video-js" autoplay muted playsinline></video>');
+                    }
+                    return;
+                }
+
+                let mediaType = '';
+                if (url.endsWith('mpd')) {
+                    mediaType = 'application/dash+xml';
+                }
+                else if (url.endsWith('m3u8')) {
+                    mediaType = 'application/x-mpegURL';
+                }
+
+                if (mediaType) {
+                    try {
+                        instance_player(url, mediaType);
+                    } catch(err) {
+                        console.error('Error while processing DASH MPD/HLS M3U8:', err);
+                    }
+                }
+                else {
+                    $('#video').attr('src', url);
+                }
+            }
+
+            function mqtt_message(client, topic, message) {
+                if (topic == 'video/event') {
+                    $('#graphics').contents()[0].dispatchEvent(new CustomEvent('stream_event', { detail: message }));
+                }
+
+                let t = topic.replace('aop/display/layers/', '');
+                if (['graphics', 'rxgui'].includes(t)) {
+                    $(`#${t}`).attr('src', message.toString());
+                }
+                else if (t == 'video/url') {
+                    set_video_url(message.toString());
+                }
+                else if (t == 'video/size') {
+                    $('#video').css(JSON.parse(message));
+                }
+                else if (t.startsWith('popup') ) {
+                    content = JSON.parse(message);
+                    presentPopup(t.split('/')[1], content.value, Number(content.timeout));
+                }
+            }
+
+            function relay_key(e) {
+                if (yesno_popup) {
+                    navigate(e.key);
+                    return;
+                }
+                e.preventDefault();
+                if ([27, 33, 34, 93].includes(e.keyCode)) {
+                    // 27: Escape
+                    // 33, 34: PageUp, PageDown
+                    // 93: Windows Menu / Right ⌘ / ContextMenu / Esc
+                    fetch(`keydown/${e.keyCode}`);
+                }
+                else if ($('#rxgui').attr('src') != '') {
+                    $('#rxgui').contents()[0].dispatchEvent(new KeyboardEvent('keydown', {key: e.key}));
+                }
+                else if ($('#graphics').attr('src') != '') {
+                    $('#graphics').contents()[0].dispatchEvent(new KeyboardEvent('keydown', {key: e.key}));
+                }
+            }
+        </script>
+    </head>
+    <body>
+        <div id="main" class="layers">
+            <video id="video" class="video-js" autoplay muted playsinline></video>
+            <iframe id="graphics"></iframe>
+            <iframe id="rxgui"></iframe>
+            <div id="popup" class="popup"></div>
+        </div>
+
+        <script>
+            document.addEventListener('keydown', relay_key);
+            connect('<%= mqtt_host %>');
+
+            const video = document.getElementById("video");
+            setInterval(() => {
+                const time = video.currentTime;
+                const iframe = document.getElementById("graphics");
+                iframe.contentWindow.postMessage({ time }, "*");
+            }, 1000);
+
+            const popup = document.getElementById("popup");
+            popup.style.display = 'None';
+        </script>
+    </body>
+</html>
