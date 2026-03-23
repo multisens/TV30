@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  middleware-internal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: middleware-internal
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - KRAKEND_CONFIG=/etc/krakend/krakend.json
+    volumes:
+      - ../krakenD_internal/krakend.json:/etc/krakend/krakend.json:ro
+    restart: unless-stopped
+    networks:
+      - ginga_net
+
+  swagger-ui-internal:
+    image: swaggerapi/swagger-ui
+    container_name: swagger-ui-internal
+    ports:
+      - "8086:8080"
+    environment:
+      - URL=http://localhost:3001/openapi.json
+      - CORS=true
+    restart: unless-stopped
+    networks:
+      - ginga_net
+
+networks:
+  ginga_net:
+    external: true
+    name: ginga_net

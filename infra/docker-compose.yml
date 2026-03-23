@@ -1,0 +1,60 @@
+# docker-compose.yml — raiz do aop_infra
+#
+# Uso:
+#   docker compose up -d                   # stack base
+#   docker compose --profile mqtt up -d    # stack base + Mosquitto
+
+include:
+  - path: ./redis/docker-compose.yml
+  - path: ./middleware/docker-compose.yml
+  - path: ./middleware_internal/docker-compose.yml
+  - path: ./krakenD_external/docker-compose.yml
+  - path: ./krakenD_internal/docker-compose.yml
+
+services:
+  redis-seed:
+    image: python:3.11-alpine
+    container_name: redis-seed
+    command: sh -c "pip install redis -q && python /migrate.py"
+    volumes:
+      - ./mosquitto_plugin/plugin/config:/mosquitto/config:ro
+      - ./mosquitto_plugin/infra/migrate_to_redis.py:/migrate.py:ro
+    depends_on:
+      - redis-auth
+    networks:
+      - ginga_net
+    restart: "no"
+
+  mosquitto:
+    build:
+      context: ./mosquitto_plugin
+      dockerfile: infra/Dockerfile
+    container_name: mosquitto-plugin
+    profiles:
+      - mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis-seed
+    networks:
+      - ginga_net
+
+volumes:
+  mosquitto_data:
+  mosquitto_logs:
+
+networks:
+  ginga_net:
+    name: ginga_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.27.0.0/16
+          gateway: 172.27.0.1

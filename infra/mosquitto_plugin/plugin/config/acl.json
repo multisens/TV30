@@ -1,0 +1,20 @@
+{
+  "acl": {
+    "c3167a18-5dc5": ["aop/+/#", "sensor/room1/+"],
+    "4b58baf8-65ce": ["aop/0/#"],
+    "c41e7a99-5dce": ["aop/#"],
+    "user_1759026359378": ["aop/+/apps", "sensor/+/temperature"],
+    "user_1759609131451": ["aop/#", "sensor/#"],
+    "1759609131451": ["#"],
+    "clienteexemplo1": ["PublisherResponseTime+/#", "PluginResponseTime+/#"],
+    "clienteexemplo2": ["PublisherResponseTime+/#", "PluginResponseTime+/#"],
+    "clienteexemplo3": ["PublisherResponseTime+/#", "PluginResponseTime+/#"],
+    "clienteexemplo4": ["PublisherResponseTime+/#", "PluginResponseTime+/#"],
+    "clienteexemplo5": ["PublisherResponseTime+/#", "PluginResponseTime+/#"],
+    "clienteexemplo6": ["PublisherResponseTime+/#", "PluginResponseTime+/#"],
+    "clienteexemplo7": ["PublisherResponseTime+/#", "PluginResponseTime+/#"],
+    "clienteexemplo8": ["PublisherResponseTime+/#", "PluginResponseTime+/#"],
+    "clienteexemplo9": ["PublisherResponseTime+/#", "PluginResponseTime+/#"],
+    "clienteexemplo10": ["PublisherResponseTime+/#", "PluginResponseTime+/#"]
+  }
+}

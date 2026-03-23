@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: mosquitto-plugin
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - ginga_net
+
+volumes:
+  mosquitto_data:
+  mosquitto_logs:
+
+networks:
+  ginga_net:
+    external: true
+    name: ginga_net

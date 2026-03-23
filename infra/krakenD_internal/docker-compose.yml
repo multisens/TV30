@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  krakend-internal:
+    image: devopsfaith/krakend:2.7
+    container_name: krakend-internal
+    ports:
+      - "44642:8080"
+    volumes:
+      - ./krakend.json:/etc/krakend/krakend.json
+    command: ["run", "-c", "/etc/krakend/krakend.json"]
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:172.27.0.1"
+    networks:
+      - ginga_net
+
+networks:
+  ginga_net:
+    external: true
+    name: ginga_net

@@ -1,0 +1,122 @@
+{
+  "sensor/room1/temperature": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 30,
+        "description": "Temperature value in Celsius"
+      },
+      "timestamp": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Timestamp of the reading"
+      },
+      "unit": {
+        "type": "string",
+        "enum": ["celsius", "fahrenheit"],
+        "description": "Temperature unit"
+      }
+    },
+    "required": ["value"],
+    "additionalProperties": false
+  },
+  "sensor/room2/humidity": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 200,
+        "description": "Humidity percentage"
+      },
+      "unit": {
+        "type": "string",
+        "enum": ["C", "F"],
+        "description": "Temperature unit: Celsius or Fahrenheit"
+      },
+      "sensor_id": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}-[0-9]{4}$",
+        "description": "Sensor ID in format XXX-0000"
+      }
+    },
+    "required": ["value", "unit"],
+    "additionalProperties": false
+  },
+  "sensor/comprehensive/test": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "string_field": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 20,
+        "pattern": "^[a-z]+$",
+        "description": "String with length and pattern constraints"
+      },
+      "number_field": {
+        "type": "number",
+        "minimum": 10,
+        "maximum": 100,
+        "multipleOf": 5,
+        "description": "Number that must be multiple of 5 between 10 and 100"
+      },
+      "integer_field": {
+        "type": "integer",
+        "exclusiveMinimum": 0,
+        "exclusiveMaximum": 50,
+        "description": "Integer between 1 and 49"
+      },
+      "boolean_field": {
+        "type": "boolean",
+        "description": "Boolean value"
+      },
+      "enum_field": {
+        "type": "string",
+        "enum": ["option1", "option2", "option3"],
+        "description": "Must be one of the allowed values"
+      },
+      "const_field": {
+        "type": "string",
+        "const": "fixed_value",
+        "description": "Must be exactly this value"
+      },
+      "array_field": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 5,
+        "uniqueItems": true,
+        "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "description": "Array of 2-5 unique numbers between 0 and 10"
+      },
+      "nested_object": {
+        "type": "object",
+        "properties": {
+          "nested_string": {
+            "type": "string",
+            "minLength": 1
+          },
+          "nested_number": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": ["nested_string"],
+        "additionalProperties": false,
+        "minProperties": 1,
+        "maxProperties": 2,
+        "description": "Nested object with constraints"
+      }
+    },
+    "required": ["string_field", "number_field", "integer_field", "boolean_field", "enum_field", "const_field"],
+    "additionalProperties": false
+  }
+}

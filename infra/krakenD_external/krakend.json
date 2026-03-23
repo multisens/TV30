@@ -1,0 +1,134 @@
+{
+  "$schema": "https://www.krakend.io/schema/v2.7/krakend.json",
+  "version": 3,
+  "name": "GingaDistrib API Gateway",
+  "port": 8080,
+  "allow_insecure_connections": true,
+  "plugin": {
+    "pattern": ".so",
+    "folder": "/etc/krakend/plugins/"
+  },
+  "extra_config": {
+    "plugin/http-server": {
+      "name": ["consent-validator"],
+      "consent-validator": {
+        "ccws_url": "https://host.docker.internal:44655"
+      }
+    }
+  },
+  "endpoints": [
+    {
+      "endpoint": "/health",
+      "method": "GET",
+      "input_headers": ["Accept-Version"],
+      "backend": [{ "url_pattern": "/health", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/authorize",
+      "method": "GET",
+      "input_headers": ["Accept-Version"],
+      "input_query_strings": ["clientid", "display-name", "pm", "key"],
+      "backend": [{ "url_pattern": "/tv3/authorize", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/token",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "input_query_strings": ["clientid", "challenge-response", "refresh-token"],
+      "backend": [{ "url_pattern": "/tv3/token", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/current-service",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "backend": [{ "url_pattern": "/tv3/current-service", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/current-service/users",
+      "method": "POST",
+      "input_headers": ["Authorization", "Accept-Version", "Content-Type"],
+      "backend": [{ "url_pattern": "/tv3/current-service/users", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/current-service/users/current-user",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "backend": [{ "url_pattern": "/tv3/current-service/users/current-user", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/current-service/users/current-user",
+      "method": "POST",
+      "input_headers": ["Authorization", "Accept-Version", "Content-Type"],
+      "backend": [{ "url_pattern": "/tv3/current-service/users/current-user", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/current-service/users/files",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "input_query_strings": ["path"],
+      "backend": [{ "url_pattern": "/tv3/current-service/users/files", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/current-service/users/{userid}",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "input_query_strings": ["attribute"],
+      "backend": [{ "url_pattern": "/tv3/current-service/users/{userid}", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/current-service/apps/{appid}/files",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version", "Range"],
+      "input_query_strings": ["path"],
+      "backend": [{ "url_pattern": "/tv3/current-service/apps/{appid}/files", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/remote-device",
+      "method": "POST",
+      "input_headers": ["Authorization", "Accept-Version", "Content-Type"],
+      "backend": [{ "url_pattern": "/tv3/remote-device", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/remote-device/{handle}",
+      "method": "DELETE",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "backend": [{ "url_pattern": "/tv3/remote-device/{handle}", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/remote-device/devices/{classId}",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "backend": [{ "url_pattern": "/tv3/remote-device/devices/{classId}", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/remote-device/device/{handle}",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "backend": [{ "url_pattern": "/tv3/remote-device/device/{handle}", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/remote-device/device/{handle}",
+      "method": "DELETE",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "backend": [{ "url_pattern": "/tv3/remote-device/device/{handle}", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/sensory-effect-renderers",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "backend": [{ "url_pattern": "/tv3/sensory-effect-renderers", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/sensory-effect-renderers/{rendererId}",
+      "method": "GET",
+      "input_headers": ["Authorization", "Accept-Version"],
+      "backend": [{ "url_pattern": "/tv3/sensory-effect-renderers/{rendererId}", "host": ["https://host.docker.internal:44655"] }]
+    },
+    {
+      "endpoint": "/tv3/sensory-effect-renderers/{rendererId}",
+      "method": "POST",
+      "input_headers": ["Authorization", "Accept-Version", "Content-Type"],
+      "backend": [{ "url_pattern": "/tv3/sensory-effect-renderers/{rendererId}", "host": ["https://host.docker.internal:44655"] }]
+    }
+  ]
+}
