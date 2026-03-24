@@ -13,3 +13,12 @@
 [submodule "ginga"]
 	path = ginga
 	url = git@github.com:multisens/GingaDistrib.git
+[submodule "infra"]
+	path = infra
+	url = https://github.com/multisens/Infra.git
+[submodule "aop"]
+	path = aop
+	url = https://github.com/multisens/AOP.git
+[submodule "ccws"]
+	path = ccws
+	url = https://github.com/multisens/CCWS.git
