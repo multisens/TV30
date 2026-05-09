@@ -1,15 +1,15 @@
 # TV 3.0 AoP Experimentation
 
-![Node Version](https://img.shields.io/badge/Node.js-23.11.0-blueviolet?logo=nodedotjs)  ![MQTT](https://img.shields.io/badge/MQTT-blueviolet?logo=mqtt)
+![Node Version](https://img.shields.io/badge/Node.js-23.11.0-blueviolet?logo=nodedotjs)  ![MQTT](https://img.shields.io/badge/MQTT-blueviolet?logo=mqtt)  ![Docker](https://img.shields.io/badge/Docker-blue?logo=docker)
 
-The **TV 3.0 AoP Experimentation** project provides an evironment for experimenting with TV 3.0 AoP services. The environment is designed to be extensible such that developers can easily create/extend its functionalities.
-
+The **TV 3.0 AoP Experimentation** project provides an environment for experimenting with TV 3.0 AoP services. The environment is designed to be extensible such that developers can easily create/extend its functionalities.
 
 # Features
 
 * Distributed implementation of TV 3.0 components in a microservices fashion
-* MQTT-based
-
+* MQTT-based communication between services
+* Full Docker deployment (Redis + KrakenD + Mosquitto plugin)
+* User state persisted in Redis (`session:current-user`, `users:index`, broadcaster-attrs)
 
 # Architecture
 
@@ -27,7 +27,7 @@ block-beta
    WS --> B
    B --> WS
    space:5
-   APP["Broadcaster Apps\n(Node.js)"] space NCL["TV 3.0 Ginga-NCL"]
+   APP["Broadcaster\n(Node.js)"] space NCL["TV 3.0 Ginga-NCL"]
    B --> NCL
    NCL --> B
    TV --> APP
@@ -37,14 +37,20 @@ block-beta
 
 # Dependencies
 
-* Mosquitto MQTT Broker
-* Node JS
-* [PM2](https://pm2.keymetrics.io)
-* [NW.js](https://nwjs.io)
-* [FFmpeg](https://ffmpeg.org)
-
+* Docker + Compose plugin (Linux nativo, ou WSL2 mirrored em Windows)
+* Git com suporte a submodules
 
 # Execution
 
-Components managed by PM2.
-```$ pm2 start ecosystem.config.js```
+```bash
+# Clone com submodules
+git clone --recurse-submodules https://github.com/multisens/TV30.git
+cd TV30
+
+# Sobe a stack inteira (Linux full-container)
+docker compose up -d
+```
+
+Em Windows + WSL2 com porta 9001 ocupada no host, edite `.env` na raiz: `MQTT_WS_PORT=9003`.
+
+Pra detalhes (portas, env vars, padrão arquitetural dos módulos broadcaster), ver [`CLAUDE.md`](./CLAUDE.md).

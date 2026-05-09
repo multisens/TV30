@@ -1,0 +1,104 @@
+# TV30 — Compose unificado (raiz da solucao)
+#
+# LINUX (full-container):  docker compose up -d
+#   Defaults vem de .env (COMPOSE_PROFILES=mqtt,linux + DOCKERHUB_NS, IMAGE_TAG, KRAKEND_*_CFG)
+#
+# WINDOWS (apps nativas + infra container): use .\start-tv30.ps1
+#   ou: docker compose --env-file .env.windows up -d
+
+include:
+  - infra/docker-compose.yml
+
+services:
+
+  sysctl-init:
+    profiles: ["linux"]
+    image: alpine:3
+    container_name: tv30-sysctl-init
+    privileged: true
+    network_mode: host
+    command: >
+      sh -c "sysctl -w net.bridge.bridge-nf-call-iptables=0 2>/dev/null || echo 'sysctl skipped (read-only or unsupported kernel)'"
+    restart: "no"
+
+  ccws:
+    profiles: ["linux"]
+    image: ${DOCKERHUB_NS:-tv30}/tv30-ccws:${IMAGE_TAG:-dev}
+    build:
+      context: ./ccws
+      dockerfile: ../infra/dockerfiles/ccws.Dockerfile
+      additional_contexts:
+        tv30-data:    ./infra/user-files-template
+        tv30-scripts: ./infra/dockerfiles
+    container_name: ccws
+    networks: [ginga_net]
+    ports:
+      - "44652:44652"
+      - "44653:44653"
+    environment:
+      MQTT_HOST: mosquitto
+      HTTP_PORT: 44652
+      HTTPS_PORT: 44653
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      USER_DATA_FILE: /user-files/userData.json
+      USER_THUMBS:    /user-files/thumbs
+    env_file:
+      - ./ccws/.env       # JWT_SECRET, HTTPS_KEY, HTTPS_CERT (mantidos fora da imagem)
+    volumes:
+      - ./user-files:/user-files
+    depends_on:
+      - redis
+      - mosquitto
+    restart: unless-stopped
+
+  aop:
+    profiles: ["linux"]
+    image: ${DOCKERHUB_NS:-tv30}/tv30-aop:${IMAGE_TAG:-dev}
+    build:
+      context: ./aop
+      dockerfile: ../infra/dockerfiles/aop.Dockerfile
+      additional_contexts:
+        tv30-data:    ./infra/user-files-template
+        tv30-scripts: ./infra/dockerfiles
+    container_name: aop
+    networks: [ginga_net]
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      MQTT_HOST: mosquitto
+      # Browser conecta ws://localhost:${MQTT_WS_PORT}/mqtt do HOST. Por isso
+      # tem que bater com a porta exposta pelo Mosquitto no host (9003 no
+      # docker-compose.yml da infra — escapando do Windows WSL mirrored).
+      MQTT_WS_PORT: 9003
+      USER_DATA_PATH: /user-files
+    volumes:
+      - ./user-files:/user-files
+    depends_on:
+      - mosquitto
+      - ccws
+    restart: unless-stopped
+
+  bcast:
+    profiles: ["linux"]
+    image: ${DOCKERHUB_NS:-tv30}/tv30-bcast:${IMAGE_TAG:-dev}
+    build:
+      context: ./bcast
+      dockerfile: ../infra/dockerfiles/bcast.Dockerfile
+    container_name: bcast
+    networks: [ginga_net]
+    ports:
+      - "8081:8081"
+    environment:
+      PORT: 8081
+      MQTT_HOST: mosquitto
+      # IDs fixos: cada restart re-publica no MESMO topico, sobrescrevendo o
+      # anterior em vez de criar tópicos orfaos retidos no broker.
+      BSID:           tv30-default
+      WEBMEDIA_SID:   urn:tv30:service:webmedia
+      UFF_SID:        urn:tv30:service:uff
+      EDUPLAY_SID:    urn:tv30:service:eduplay
+    depends_on:
+      - mosquitto
+    restart: unless-stopped

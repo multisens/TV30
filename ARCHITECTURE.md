@@ -4,7 +4,7 @@
 > **Diretório local:** `D:/ProjCEFET/TV30/`
 > **Contexto:** Projeto de pesquisa CEFET — plataforma de experimentação do padrão brasileiro de TV digital (ISDB-Tb / TV 3.0)
 
-Monorepo principal do ecossistema TV 3.0. Orquestra todos os componentes via **submodules Git** e **PM2**.
+Monorepo principal do ecossistema TV 3.0. Orquestra todos os componentes via **submodules Git** e **Docker Compose**.
 A comunicação entre serviços é feita exclusivamente via **MQTT** (broker Mosquitto), seguindo arquitetura de microsserviços desacoplados.
 
 ---
@@ -14,13 +14,12 @@ A comunicação entre serviços é feita exclusivamente via **MQTT** (broker Mos
 | Pasta | Repositório | Responsabilidade |
 |-------|-------------|------------------|
 | `aop/` | https://github.com/multisens/AOP | **Application-Oriented Platform** — interface do receptor TV 3.0. Renderiza UI, gerencia perfis de usuário, exibe catálogo de apps e camadas de vídeo/gráficos. Node.js, porta **8080** |
-| `ccws/` | https://github.com/multisens/CCWS | **TV 3.0 Ginga CC WebServices** — API REST/HTTPS do padrão TV 3.0. Autenticação JWT, gerenciamento de usuários, serviços e dispositivos remotos. TypeScript, portas **44652** (HTTP) e **44653** (HTTPS) |
-| `infra/` | https://github.com/multisens/Infra | **Infraestrutura Docker** — Redis, KrakenD (gateways externo e interno), Mosquitto com plugin C, middlewares de validação, relay TCP WSL↔Windows |
-| `ginga/` | https://github.com/multisens/GingaDistrib | **Ginga-NCL Runtime** — middleware interativo de TV digital. Agendador NCL, simulador de dispositivo remoto, explorador de tópicos MQTT |
-| `bcast/` | https://github.com/multisens/BcastService | **Broadcaster** — simula transmissão de sinal TV 3.0. Streaming via FFmpeg, sinalização via MQTT |
-| `eduplay/` | https://github.com/motadv/eduplay | **EduPlay** — funcionalidades educacionais sobre a plataforma TV 3.0 |
-| `sepe/` | https://github.com/motadv/se-presentation-engine | **SE Presentation Engine** — motor de apresentação de conteúdo |
-| `utils/` | https://github.com/multisens/TV30-Utils | **Utilitários** — explorador web de tópicos MQTT, utilitários de dispositivo remoto |
+| `ccws/` | https://github.com/multisens/CCWS | **TV 3.0 Ginga CC WebServices** — API REST/HTTPS do padrão TV 3.0. Autenticação JWT, gerenciamento de usuários (estado em Redis), serviços e dispositivos remotos. TypeScript, portas **44652** (HTTP) e **44653** (HTTPS) |
+| `infra/` | https://github.com/multisens/Infra | **Infraestrutura Docker** — Redis, KrakenD (gateways externo e interno), Mosquitto com plugin C, middlewares de validação, dockerfiles |
+| `bcast/` | https://github.com/multisens/BcastService | **Broadcaster** — simula transmissão de sinal TV 3.0. Streaming via FFmpeg, sinalização via MQTT. Hospeda módulos de apps de serviço (webmedia, uff, etc.) seguindo padrão `src/modules/<nome>/` |
+| `eduplay/` | https://github.com/motadv/eduplay | **EduPlay** — funcionalidades educacionais |
+| `sepe/` | https://github.com/motadv/se-presentation-engine | **SE Presentation Engine** |
+| `utils/` | https://github.com/multisens/TV30-Utils | **Utilitários** — explorador web de tópicos MQTT |
 
 ---
 
@@ -31,17 +30,16 @@ Dispositivo Remoto / App
         ↓ HTTPS :44643
   KrakenD External (infra/)       ← valida consentimento (plugin Go)
         ↓
-  CCWS (ccws/)                    ← API TV 3.0, autenticação JWT
+  CCWS (ccws/)                    ← API TV 3.0, JWT, estado em Redis
         ↓ MQTT
   Mosquitto + Plugin C (infra/)   ← ACL, consentimento, schema validation
         ↓ MQTT
   AoP (aop/)                      ← UI do receptor, perfis, display layers
         ↑
-  Broadcaster (bcast/)            ← streaming de conteúdo
-  Ginga-NCL (ginga/)              ← apps interativos NCL
+  Broadcaster (bcast/)            ← streaming + módulos de apps de serviço
 ```
 
-**Regra central:** todos os serviços se comunicam via MQTT. Nenhum serviço chama outro diretamente por HTTP internamente — isso é responsabilidade exclusiva do CCWS via gateways.
+**Regra central:** todos os serviços se comunicam via MQTT. Nenhum serviço chama outro diretamente por HTTP internamente — isso é responsabilidade do CCWS via gateways.
 
 ---
 
@@ -51,7 +49,7 @@ Dispositivo Remoto / App
 |--------|--------------|---------------|-------------|
 | `aop/currentUser` | CCWS | AoP | Usuário logado atualmente |
 | `aop/currentService` | CCWS | AoP | Serviço TV selecionado |
-| `aop/users` | CCWS | AoP | Lista de usuários disponíveis |
+| `aop/users` | (handler subscrito no CCWS) | CCWS | Trigger de re-sync userData.json → Redis |
 | `aop/display/layers/*` | CCWS | AoP | Camadas de renderização (vídeo, GUI, gráficos, popup) |
 | `aop/:serviceId/currentApp` | CCWS | AoP | App ativo no serviço |
 | `tlm/lls/#` | bcast | AoP, CCWS | Metadados de Linear Live Service |
@@ -60,71 +58,61 @@ Dispositivo Remoto / App
 
 ---
 
+## Execução
+
+```bash
+docker compose up -d
+```
+
+Defaults vêm do `.env` (raiz). Em Windows + WSL2 com 9001 ocupada no host, definir `MQTT_WS_PORT=9003` no `.env`.
+
+### Containers e portas
+
+| Container | Porta(s) | Descrição |
+|-----------|----------|-----------|
+| `redis` | 6379 | Estado de sessão + usuários |
+| `redis-commander` | 18081 | UI de inspeção do Redis |
+| `mosquitto` | 1883, `${MQTT_WS_PORT:-9001}` | MQTT broker + plugin C ACL/consentimento |
+| `krakend-external` | 44643 | Gateway externo (com plugin Go consent-validator) |
+| `krakend-internal` | 44642 | Gateway interno (sem plugin) |
+| `validation-middleware` | 3000, 8085 | Middleware externo + Swagger |
+| `middleware-internal` | 3001, 8086 | Middleware interno + Swagger |
+| `ccws` | 44652, 44653 | TV 3.0 WebServices (HTTP, HTTPS) |
+| `aop` | 8080 | Interface do receptor |
+| `bcast` | 8081 | Broadcaster + módulos de apps de serviço |
+
+### Apps de serviço (módulos do bcast)
+
+Seguindo o padrão `webmedia` em `bcast/src/modules/<nome>/`: `index.ts` (implementa `ServiceInterface` com router próprio + EJS), `app.ejs`, `companion/`. Reaproveita o cliente MQTT do bcast — não cria novo container.
+
+---
+
 ## Stack
 
 | Tecnologia | Uso |
 |------------|-----|
-| Node.js 23+ | AoP, CCWS, bcast, utils |
+| Docker + Compose | Orquestração full-container |
+| Redis (ioredis) | Estado de sessão + usuários no CCWS |
+| Node.js 23+ | AoP, CCWS, bcast |
 | TypeScript | CCWS, eduplay, sepe |
 | MQTT (Mosquitto) | Comunicação entre todos os serviços |
-| PM2 | Orquestração de processos (ambiente sem Docker) |
-| Docker + WSL | Infraestrutura (Redis, KrakenD, Mosquitto plugin) |
+| KrakenD + plugin Go | Gateway externo com consent-validator |
+| Mosquitto plugin C | ACL/consentimento via Redis |
 | FFmpeg | Streaming de vídeo no broadcaster |
-| NW.js | Apps desktop (Ginga) |
-| Lua | Agendador NCL no Ginga |
-| Go | Plugin KrakenD consent-validator |
-| C | Plugin Mosquitto ACL/consentimento |
 
 ---
 
 ## Gerenciamento de submodules
 
 ```bash
-# Clonar o TV30 com todos os submodules
 git clone --recurse-submodules https://github.com/multisens/TV30.git
-
-# Inicializar submodules em um clone existente
 git submodule update --init --recursive
-
-# Atualizar todos os submodules para o commit mais recente do remote
-git submodule update --remote
-
-# Atualizar um submodule específico
-git submodule update --remote aop
-
-# Ver estado de todos os submodules
+git submodule update --remote                # atualiza todos
+git submodule update --remote aop            # só aop
 git submodule status
 ```
 
----
-
-## Execução (PM2)
-
-```bash
-# Linux / macOS
-pm2 start linux.config.js
-pm2 start mac.config.js
-
-# WSL
-pm2 start wsl.config.js
-
-# Ambiente de exposição/demo
-pm2 start setexpo.config.js
-```
-
-**Serviços gerenciados pelo PM2:**
-
-| Nome PM2 | Pasta | Porta | Descrição |
-|----------|-------|-------|-----------|
-| `broker` | — | 1883 | Mosquitto MQTT Broker |
-| `aop` | `aop/` | 8080 | Interface do receptor |
-| `apps` | `bcast/` | 8081 | Broadcaster apps |
-| `tv3ws` | `ccws/` | 44642 | TV 3.0 WebServices |
-| `eduplay` | `eduplay/` | — | EduPlay |
-| `sepe` | `sepe/` | — | Presentation Engine |
-| `chrome-aop` | — | — | Abre browser no AoP |
-
-> Para a infraestrutura Docker (Redis, KrakenD, Mosquitto plugin), consultar o `CLAUDE.md` em `infra/`.
+**CI:** cada submodule (aop, bcast, ccws, infra) tem `.github/workflows/bump-tv30-pointer.yml` que dispara em push em main e atualiza automaticamente o ponteiro do submodule no TV30. Secret `TV30_REPO_TOKEN` (PAT com `Contents: write` no TV30) configurado em cada repo.
 
 ---
 
@@ -132,8 +120,19 @@ pm2 start setexpo.config.js
 
 | Decisão | Motivo |
 |---------|--------|
-| Monorepo com submodules | Cada componente tem ciclo de vida e equipe independentes, mas o TV30 os orquestra |
-| MQTT como único canal interno | Desacoplamento total — nenhum serviço conhece o endereço de outro |
-| `aop` e `ccws` extraídos do GingaDistrib | Separação de responsabilidades — eram um monólito dentro do GingaDistrib |
-| Dois gateways KrakenD (externo/interno) | Externo valida consentimento; interno é confiável sem overhead |
-| Infra separada em repo próprio | Infraestrutura tem ciclo de vida diferente das aplicações |
+| Modo único = Linux + Docker full-container | Simplificação — um único caminho de deploy |
+| Monorepo com submodules | Cada componente tem ciclo de vida independente |
+| MQTT como único canal interno | Desacoplamento total |
+| Estado de usuários em Redis | Consistência cross-instance, sync inicial via `userData.json` |
+| Apps de serviço como módulos do bcast | Único container `bcast` serve tudo (sem duplicação MQTT/CORS/ACL) |
+| Dois gateways KrakenD | Externo valida consentimento; interno é confiável sem overhead |
+
+---
+
+## Conhecidos / atenção
+
+- `host.docker.internal:host-gateway` (não IP fixo)
+- Em Windows+WSL2 mirrored: 9001/9002 podem estar ocupadas no host → use `MQTT_WS_PORT=9003`
+- Token JWT no CCWS: sem prefixo "Bearer " (bug conhecido)
+- `ignoreExpiration: true` no middleware (compat CCWS)
+- Mosquitto plugin: `authorize_access` está **comentado** (todos clientes liberados — workaround temporário). Reativar quando ACL/consent estiverem maduros.
