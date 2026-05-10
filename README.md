@@ -53,4 +53,4 @@ docker compose up -d
 
 Em Windows + WSL2 com porta 9001 ocupada no host, edite `.env` na raiz: `MQTT_WS_PORT=9003`.
 
-Pra detalhes (portas, env vars, padrão arquitetural dos módulos broadcaster), ver [`CLAUDE.md`](./CLAUDE.md).
+Pra detalhes (portas, env vars, padrão arquitetural dos módulos broadcaster, troubleshooting WSL), ver [`ARCHITECTURE.md`](./ARCHITECTURE.md).
