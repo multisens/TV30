@@ -132,7 +132,25 @@ git submodule status
 ## Conhecidos / atenção
 
 - `host.docker.internal:host-gateway` (não IP fixo)
-- Em Windows+WSL2 mirrored: 9001/9002 podem estar ocupadas no host → use `MQTT_WS_PORT=9003`
+- Em Windows+WSL2 com 9001 ocupada no host: definir `MQTT_WS_PORT=9003` no `.env` da raiz (ex: serviço Hyper-V já usa 9001/9002)
 - Token JWT no CCWS: sem prefixo "Bearer " (bug conhecido)
 - `ignoreExpiration: true` no middleware (compat CCWS)
 - Mosquitto plugin: `authorize_access` está **comentado** (todos clientes liberados — workaround temporário). Reativar quando ACL/consent estiverem maduros.
+
+## Troubleshooting WSL2 + Docker
+
+**Sintoma:** após `docker compose up -d`, containers Up no WSL mas `localhost:8080` no Windows host dá timeout/connection reset.
+
+**Causa típica:** `~/.wslconfig` com `networkingMode=mirrored`. Mirrored mode + Docker tem issues conhecidos — Docker faz NAT via iptables que mirrored não espelha bem pro host Windows.
+
+**Solução:** o default do WSL2 (`networkingMode=NAT` + `localhostForwarding=true`) funciona out-of-the-box com Docker. Se você editou o `.wslconfig`, garanta:
+
+```ini
+[wsl2]
+networkingMode=NAT
+localhostForwarding=true
+```
+
+Depois: `wsl --shutdown` no PowerShell pra aplicar, então re-iniciar a distro.
+
+**Verificação:** `Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 8080 }` no PowerShell deve mostrar a porta 8080 listening em 127.0.0.1.
