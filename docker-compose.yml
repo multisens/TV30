@@ -73,6 +73,8 @@ services:
       # docker-compose.yml da infra — escapando do Windows WSL mirrored).
       MQTT_WS_PORT: 9003
       USER_DATA_PATH: /user-files
+      # Endpoint do CCWS pra ler users (Redis eh source-of-truth, userData.json eh seed inicial)
+      CCWS_URL: http://ccws:44652
     volumes:
       - ./user-files:/user-files
     depends_on:
@@ -93,6 +95,10 @@ services:
     environment:
       PORT: 8081
       MQTT_HOST: mosquitto
+      # Hostname pra construir bcastEntryPackageUrl no BAMT. AoP faz proxy
+      # pra esse host — em Docker precisa ser o service-name (resolve via
+      # ginga_net DNS), nao localhost.
+      BCAST_HOSTNAME: bcast
       # IDs fixos: cada restart re-publica no MESMO topico, sobrescrevendo o
       # anterior em vez de criar tópicos orfaos retidos no broker.
       BSID:           tv30-default
