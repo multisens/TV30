@@ -1,0 +1,28 @@
+title: TV 3.0 — Plataforma de Referência
+description: Documentação técnica do monorepo TV30 (multisens)
+
+# Tema via remote_theme (suportado pelo GitHub Pages sem precisar instalar localmente)
+remote_theme: just-the-docs/just-the-docs
+
+plugins:
+  - jekyll-remote-theme
+
+# Configurações do just-the-docs
+search_enabled: true
+heading_anchors: true
+color_scheme: dark
+
+aux_links:
+  "Repositório":
+    - "https://github.com/multisens/TV30"
+  "Spec ABNT NBR 25608":
+    - "https://www.abntcatalogo.com.br/"
+
+# Footer
+footer_content: 'CEFET-MG — Projeto Multisens / TV 3.0'
+
+# Excluir do build
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor/

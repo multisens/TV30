@@ -1,0 +1,6 @@
+source "https://rubygems.org"
+
+# Necessário para rodar o site localmente (jekyll serve).
+# No GitHub Pages, a stack já vem pronta — esses Gemfiles são só pra dev local.
+gem "github-pages", group: :jekyll_plugins
+gem "jekyll-remote-theme"
