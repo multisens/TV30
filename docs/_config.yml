@@ -19,7 +19,7 @@ aux_links:
     - "https://www.abntcatalogo.com.br/"
 
 # Footer
-footer_content: 'CEFET-MG — Projeto Multisens / TV 3.0'
+footer_content: 'CEFET-RJ — Projeto Multisens / TV 3.0'
 
 # Excluir do build
 exclude:
