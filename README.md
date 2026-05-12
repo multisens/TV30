@@ -59,4 +59,6 @@ Em Windows + WSL2 com porta 9001 ocupada no host, edite `.env` na raiz: `MQTT_WS
 
 Pra detalhes (portas, env vars, padrão arquitetural dos módulos broadcaster, troubleshooting WSL), ver [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
+# Contribuições
+
 Cada submodulo da aplicação contém uma action que atualiza o hash da main na TV30. Ao desenvolvedores, basta um commit na main que todo o repositório será atualizado, bem como as suas imgens docker pertinentes serão deployadas para o dockerhub.
