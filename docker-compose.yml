@@ -91,7 +91,10 @@ services:
     container_name: bcast
     networks: [ginga_net]
     ports:
-      - "8081:8081"
+      # Default 8081 no host. Se a porta estiver ocupada, sobrescreva
+      # BCAST_PORT no .env (a porta DENTRO do container continua 8081 — o
+      # AoP usa o DNS interno "bcast:8081" e nao depende disso).
+      - "${BCAST_PORT:-8081}:8081"
     environment:
       PORT: 8081
       MQTT_HOST: mosquitto
