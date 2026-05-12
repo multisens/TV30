@@ -18,10 +18,13 @@ nav_order: 3
 ```bash
 git clone --recurse-submodules https://github.com/multisens/TV30.git
 cd TV30
+cp .env.example .env       # ativa profiles "linux" e "mqtt"
 docker compose up -d
 ```
 
 Acesse `http://localhost:8080`.
+
+> **Importante:** sem o `.env` (ou sem `COMPOSE_PROFILES=mqtt,linux` setado de alguma forma), apenas a infra essencial sobe — `aop`, `ccws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: ["linux"]` ou `["mqtt"]` no compose e ficam de fora do `up` sem o profile ativo.
 
 ---
 
@@ -62,6 +65,8 @@ Dentro do WSL:
 
 ```bash
 cd /mnt/d/ProjCEFET/TV30   # ou onde clonou
+cp .env.example .env       # ativa profiles "linux" e "mqtt"
+# (edite .env e defina MQTT_WS_PORT=9003 se a 9001 estiver ocupada no host)
 docker compose up -d
 ```
 

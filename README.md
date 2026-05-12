@@ -47,6 +47,10 @@ block-beta
 git clone --recurse-submodules https://github.com/multisens/TV30.git
 cd TV30
 
+# Copia o template do .env (versionado) — ele ativa os profiles "linux"
+# e "mqtt", sem os quais aop/ccws/bcast/mosquitto nao sobem.
+cp .env.example .env
+
 # Sobe a stack inteira (Linux full-container)
 docker compose up -d
 ```
