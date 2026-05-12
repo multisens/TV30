@@ -49,31 +49,7 @@ Disparado quando algo modifica `userData.json`:
 
 Atualmente a função `authorize_access` está **comentada** (todos clientes liberados — workaround temporário enquanto a stack de consent madura). Reativar quando os clients estiverem todos publicando com identidade própria.
 
----
 
-## Inspecionar tópicos em tempo real
-
-### Pelo MQTT Topic Explorer
-
-`utils/` (submódulo `multisens/TV30-Utils`) traz um web UI:
-
-```bash
-cd utils && npm install && npm start
-```
-
-### Pelo CLI dentro do container
-
-```bash
-docker exec mosquitto-plugin mosquitto_sub -t 'aop/#' -v
-```
-
-### Publicar manualmente (debug)
-
-```bash
-docker exec mosquitto-plugin mosquitto_pub -t aop/users -m /user-files
-```
-
----
 
 ## Padrão de retain
 

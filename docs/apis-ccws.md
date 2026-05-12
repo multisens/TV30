@@ -19,7 +19,7 @@ Header padrão: `Accept-Version: 2.0` (não obrigatório no MVP).
 
 ## Endpoints (resumo)
 
-| Método | Endpoint | Descrição | Tabela ABNT |
+| Método | Endpoint | Descrição | Sessão da Norma|
 |--------|----------|-----------|-------------|
 | GET | `/health` | Health check | — |
 | GET | `/tv3/authorize` | Início do fluxo de autorização | C.6.1 |

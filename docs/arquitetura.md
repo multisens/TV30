@@ -75,7 +75,7 @@ Reaproveitam o cliente MQTT do bcast — não criam nova conexão nem novo conta
 
 | Decisão | Motivo |
 |---------|--------|
-| Modo único = Linux + Docker full-container | Um único caminho de deploy. Modo "Windows híbrido" foi descontinuado |
+| Docker| Um único caminho de deploy. |
 | Monorepo com submódulos | Cada componente tem ciclo de vida e CI independentes |
 | MQTT como único canal interno | Desacoplamento total entre serviços |
 | Estado de usuários em Redis | Consistência cross-instance. `userData.json` é só seed inicial |

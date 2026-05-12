@@ -18,7 +18,7 @@ Conjunto de microsserviços que reproduzem o ecossistema TV 3.0:
 - **CCWS** (TV 3.0 Ginga CC WebServices) — API REST conforme ABNT NBR 25608 (TypeScript, portas 44652/44653)
 - **bcast** — simulação do broadcaster, hospeda apps de serviço (webmedia, users-test, etc.)
 - **Mosquitto + plugin C** — broker MQTT com ACL e validação de consentimento via Redis
-- **KrakenD** — dois gateways (externo com consent-validator Go; interno sem overhead)
+- **KrakenD** — dois gateways (externo com consent-validator Go; interno sem overhead) que permite a implementação distribuída do CCWS
 - **Redis** — fonte única de verdade para estado de sessão e perfis
 
 Comunicação interna é **exclusivamente via MQTT**. Nenhum serviço chama outro diretamente por HTTP — quando precisa, vai via gateway.
