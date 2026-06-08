@@ -1,9 +1,6 @@
 [submodule "bcast"]
 	path = bcast
 	url = git@github.com:multisens/BcastService.git
-[submodule "utils"]
-	path = utils
-	url = https://github.com/multisens/TV30-Utils.git
 [submodule "infra"]
 	path = infra
 	url = https://github.com/multisens/Infra.git
