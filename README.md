@@ -2,9 +2,11 @@
 
 ![Node Version](https://img.shields.io/badge/Node.js-23.11.0-blueviolet?logo=nodedotjs)  ![MQTT](https://img.shields.io/badge/MQTT-blueviolet?logo=mqtt)  ![Docker](https://img.shields.io/badge/Docker-blue?logo=docker)
 
-Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 25608). Implementa, em microsserviços, os componentes da plataforma TV 3.0: receptor (AoP), webservices Ginga CC (CCWS), broadcaster simulado (bcast), gateways KrakenD, broker MQTT (Mosquitto com plugin C de ACL/consentimento) e estado em Redis.
+Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 25608). Implementa, em microsserviços, os papéis da plataforma TV 3.0 — receptor (AoP), webservices Ginga CC (CCWS) e broadcaster simulado (bcast) — sobre uma infraestrutura de apoio escolhida por este projeto: gateways KrakenD, broker MQTT (Mosquitto com plugin C de ACL/consentimento) e estado em Redis.
 
-É um **monorepo com submodules Git** orquestrado por um único `docker-compose.yml` na raiz. Toda a stack sobe de uma vez só, em qualquer host com Docker, sem build local — as imagens vêm do Docker Hub e são bumpadas automaticamente pelos workflows de cada submodule.
+> **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices (CCWS), o modelo de consentimento e os perfis de usuário. O transporte interno via **MQTT**, os **gateways KrakenD** e o **Redis** são decisões de arquitetura deste testbed — **não fazem parte da norma**.
+
+É um **monorepo com submodules Git** orquestrado por um único `docker-compose.yml` na raiz. Toda a stack sobe de uma vez só, em qualquer host com Docker, sem build local — as imagens vêm do Docker Hub e são atualizadas automaticamente pelos workflows de cada submodule.
 
 ---
 
@@ -270,10 +272,10 @@ Abra http://localhost:18081 (Redis Commander). Tem visão de todos os keys: `ses
 # Após clone sem --recurse-submodules:
 git submodule update --init --recursive
 
-# Bumpar todos os submodules pro main mais recente:
+# Atualizar todos os submodules pro main mais recente:
 git submodule update --remote
 
-# Bumpar só um:
+# Atualizar só um:
 git submodule update --remote aop
 ```
 

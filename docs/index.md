@@ -12,16 +12,21 @@ Documentação técnica do monorepo **multisens/TV30**, um ambiente full-Docker 
 
 ## O que é o TV30
 
-Conjunto de microsserviços que reproduzem o ecossistema TV 3.0:
+Conjunto de microsserviços que reproduzem o ecossistema TV 3.0. Os componentes se dividem entre os **papéis definidos pela plataforma TV 3.0** (norma) e a **infraestrutura de implementação** escolhida por este projeto.
+
+**Papéis da plataforma TV 3.0 (ABNT NBR 25608):**
 
 - **AoP** (Application-Oriented Platform) — interface do receptor (Node.js, porta 8080)
 - **CCWS** (TV 3.0 Ginga CC WebServices) — API REST conforme ABNT NBR 25608 (TypeScript, portas 44652/44653)
 - **bcast** — simulação do broadcaster, hospeda apps de serviço (webmedia, users-test, etc.)
+
+**Infraestrutura de implementação (escolha deste projeto, não exigida pela norma):**
+
 - **Mosquitto + plugin C** — broker MQTT com ACL e validação de consentimento via Redis
-- **KrakenD** — dois gateways (externo com consent-validator Go; interno sem overhead) que permite a implementação distribuída do CCWS
+- **KrakenD** — dois gateways (externo com consent-validator Go; interno sem overhead) que permitem a implementação distribuída do CCWS
 - **Redis** — fonte única de verdade para estado de sessão e perfis
 
-Comunicação interna é **exclusivamente via MQTT**. Nenhum serviço chama outro diretamente por HTTP — quando precisa, vai via gateway.
+> **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices, o modelo de consentimento e os perfis de usuário — **não** o transporte interno. O uso de MQTT como canal único entre serviços, os gateways KrakenD e o Redis são decisões de arquitetura deste testbed.
 
 ---
 

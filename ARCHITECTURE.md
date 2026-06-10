@@ -7,6 +7,8 @@
 Monorepo principal do ecossistema TV 3.0. Orquestra todos os componentes via **submodules Git** e **Docker Compose**.
 A comunicação entre serviços é feita exclusivamente via **MQTT** (broker Mosquitto), seguindo arquitetura de microsserviços desacoplados.
 
+> **Norma × implementação:** a ABNT NBR 25608 define os papéis da plataforma TV 3.0 (receptor, Ginga CC WebServices, broadcaster) e o modelo de consentimento/perfis. O transporte interno via **MQTT**, os **gateways KrakenD** e o **Redis** são escolhas de implementação deste projeto — **não fazem parte da norma**.
+
 ---
 
 ## Submodules e responsabilidades

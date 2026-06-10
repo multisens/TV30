@@ -23,6 +23,8 @@ Dispositivo Remoto / App
 
 **Regra central:** todos os serviços se comunicam via MQTT. Nenhum serviço chama outro diretamente por HTTP internamente.
 
+> **Norma × implementação:** MQTT, os gateways KrakenD e o Redis são decisões de arquitetura deste testbed, **não** exigências da ABNT NBR 25608. A norma especifica os Ginga CC WebServices (CCWS), o modelo de consentimento e os perfis de usuário — não o transporte interno nem a infraestrutura de back-end.
+
 ---
 
 ## Submódulos
