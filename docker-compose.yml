@@ -23,7 +23,7 @@ services:
 
   ccws:
     profiles: ["linux"]
-    image: ${DOCKERHUB_NS:-tv30}/tv30-ccws:${IMAGE_TAG:-dev}
+    image: ${DOCKERHUB_NS:-tv30}/tv30-ws-subset:${IMAGE_TAG:-dev}
     build:
       context: ./ccws
       dockerfile: ../infra/dockerfiles/ccws.Dockerfile
