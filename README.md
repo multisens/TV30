@@ -63,7 +63,7 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 | Variável | Default | Descrição |
 |----------|---------|-----------|
 | `COMPOSE_PROFILES` | `mqtt,linux` | Profiles ativos. Sem isto, `aop`/`ccws`/`bcast`/`mosquitto`/`sysctl-init` não sobem. |
-| `DOCKERHUB_NS` | `luiscrjr` | Namespace do Docker Hub de onde puxar as imagens. Trocar para fork próprio se for buildar localmente. |
+| `DOCKERHUB_NS` | `labmultisens` | Namespace do Docker Hub de onde puxar as imagens. |
 | `IMAGE_TAG` | `latest` | Tag das imagens. `latest` puxa o build mais recente da main de cada submodule. |
 | `MQTT_WS_PORT` | `9001` | Porta WebSocket do Mosquitto exposta no host. **Em Windows com Hyper-V, trocar para `9003`.** |
 | `BCAST_PORT` | `8081` | Porta do bcast exposta no host. Sobrescrever se 8081 estiver ocupada. |
