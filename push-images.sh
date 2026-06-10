@@ -41,6 +41,7 @@ declare -a INFRA=(
     "tv30-mosquitto|infra/mosquitto_plugin|infra/mosquitto_plugin/infra/Dockerfile"
     "tv30-validation-middleware|infra/middleware|infra/middleware/Dockerfile"
     "tv30-middleware-internal|infra/middleware_internal|infra/middleware_internal/Dockerfile"
+    "tv30-swagger|infra/swagger|infra/swagger/Dockerfile"
 )
 
 # --- 1. Build (skipavel) ---

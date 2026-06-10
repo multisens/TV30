@@ -126,8 +126,9 @@ Depois `docker compose up -d` (ou `docker compose restart ccws` se a stack já t
 | Mosquitto WS | `${MQTT_WS_PORT:-9001}` | WebSocket — em Windows usar **9003** |
 | Redis | 6379 | Estado de sessão + perfis (acesso TCP, ex.: `redis-cli`) |
 | Redis Commander | 18081 | http://localhost:18081 — UI de inspeção do Redis |
-| Validation middleware + Swagger | 3000 / 8085 | http://localhost:8085 |
-| Middleware internal + Swagger | 3001 / 8086 | http://localhost:8086 |
+| Validation middleware | 3000 | valida JWT + gera OpenAPI do gateway externo |
+| Middleware internal | 3001 | gera OpenAPI do gateway interno |
+| Swagger UI | 8085 | http://localhost:8085 — doc dos dois gateways (dropdown external/internal) |
 
 ---
 

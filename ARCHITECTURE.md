@@ -77,8 +77,9 @@ Defaults vêm do `.env` (raiz). Em Windows + WSL2 com 9001 ocupada no host, defi
 | `mosquitto` | 1883, `${MQTT_WS_PORT:-9001}` | MQTT broker + plugin C ACL/consentimento |
 | `krakend-external` | 44643 | Gateway externo (com plugin Go consent-validator) |
 | `krakend-internal` | 44642 | Gateway interno (sem plugin) |
-| `validation-middleware` | 3000, 8085 | Middleware externo + Swagger |
-| `middleware-internal` | 3001, 8086 | Middleware interno + Swagger |
+| `validation-middleware` | 3000 | Valida JWT + OpenAPI do gateway externo |
+| `middleware-internal` | 3001 | OpenAPI do gateway interno |
+| `swagger` | 8085 | Swagger UI único (dropdown external/internal) |
 | `ccws` | 44652, 44653 | TV 3.0 WebServices (HTTP, HTTPS) |
 | `aop` | 8080 | Interface do receptor |
 | `bcast` | 8081 | Broadcaster + módulos de apps de serviço |
