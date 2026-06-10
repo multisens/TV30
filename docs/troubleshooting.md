@@ -88,12 +88,12 @@ docker exec redis-auth redis-cli HGETALL user:user_xxx
 docker exec redis-auth redis-cli GET session:current-user
 
 # MQTT
-docker exec mosquitto-plugin mosquitto_sub -t '#' -v
+docker exec mqtt-broker mosquitto_sub -t '#' -v
 
 # Logs
 docker logs aop --tail 50
 docker logs ccws --tail 50
-docker logs mosquitto-plugin --tail 50
+docker logs mqtt-broker --tail 50
 ```
 
 Redis Commander: **http://localhost:18081**

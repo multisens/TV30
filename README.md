@@ -207,7 +207,7 @@ docker exec redis-auth redis-cli SMEMBERS user:<userId>:consent
 Depois de mudar consent, **dispare um reload do AoP** publicando no tópico `aop/users` pra ele re-listar usuários:
 
 ```bash
-docker exec mosquitto-plugin mosquitto_pub -t aop/users -m /user-files
+docker exec mqtt-broker mosquitto_pub -t aop/users -m /user-files
 ```
 
 (Sem isso, o profile-chooser pode continuar mostrando o estado em cache até o próximo refresh.)
