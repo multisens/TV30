@@ -118,116 +118,16 @@ Depois `docker compose up -d` (ou `docker compose restart ccws` se a stack já t
 | Serviço | Porta(s) host | URL / observação |
 |---------|---------------|------------------|
 | AoP (UI do receptor) | 8080 | http://localhost:8080 |
-| CCWS (TV 3.0 WebServices) | 44652 / 44653 | HTTP / HTTPS — base do CCWS |
-| KrakenD external | 44643 | HTTPS — gateway com plugin Go `consent-validator` |
-| KrakenD internal | 44642 | HTTP — gateway interno (sem plugin) |
+| TV3 WS Subset | 44652 / 44653 | HTTP / HTTPS — base do TV3 WS Subset |
+| TV3 WS Gateway external | 44643 | HTTPS — gateway com plugin Go `consent-validator` |
+| TV3 WS Gateway internal | 44642 | HTTP — gateway interno (sem plugin) |
 | bcast (broadcaster) | `${BCAST_PORT:-8081}` | http://localhost:8081 — apps de serviço (webmedia, uff, etc.) |
 | Mosquitto MQTT | 1883 | Broker TCP |
 | Mosquitto WS | `${MQTT_WS_PORT:-9001}` | WebSocket — em Windows usar **9003** |
+| Redis | 6379 | Estado de sessão + perfis (acesso TCP, ex.: `redis-cli`) |
 | Redis Commander | 18081 | http://localhost:18081 — UI de inspeção do Redis |
 | Validation middleware + Swagger | 3000 / 8085 | http://localhost:8085 |
 | Middleware internal + Swagger | 3001 / 8086 | http://localhost:8086 |
-
----
-
-## Consentimento (consent) — concedendo manualmente
-
-A norma TV 3.0 exige **consentimento explícito** do usuário pra cada serviço DTV acessar seus dados. O CCWS e o plugin C do Mosquitto checam consent antes de liberar APIs e tópicos MQTT por serviço. Se um usuário não tem consent pro serviço ativo, ele **não aparece no profile-chooser**, e o broker pode rejeitar publish/subscribe em tópicos daquele serviço.
-
-### Modelo no Redis
-
-Consent é um **set Redis** por usuário, com a chave:
-
-```
-user:{userId}:consent
-```
-
-Cada elemento do set é um ID de serviço (ex.: `urn:tv30:service:webmedia`). Há um wildcard especial:
-
-| Elemento | Significado |
-|----------|-------------|
-| `urn:tv30:service:webmedia` | Consent concedido para o serviço `webmedia`. |
-| `urn:tv30:service:eduplay` | Consent concedido para o serviço `eduplay`. |
-| `*` | **Bypass total** — usado para clientes de serviço confiáveis (bcast, ccws). Libera qualquer serviço sem checagem. |
-
-O plugin C (`infra/mosquitto_plugin/plugin/src/authorize.c`) checa primeiro `SISMEMBER user:{id}:consent *` (bypass) e depois `SISMEMBER user:{id}:consent {service}` (consent específico).
-
-### 1. Descobrir os IDs
-
-**Listar todos os usuários:**
-
-```bash
-docker exec redis-auth redis-cli SMEMBERS users:index
-```
-
-Saída: lista de UUIDs / `user_<timestamp>`.
-
-**Ver atributos de um usuário (inclui `nickname` pra identificar):**
-
-```bash
-docker exec redis-auth redis-cli HGETALL user:<userId>
-```
-
-**Ver o serviço DTV ativo:**
-
-```bash
-docker exec redis-auth redis-cli GET session:current-service-id
-```
-
-Os IDs fixos dos serviços do bcast estão definidos no `docker-compose.yml`:
-
-| Serviço | ID |
-|---------|----|
-| webmedia | `urn:tv30:service:webmedia` |
-| uff | `urn:tv30:service:uff` |
-| eduplay | `urn:tv30:service:eduplay` |
-
-### 2. Conceder consent
-
-**Pra um serviço específico:**
-
-```bash
-docker exec redis-auth redis-cli SADD user:<userId>:consent urn:tv30:service:webmedia
-```
-
-**Bypass total (qualquer serviço):**
-
-```bash
-docker exec redis-auth redis-cli SADD user:<userId>:consent '*'
-```
-
-> O `*` precisa de aspas no shell pra não ser interpretado como glob. No Redis Commander (UI) basta digitar `*`.
-
-**Conferir o que está no set:**
-
-```bash
-docker exec redis-auth redis-cli SMEMBERS user:<userId>:consent
-```
-
-Depois de mudar consent, **dispare um reload do AoP** publicando no tópico `aop/users` pra ele re-listar usuários:
-
-```bash
-docker exec mqtt-broker mosquitto_pub -t aop/users -m /user-files
-```
-
-(Sem isso, o profile-chooser pode continuar mostrando o estado em cache até o próximo refresh.)
-
-### 3. Revogar consent
-
-```bash
-docker exec redis-auth redis-cli SREM user:<userId>:consent urn:tv30:service:webmedia
-```
-
-### 4. Inspecionar pela UI (mais fácil)
-
-Abra http://localhost:18081 (Redis Commander).
-
-1. No painel da esquerda, expanda a connection.
-2. Procure a chave `user:<userId>:consent` (use o filtro `user:*:consent`).
-3. Selecione — vai mostrar os elementos do set.
-4. Botões `Add Member` / `Remove` operam o set diretamente.
-
-> Em qualquer dúvida sobre quais users existem ou qual o serviço ativo, navegue por `users:index` e `session:current-service-id` na mesma UI.
 
 ---
 
