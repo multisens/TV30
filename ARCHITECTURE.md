@@ -135,9 +135,6 @@ git submodule status
 
 - `host.docker.internal:host-gateway` (não IP fixo)
 - Em Windows+WSL2 com 9001 ocupada no host: definir `MQTT_WS_PORT=9003` no `.env` da raiz (ex: serviço Hyper-V já usa 9001/9002)
-- Token JWT no CCWS: sem prefixo "Bearer " (bug conhecido)
-- `ignoreExpiration: true` no middleware (compat CCWS)
-- Mosquitto plugin: `authorize_access` está **comentado** (todos clientes liberados — workaround temporário). Reativar quando ACL/consent estiverem maduros.
 
 ## Troubleshooting WSL2 + Docker
 
@@ -153,6 +150,6 @@ networkingMode=NAT
 localhostForwarding=true
 ```
 
-Depois: `wsl --shutdown` no PowerShell pra aplicar, então re-iniciar a distro.
+Depois: `wsl --shutdown` no PowerShell pra aplicar, então re-iniciar a distribuição.
 
 **Verificação:** `Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 8080 }` no PowerShell deve mostrar a porta 8080 listening em 127.0.0.1.

@@ -32,7 +32,7 @@ Depois aplique:
 wsl --shutdown
 ```
 
-E reabra a distro. **Não use `networkingMode=mirrored`** — Docker faz NAT via iptables e o modo mirrored não espelha bem pro host Windows, dando timeout em `localhost:PORT`. O `vmIdleTimeout=86400000` (24h) evita que a VM seja desligada por idle, o que derrubaria os containers.
+E reabra a distribuição. **Não use `networkingMode=mirrored`** — Docker faz NAT via iptables e o modo mirrored não espelha bem pro host Windows, dando timeout em `localhost:PORT`. O `vmIdleTimeout=86400000` (24h) evita que a VM seja desligada por idle, o que derrubaria os containers.
 
 ---
 
@@ -72,7 +72,7 @@ Cada submodule também tem seu próprio `.env` (ex.: `ccws/.env`) — em deploy 
 
 ## Gerando `HTTPS_CERT` e `HTTPS_KEY` para o CCWS
 
-O CCWS sobe HTTPS na porta 44653 e precisa de cert + chave em **base64** nas variáveis `HTTPS_CERT` e `HTTPS_KEY` do arquivo `ccws/.env`. Para desenvolvimento, gere um cert self-signed:
+O CCWS sobe HTTPS na porta 44653 e precisa de cert + chave em **base64** nas variáveis `HTTPS_CERT` e `HTTPS_KEY` do arquivo `ccws/.env`. Para desenvolvimento, gere um certificado autoassinado:
 
 ### 1. Gerar cert e chave
 
@@ -241,11 +241,11 @@ Para casos mais detalhados, ver [`docs/troubleshooting.md`](./docs/troubleshooti
 
 ### `localhost:8080` dá timeout no Windows
 **Causa:** `~/.wslconfig` com `networkingMode=mirrored` — incompatível com o NAT do Docker.
-**Fix:** trocar para `networkingMode=NAT` + `localhostForwarding=true`, depois `wsl --shutdown` no PowerShell e reabrir a distro.
+**Fix:** trocar para `networkingMode=NAT` + `localhostForwarding=true`, depois `wsl --shutdown` no PowerShell e reabrir a distribuição.
 
 ### Containers caem depois de um tempo sem uso
 **Causa:** WSL2 desliga a VM por idle timeout, derrubando o Docker.
-**Fix:** acrescentar `vmIdleTimeout=86400000` em `~/.wslconfig` e manter qualquer terminal aberto na distro.
+**Fix:** acrescentar `vmIdleTimeout=86400000` em `~/.wslconfig` e manter qualquer terminal aberto na distribuição.
 
 ### `docker compose ps` só mostra infra (redis, krakend, middleware); falta aop/ccws/bcast/mosquitto
 **Causa:** `.env` ausente ou `COMPOSE_PROFILES` vazio — os serviços principais têm `profiles:` no compose e ficam fora silenciosamente quando o profile não está ativo.

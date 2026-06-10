@@ -47,8 +47,6 @@ Disparado quando algo modifica `userData.json`:
 - Valida tópicos contra schema JSON
 - Verifica consent do usuário no Redis antes de permitir publish/subscribe
 
-Atualmente a função `authorize_access` está **comentada** (todos clientes liberados — workaround temporário enquanto a stack de consent madura). Reativar quando os clients estiverem todos publicando com identidade própria.
-
 
 
 ## Padrão de retain

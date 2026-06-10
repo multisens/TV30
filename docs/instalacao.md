@@ -48,7 +48,7 @@ Depois de editar:
 wsl --shutdown
 ```
 
-E reabra a distro.
+E reabra a distribuição.
 
 ### Verificação
 
