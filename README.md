@@ -118,7 +118,7 @@ Depois `docker compose up -d` (ou `docker compose restart ccws` se a stack já t
 | Serviço | Porta(s) host | URL / observação |
 |---------|---------------|------------------|
 | AoP (UI do receptor) | 8080 | http://localhost:8080 |
-| TV3 WS Subset | 44652 / 44653 | HTTP / HTTPS — base do TV3 WS Subset |
+| TV3 WS Subset | 44653 | HTTPS — base do TV3 WS Subset |
 | TV3 WS Gateway external | 44643 | HTTPS — gateway com plugin Go `consent-validator` |
 | TV3 WS Gateway internal | 44642 | HTTP — gateway interno (sem plugin) |
 | bcast (broadcaster) | `${BCAST_PORT:-8081}` | http://localhost:8081 — apps de serviço (webmedia, uff, etc.) |
