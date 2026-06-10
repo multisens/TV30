@@ -131,39 +131,6 @@ Depois `docker compose up -d` (ou `docker compose restart ccws` se a stack já t
 
 ---
 
-## Troubleshooting rápido
-
-Para casos mais detalhados, ver [`docs/troubleshooting.md`](./docs/troubleshooting.md).
-
-### Browser dá erro de WebSocket no MQTT (console: "WebSocket connection failed")
-**Causa:** porta `MQTT_WS_PORT` ocupada no host (Hyper-V usa 9001/9002 em Windows).
-**Fix:** editar `.env`, `MQTT_WS_PORT=9003`, depois `docker compose up -d` (recria o container do mosquitto com a porta nova).
-
-### `localhost:8080` dá timeout no Windows
-**Causa:** `~/.wslconfig` com `networkingMode=mirrored` — incompatível com o NAT do Docker.
-**Fix:** trocar para `networkingMode=NAT` + `localhostForwarding=true`, depois `wsl --shutdown` no PowerShell e reabrir a distribuição.
-
-### Containers caem depois de um tempo sem uso
-**Causa:** WSL2 desliga a VM por idle timeout, derrubando o Docker.
-**Fix:** acrescentar `vmIdleTimeout=86400000` em `~/.wslconfig` e manter qualquer terminal aberto na distribuição.
-
-### `docker compose ps` só mostra infra (redis, krakend, middleware); falta aop/ccws/bcast/mosquitto
-**Causa:** `.env` ausente ou `COMPOSE_PROFILES` vazio — os serviços principais têm `profiles:` no compose e ficam fora silenciosamente quando o profile não está ativo.
-**Fix:** `cp .env.example .env`, depois `docker compose up -d`.
-
-### `exec /entrypoint.sh: no such file or directory` ao subir um container
-**Causa:** script shell foi commitado com line-endings CRLF (Windows). O shebang `#!/bin/sh\r` fica inválido no container Linux.
-**Fix:** `dos2unix infra/dockerfiles/entrypoint-user-files.sh`, ou forçar LF via `.gitattributes` na raiz com `*.sh text eol=lf` e re-checkout.
-
-### `Error response from daemon: network ginga_net ... has active endpoints` ou conflict de rede
-**Causa:** rede `ginga_net` ficou pendurada de uma execução anterior.
-**Fix:** `docker compose down`, depois `docker network rm ginga_net`, depois `docker compose up -d` (a rede é recriada limpa).
-
-### Para inspecionar o Redis
-Abra http://localhost:18081 (Redis Commander). Tem visão de todos os keys: `session:current-user`, `users:index`, atributos de broadcaster, etc.
-
----
-
 ## Atualizar submodules
 
 ```bash
