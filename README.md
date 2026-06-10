@@ -14,8 +14,6 @@ Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 2560
 
 - **Docker Engine** + **Compose v2** (`docker compose`, não `docker-compose`).
 - **Git** com suporte a submodules.
-- **Windows:** WSL2 com `~/.wslconfig` em modo NAT (ver abaixo). Modo `mirrored` quebra a publicação de portas do Docker.
-- **Linux:** funciona nativo, sem ajustes extras.
 
 ### `~/.wslconfig` recomendado (apenas Windows)
 

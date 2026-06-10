@@ -7,9 +7,8 @@ nav_order: 3
 
 ## Pré-requisitos
 
-- **Docker + Docker Compose v2** (Linux nativo ou Windows com WSL2)
+- **Docker + Docker Compose v2**
 - **Git** com suporte a submódulos
-- Em Windows: **WSL2** com a distro Ubuntu (testado em 26.04)
 
 ---
 
