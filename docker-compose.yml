@@ -35,10 +35,22 @@ services:
     ports:
       - "44652:44652"
       - "44653:44653"
+      # WebSockets de remote-device usam portas dinamicas nesse range. Tem
+      # que estar publicado no host pra apps externas alcancarem a URL que o
+      # CCWS devolve no registro (ws://SERVER_URL:<porta>).
+      - "45000-45199:45000-45199"
     environment:
       MQTT_HOST: mosquitto
       HTTP_PORT: 44652
       HTTPS_PORT: 44653
+      # Host que apps externas usam pra abrir o websocket devolvido no
+      # registro em /tv3/remote-device. Tem que bater com o IP/hostname
+      # alcancavel de fora do container (nao localhost/nome-de-servico).
+      SERVER_URL: 192.168.1.150
+      # Range de portas pros websockets de remote-device. Tem que coincidir
+      # com o range publicado em `ports` acima.
+      WS_PORT_MIN: 45000
+      WS_PORT_MAX: 45199
       REDIS_HOST: redis
       REDIS_PORT: 6379
       USER_DATA_FILE: /user-files/userData.json
@@ -71,7 +83,7 @@ services:
       # Browser conecta ws://localhost:${MQTT_WS_PORT}/mqtt do HOST. Por isso
       # tem que bater com a porta exposta pelo Mosquitto no host (9003 no
       # docker-compose.yml da infra — escapando do Windows WSL mirrored).
-      MQTT_WS_PORT: 9003
+      MQTT_WS_PORT: 9001
       USER_DATA_PATH: /user-files
       # Endpoint do CCWS pra ler users (Redis eh source-of-truth, userData.json eh seed inicial)
       CCWS_URL: http://ccws:44652
@@ -108,6 +120,12 @@ services:
       WEBMEDIA_SID:   urn:tv30:service:webmedia
       UFF_SID:        urn:tv30:service:uff
       EDUPLAY_SID:    urn:tv30:service:eduplay
+    volumes:
+      # public/ (templates estaticos + media, ~2.3GB) fica FORA da imagem:
+      # nao entra no build (.dockerignore) e e servido daqui via
+      # express.static('public'). Editar arquivos em bcast/public reflete
+      # sem rebuild. :ro porque o servico so le esse conteudo.
+      - ./bcast/public:/app/public:ro
     depends_on:
       - mosquitto
     restart: unless-stopped
