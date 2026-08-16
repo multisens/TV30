@@ -10,7 +10,6 @@ include:
   - infra/docker-compose.yml
 
 services:
-
   sysctl-init:
     profiles: ["linux"]
     image: alpine:3
@@ -28,7 +27,7 @@ services:
       context: ./ccws
       dockerfile: ../infra/dockerfiles/ccws.Dockerfile
       additional_contexts:
-        tv30-data:    ./infra/user-files-template
+        tv30-data: ./infra/user-files-template
         tv30-scripts: ./infra/dockerfiles
     container_name: ccws
     networks: [ginga_net]
@@ -54,9 +53,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       USER_DATA_FILE: /user-files/userData.json
-      USER_THUMBS:    /user-files/thumbs
+      USER_THUMBS: /user-files/thumbs
     env_file:
-      - ./ccws/.env       # JWT_SECRET, HTTPS_KEY, HTTPS_CERT (mantidos fora da imagem)
+      - ./ccws/.env # JWT_SECRET, HTTPS_KEY, HTTPS_CERT (mantidos fora da imagem)
     volumes:
       - ./user-files:/user-files
     depends_on:
@@ -71,7 +70,7 @@ services:
       context: ./aop
       dockerfile: ../infra/dockerfiles/aop.Dockerfile
       additional_contexts:
-        tv30-data:    ./infra/user-files-template
+        tv30-data: ./infra/user-files-template
         tv30-scripts: ./infra/dockerfiles
     container_name: aop
     networks: [ginga_net]
@@ -116,10 +115,11 @@ services:
       BCAST_HOSTNAME: bcast
       # IDs fixos: cada restart re-publica no MESMO topico, sobrescrevendo o
       # anterior em vez de criar tópicos orfaos retidos no broker.
-      BSID:           tv30-default
-      WEBMEDIA_SID:   urn:tv30:service:webmedia
-      UFF_SID:        urn:tv30:service:uff
-      EDUPLAY_SID:    urn:tv30:service:eduplay
+      BSID: tv30-default
+      WEBMEDIA_SID: urn:tv30:service:webmedia
+      UFF_SID: urn:tv30:service:uff
+      EDUPLAY_SID: urn:tv30:service:eduplay
+      NCL_DEMO_SID: urn:tv30:service:ncl-demo
     volumes:
       # public/ (templates estaticos + media, ~2.3GB) fica FORA da imagem:
       # nao entra no build (.dockerignore) e e servido daqui via
