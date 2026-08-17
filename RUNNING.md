@@ -7,6 +7,11 @@ Direct steps. Run everything from the **TV30 root** (`docker-compose.yml`), neve
 - Docker Engine + Compose v2 (`docker compose`).
 - `.env` exists at root (already present). It sets `COMPOSE_PROFILES=mqtt,linux`.
 - `ccws/.env` must have `HTTPS_CERT` and `HTTPS_KEY` (base64). If empty, generate a self-signed pair — see `README.md` § "Gerando HTTPS_CERT".
+- **For hand pose (multimodal) only:** a camera on the host, and `NCL4/.env`
+  set for it — `CAMERA_DEVICE` (default `/dev/video0`) and `CAMERA_GID` (the
+  numeric GID owning the camera node; Fedora `video` = 39, Ubuntu/Debian = 44).
+  Find yours with `getent group video | cut -d: -f3`. Skip this if you are not
+  running multimodal.
 
 The integration is not on Docker Hub. **You must build locally** — do not rely on `docker compose up` alone (it would pull stale Hub images).
 
@@ -27,7 +32,13 @@ docker compose build
 
 # c) Build the NCL4 engine (Go). Downloads Go modules once.
 cd NCL4
-docker compose -f docker-compose.yml -f docker-compose.tv30.yml build engine
+docker compose -f docker-compose.tv30.yml build engine
+cd ..
+
+# d) (Only if you want hand pose) build the Multimodal component. Downloads
+#    MediaPipe/OpenCV wheels once, so do it while online.
+cd NCL4
+docker compose -f docker-compose.tv30.yml --profile multimodal build multimodal
 cd ..
 ```
 
@@ -45,7 +56,7 @@ docker compose up -d --build
 
 # b) NCL4 engine on TV30's shared broker + network
 cd NCL4
-docker compose -f docker-compose.yml -f docker-compose.tv30.yml up --build engine
+docker compose -f docker-compose.tv30.yml up --build engine   # or: make tv30
 ```
 
 Then open **http://localhost:8080**, pick/create a profile, open the app
@@ -54,11 +65,50 @@ own player iframe.
 
 > The NCL4 `player` container (port 7855) is only for NCL4's standalone view —
 > it is NOT needed for the TV30 demo. Add it only if you want it:
-> `... up --build engine player`. Camera/hand-pose: add `--profile multimodal multimodal`.
+> `... up --build engine player`.
+
+### 2b. Run WITH hand pose (multimodal)
+
+The Multimodal component is opt-in (it grabs the camera), so it only starts
+under the `multimodal` profile. Start the TV30 stack (step **a** above), then
+bring up the engine **and** the recognizer together:
+
+```bash
+cd NCL4
+docker compose -f docker-compose.tv30.yml --profile multimodal up --build engine multimodal
+```
+
+Both the engine and the recognizer are on TV30's `ginga_net`, share the
+`mosquitto` broker, and speak for the same `SERVICE_ID`
+(`urn:tv30:service:ncl-demo`). The recognizer publishes hand poses on
+`aop/urn:tv30:service:ncl-demo/multimodal/handPoseRecognitionEvent/stateNotification`
+and the engine subscribes to exactly that. TV30's broker allows anonymous
+clients and does not ACL-restrict `aop/` topics, so no credentials are needed.
+
+**Verify it is working** — hold a pose (open palm, thumbs up, pointing up) in
+front of the camera:
+
+- `docker logs -f ncl4-multimodal` shows `connected; publishing on ...` and a
+  `-> OPEN_PALM` line each time a pose is confirmed.
+- `docker logs -f ncl4-engine` shows the matching multimodal event arriving.
+
+To *see* poses do something on screen, the running NCL document must bind
+`onHandPoseRecognition`. The default served demo
+(`bcast/public/media/ncl-demo/main.ncl`) does not — swap in a hand-pose-enabled
+document there. `NCL4/ncl-applications/handpose/main.ncl` is a working example
+of the bindings.
+
+**Debug preview (optional):** for an annotated MJPEG camera feed, use the
+`multimodal-debug` profile instead and open **http://localhost:8090/**:
+
+```bash
+docker compose -f docker-compose.tv30.yml --profile multimodal-debug up --build engine multimodal-debug
+```
 
 To stop:
+
 ```bash
-cd NCL4 && docker compose -f docker-compose.yml -f docker-compose.tv30.yml down
+cd NCL4 && docker compose -f docker-compose.tv30.yml --profile multimodal down
 cd .. && docker compose down
 ```
 
@@ -82,7 +132,7 @@ docker compose up -d --build ccws
 
 # NCL4 engine (edit NCL4/controller/**)
 cd NCL4
-docker compose -f docker-compose.yml -f docker-compose.tv30.yml up -d --build engine
+docker compose -f docker-compose.tv30.yml up -d --build engine
 ```
 
 **What still needs internet (re-prime with `docker compose build` while online):**
@@ -97,31 +147,15 @@ Bind-mounted content needs **no rebuild at all** — just restart or edit live:
 - `bcast/public/**` (templates + media, incl. `public/media/ncl-demo/**`) is bind-mounted `:ro`.
 - `TV30/user-files/**` (aop, ccws).
 
----
+## 4. Quick reference
 
-## 4. redis-seed — the offline gotcha (fixed)
-
-`redis-seed` used to run `pip install redis` **at container start**, so it hit
-PyPI on every `up` and failed offline. It is now baked at build time
-(`infra/dockerfiles/redis-seed.Dockerfile`, referenced from
-`infra/docker-compose.yml`). After one online `docker compose build`, it runs
-offline. It is a **local-only image** — no `image:` name, so nothing is
-published to or maintained on Docker Hub; `docker compose build`/`up` build it
-from the Dockerfile and `docker compose pull` skips it.
-
-> This is a change in the `infra/` submodule — commit it there so it isn't lost.
-
----
-
-## 5. Quick reference
-
-| What | URL / port |
-|------|-----------|
-| AoP receiver UI (see the demo here) | http://localhost:8080 |
-| bcast | http://localhost:8081 |
-| Mosquitto WS (browser → broker) | ws://localhost:9001/mqtt |
-| Redis Commander | http://localhost:18081 |
-| Swagger | http://localhost:8085 |
+| What                                | URL / port               |
+| ----------------------------------- | ------------------------ |
+| AoP receiver UI (see the demo here) | http://localhost:8080    |
+| bcast                               | http://localhost:8081    |
+| Mosquitto WS (browser → broker)     | ws://localhost:9001/mqtt |
+| Redis Commander                     | http://localhost:18081   |
+| Swagger                             | http://localhost:8085    |
 
 Engine working correctly (logs): `docker logs -f ncl4-engine` should show it
 waiting on `aop/urn:tv30:service:ncl-demo/currentApp`, then a GET of
