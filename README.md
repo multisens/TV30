@@ -2,7 +2,7 @@
 
 ![Node Version](https://img.shields.io/badge/Node.js-23.11.0-blueviolet?logo=nodedotjs)  ![MQTT](https://img.shields.io/badge/MQTT-blueviolet?logo=mqtt)  ![Docker](https://img.shields.io/badge/Docker-blue?logo=docker)
 
-Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 25608). Implementa, em microsserviços, os papéis da plataforma TV 3.0 — receptor (AoP), webservices Ginga CC (CCWS) e broadcaster simulado (bcast) — sobre uma infraestrutura de apoio escolhida por este projeto: gateways KrakenD, broker MQTT (Mosquitto com plugin C de ACL/consentimento) e estado em Redis.
+Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 25608). Implementa, em microsserviços, os papéis da plataforma TV 3.0 — receptor (AoP), webservices Ginga CC (CCWS) e broadcaster simulado (bcast) — sobre uma infraestrutura de apoio escolhida por este projeto: gateways KrakenD, broker MQTT (Mosquitto com plugin C de validação de schema) e estado em Redis.
 
 > **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices (CCWS), o modelo de consentimento e os perfis de usuário. O transporte interno via **MQTT**, os **gateways KrakenD** e o **Redis** são decisões de arquitetura deste testbed — **não fazem parte da norma**.
 
@@ -48,6 +48,17 @@ docker compose up -d
 
 Abra http://localhost:8080 — interface do receptor (AoP).
 
+> **Primeira subida — o que acontece sozinho:** dois one-shots preparam o
+> ambiente antes dos serviços. O `preflight` diagnostica DNS e portas
+> ocupadas e imprime avisos legíveis no início do log (`docker logs
+> tv30-preflight`) — se a subida falhar com `address already in use`, o
+> dono da porta já está nomeado ali (triagem completa em
+> [`docs/troubleshooting.md`](./docs/troubleshooting.md)). O
+> `userfiles-seed` cria e popula `./user-files` a partir do template —
+> não é preciso criar nada manualmente. O `ccws/.env` também é
+> **opcional**: sem ele o CCWS sobe em HTTP com um `JWT_SECRET` default
+> de desenvolvimento (ver seção de HTTPS abaixo para habilitar o 44653).
+
 > **Importante — não rode `docker compose` em `infra/`.** O `infra/` é submodule e seu compose é incluído automaticamente via `include:` no `docker-compose.yml` da raiz. **Toda a stack sobe de uma vez pela raiz.** Subir `compose` dentro de `infra/` não vê os serviços `aop`, `ccws` e `bcast` (que ficam no compose raiz) e gera confusão de rede.
 
 > **Importante — sem `.env` na raiz, os serviços principais ficam fora silenciosamente.** Os containers `aop`, `ccws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: [linux]` ou `[mqtt]` no compose. Sem `COMPOSE_PROFILES=mqtt,linux` (que vem no `.env.example`), só sobe a infra (redis, krakend, middlewares) e nada funciona end-to-end. Sempre comece com `cp .env.example .env`.
@@ -66,13 +77,13 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 | `MQTT_WS_PORT` | `9001` | Porta WebSocket do Mosquitto exposta no host. **Em Windows com Hyper-V, trocar para `9003`.** |
 | `BCAST_PORT` | `8081` | Porta do bcast exposta no host. Sobrescrever se 8081 estiver ocupada. |
 
-Cada submodule também tem seu próprio `.env` (ex.: `ccws/.env`) — em deploy via container os valores são sobrescritos pelas `environment:` do compose raiz, mas alguns segredos (`JWT_SECRET`, `HTTPS_CERT`, `HTTPS_KEY` do CCWS) **vêm via `env_file: ./ccws/.env`** e precisam estar populados ali. Ver próxima seção.
+O `ccws/.env` é **opcional**: sem ele o CCWS sobe normalmente, em HTTP, com um `JWT_SECRET` default de desenvolvimento. Para usar um `JWT_SECRET` próprio, defina-o no **`.env` da raiz** (a seção `environment:` do compose tem precedência sobre `env_file`, então `JWT_SECRET` dentro de `ccws/.env` não tem efeito). Para habilitar HTTPS, ver a próxima seção — `HTTPS_CERT`/`HTTPS_KEY` estes sim vêm do `ccws/.env`.
 
 ---
 
-## Gerando `HTTPS_CERT` e `HTTPS_KEY` para o CCWS
+## (Opcional) Habilitando HTTPS no CCWS
 
-O CCWS sobe HTTPS na porta 44653 e precisa de cert + chave em **base64** nas variáveis `HTTPS_CERT` e `HTTPS_KEY` do arquivo `ccws/.env`. Para desenvolvimento, gere um certificado autoassinado:
+Por padrão o CCWS sobe **somente em HTTP** (porta 44652) — suficiente para desenvolvimento local. Para habilitar também o HTTPS (porta 44653), forneça cert + chave em **base64** nas variáveis `HTTPS_CERT` e `HTTPS_KEY` do arquivo `ccws/.env` (crie a partir de `ccws/.env.example`). Para desenvolvimento, gere um certificado autoassinado:
 
 ### 1. Gerar cert e chave
 
@@ -118,7 +129,7 @@ Depois `docker compose up -d` (ou `docker compose restart ccws` se a stack já t
 | Serviço | Porta(s) host | URL / observação |
 |---------|---------------|------------------|
 | AoP (UI do receptor) | 8080 | http://localhost:8080 |
-| TV3 WS Subset | 44653 | HTTPS — base do TV3 WS Subset |
+| TV3 WS Subset | 44652, 44653 | HTTP (sempre) e HTTPS (somente com `HTTPS_CERT`/`HTTPS_KEY` no `ccws/.env`) |
 | TV3 WS Gateway external | 44643 | HTTPS — gateway com plugin Go `consent-validator` |
 | TV3 WS Gateway internal | 44642 | HTTP — gateway interno (sem plugin) |
 | bcast (broadcaster) | `${BCAST_PORT:-8081}` | http://localhost:8081 — apps de serviço (webmedia, uff, etc.) |
@@ -153,7 +164,6 @@ Cada submodule (aop, bcast, ccws, infra) tem um workflow `.github/workflows/bump
 
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — arquitetura completa: fluxo entre serviços, tópicos MQTT, schema do Redis, decisões arquiteturais.
 - [`docs/`](./docs/) — site Jekyll com guias detalhados (troubleshooting, padrões de apps de serviço, etc.).
-- [`ABNT_NBR_25608.md`](./ABNT_NBR_25608.md) — norma TV 3.0 integral, para referência.
 
 ---
 
