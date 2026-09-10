@@ -1,0 +1,4 @@
+# Scripts shell sao executados dentro de containers Linux (one-shots do
+# compose): precisam de LF mesmo em checkout no Windows, senao o sh quebra
+# com "\r: command not found".
+*.sh text eol=lf

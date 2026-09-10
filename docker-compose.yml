@@ -6,10 +6,40 @@
 # WINDOWS (apps nativas + infra container): use .\start-tv30.ps1
 #   ou: docker compose --env-file .env.windows up -d
 
+# Nome fixo do projeto: independe da pasta onde o repo foi clonado.
+# (Evita containers "orfaos" quando dois clones/paths diferentes rodam o
+# mesmo stack — down/up sempre alcancam os mesmos containers.)
+name: tv30
+
 include:
   - infra/docker-compose.yml
 
 services:
+
+  # Diagnostico pre-subida (nunca bloqueia): checa DNS e portas do stack e
+  # imprime avisos legiveis ANTES dos servicos subirem. Roda com rede+pid do
+  # host para enxergar quem esta segurando cada porta.
+  preflight:
+    image: alpine:3
+    container_name: tv30-preflight
+    network_mode: host
+    pid: host
+    volumes:
+      - ./scripts/preflight.sh:/preflight.sh:ro
+    command: sh /preflight.sh
+    restart: "no"
+
+  # Semeia ./user-files do template na primeira subida (idempotente).
+  # Elimina o pre-requisito manual de criar a pasta antes do compose up.
+  userfiles-seed:
+    image: alpine:3
+    container_name: tv30-userfiles-seed
+    volumes:
+      - ./user-files:/user-files
+      - ./infra/user-files-template:/template:ro
+      - ./scripts/seed-user-files.sh:/seed.sh:ro
+    command: sh /seed.sh
+    restart: "no"
 
   sysctl-init:
     profiles: ["linux"]
@@ -55,13 +85,23 @@ services:
       REDIS_PORT: 6379
       USER_DATA_FILE: /user-files/userData.json
       USER_THUMBS:    /user-files/thumbs
+      # Default de dev: permite subir em maquina virgem sem ccws/.env.
+      # Override: JWT_SECRET no .env da RAIZ (ou no shell) — a secao
+      # `environment` tem precedencia sobre env_file, entao JWT_SECRET em
+      # ccws/.env NAO tem efeito.
+      JWT_SECRET: ${JWT_SECRET:-tv30-dev-secret-nao-usar-em-producao}
     env_file:
-      - ./ccws/.env       # JWT_SECRET, HTTPS_KEY, HTTPS_CERT (mantidos fora da imagem)
+      # Opcional: HTTPS_KEY/HTTPS_CERT proprios (fora da imagem; nao estao
+      # na secao environment, entao valem daqui). Ausente => CCWS sobe so
+      # em HTTP.
+      - path: ./ccws/.env
+        required: false
     volumes:
       - ./user-files:/user-files
     depends_on:
       - redis
       - mosquitto
+      - userfiles-seed
     restart: unless-stopped
 
   aop:
@@ -92,6 +132,7 @@ services:
     depends_on:
       - mosquitto
       - ccws
+      - userfiles-seed
     restart: unless-stopped
 
   bcast:

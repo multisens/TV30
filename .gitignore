@@ -2,3 +2,8 @@
 .DS_Store
 .claude/
 user-files/
+
+# Material que nao pode ir pro repositorio publico:
+# norma ABNT (licenciada) e artigos em PDF; codigo de terceiros sem licenca
+docs/*.pdf
+*.zip

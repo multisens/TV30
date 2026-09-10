@@ -5,6 +5,55 @@ nav_order: 8
 
 # Troubleshooting
 
+## Porta presa: `failed to bind host port ... address already in use`
+
+Triagem, nesta ordem (caso real: portas 3000/3001 presas por um segundo
+daemon Docker via snap):
+
+```bash
+# 1. quem esta com a porta?
+sudo ss -ltnp | grep -E '3000|3001'
+
+# 2. e um container deste daemon?
+sudo docker ps -a --format '{{.Names}}\t{{.Ports}}' | grep 3001
+#    -> apareceu: remova-o (docker rm -f <nome>) ou faca down no projeto dono.
+
+# 3. ss mostra docker-proxy mas o docker ps -a vem vazio?
+#    Ha OUTRO daemon Docker na maquina (snap ou Docker Desktop):
+ps -ef | grep dockerd | grep -v grep
+#    -> dois dockerd = o dono da porta e o outro daemon.
+#       snap:    sudo snap stop docker --disable  (ou snap remove --purge docker)
+#       Desktop: docker context ls / encerrar o Desktop
+#    -> snap ja removido mas o processo sobrevive orfao: sudo kill <pid do
+#       dockerd com --data-root=/var/snap/...>
+
+# 4. um daemon so e mesmo assim a porta persiste: docker-proxy orfao.
+#    sudo kill -9 <pids dos docker-proxy do ss> e suba de novo.
+```
+
+**Nunca use `kill` no dockerd do sistema** (`/usr/bin/dockerd -H fd://`) —
+o systemd o religa e o socket pode ficar dessincronizado
+(`/var/run/docker.sock: no such file or directory`). Sempre:
+
+```bash
+sudo systemctl reset-failed docker.socket docker.service
+sudo systemctl restart docker.socket docker.service
+```
+
+O one-shot `preflight` do compose imprime, antes da subida, quem esta
+segurando cada porta do stack — se a subida falhar por bind, a causa ja
+esta nomeada no inicio do log.
+
+## `redis-seed` sai com exit 1 e o broker nao sobe
+
+O job de carga instala a dependencia (`pip install redis`) em tempo de
+partida — sem rede/DNS no container, falha, e o `mosquitto` (que depende
+de `service_completed_successfully`) nao inicia. Ver o motivo real:
+`docker logs redis-seed`. Falha de pip/DNS: rode `docker compose up -d`
+novamente (o pip tenta de novo). Correcao definitiva (imagem
+pre-construida ou carga via `redis-cli --pipe`) esta na lista de
+trabalho.
+
 ## WSL2 + Docker
 
 ### `localhost:8080` dá timeout no Windows host
