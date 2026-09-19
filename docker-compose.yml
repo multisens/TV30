@@ -41,6 +41,17 @@ services:
     command: sh /seed.sh
     restart: "no"
 
+  # MOTIVO (registro do item 1 da lista de trabalho): em alguns kernels
+  # Linux, com br_netfilter ativo, o trafego entre containers na bridge
+  # passa pelas regras iptables do HOST e e interceptado/dropado — sintoma
+  # observado: MQTT/Redis intermitentes entre os servicos. O ajuste
+  # net.bridge.bridge-nf-call-iptables=0 impede essa interceptacao
+  # (fonte: infra/README.md; nao reproduzido em bancada — para testar a
+  # remocao, subir a stack sem este servico e observar a estabilidade de
+  # MQTT/Redis no kernel afetado). Em hosts com sysctl read-only (ex.:
+  # Docker Desktop) o comando falha de proposito em silencio (|| echo),
+  # por isso a saida e sempre 0 — um no-op silencioso e indistinguivel de
+  # sucesso.
   sysctl-init:
     profiles: ["linux"]
     image: alpine:3
