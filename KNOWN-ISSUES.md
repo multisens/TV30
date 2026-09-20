@@ -52,3 +52,19 @@ curl -i -X POST http://localhost:44642/tv3/sensory-effect-renderers/{id} \
   -H 'Content-Type: application/json' \
   -d '{"effectType":"LightType","action":"start","properties":[]}'   # → 500
 ```
+
+## Superfície externa: caminho não-mapeado pode resetar a conexão (pós-consolidação)
+
+No `edgegateway`, caminhos NÃO declarados que colidem com o miolo das
+rotas-curinga (ex.: `GET /tv3/abc`, `POST /tv3/users` — que só existe na
+superfície interna) provocam um panic conhecido do roteador Gin embutido
+no KrakenD ("invalid node type"): o cliente vê conexão resetada em vez de
+404. As rotas declaradas não são afetadas, e o panic é recuperado por
+conexão (o gateway continua no ar). Correção definitiva virá com o
+trabalho de formato de erro da norma/erro 106 (lacuna com decisão de
+desenho pendente).
+
+Contexto que a consolidação revelou: no arranjo anterior o plugin Go do
+gateway externo **proxyava qualquer caminho** direto ao CCWS, ignorando as
+rotas declaradas — toda a API interna era alcançável por fora. O
+edgegateway fecha esse vazamento: só serve o que a tabela única declara.

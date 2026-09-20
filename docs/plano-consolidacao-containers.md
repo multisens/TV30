@@ -5,10 +5,19 @@ nav_order: 10
 
 # Plano de mudança — consolidação de containers
 
-> **Status: VALIDADO pelo mantenedor em 19/09/2026** (decisões V1–V13
-> abaixo). Dois pontos são *overrides* de texto anterior e serão
-> alinhados com o orientador: ver §5. Base: vacina (borda única, M4,
-> fim do controle de acesso do broker) e reunião de set/2026.
+> **Status: fases 0–3 EXECUTADAS (20/09/2026)**; resta a fase 4 (renome
+> R1 + faxina do Docker Hub). Decisões V1–V13 validadas pelo mantenedor
+> em 19/09; overrides a alinhar com o orientador em §5.
+>
+> Resultado medido: **11 → 6 contínuos** (aop, bcast, ccws, mqtt-broker,
+> redis, edgegateway) + 3 one-shots. Descoberta da execução: no arranjo
+> antigo o plugin Go do gateway externo proxyava QUALQUER caminho ao
+> CCWS (toda a API interna alcançável por fora) — o edgegateway fecha
+> esse vazamento servindo só o que a tabela declara. Known-issue novo
+> registrado: panic do roteador Gin em caminhos não-mapeados da
+> superfície externa (conexão resetada em vez de 404; rotas declaradas
+> intactas) — correção pertence ao trabalho futuro de formato de
+> erro/106. Ver KNOWN-ISSUES.md.
 
 ## 1. Resumo
 

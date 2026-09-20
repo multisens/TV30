@@ -110,9 +110,14 @@ services:
     volumes:
       - ./user-files:/user-files
     depends_on:
-      - redis
-      - mosquitto
-      - userfiles-seed
+      # redis so fica healthy APOS a carga inicial (chave seed:done) — isso
+      # substitui o antigo container redis-seed + service_completed_successfully.
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+      userfiles-seed:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   aop:
