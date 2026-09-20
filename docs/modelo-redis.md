@@ -61,7 +61,7 @@ Atributos básicos do perfil (conforme **ABNT NBR 25608, Tabela 7**):
 Inspecionar:
 
 ```bash
-docker exec redis-auth redis-cli HGETALL user:user_1778457650050
+docker exec redis redis-cli HGETALL user:user_1778457650050
 ```
 
 ### `user:{id}:consent` (SET)

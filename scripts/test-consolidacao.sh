@@ -12,16 +12,16 @@ echo; echo "== containers (alvo: 6 continuos TV30) =="
 docker ps --format '{{.Names}}\t{{.Status}}' | sort
 
 echo; echo "== redis consolidado =="
-docker inspect redis-auth --format 'health={{.State.Health.Status}}'
-docker exec redis-auth redis-cli --raw SCARD users:index | xargs echo "users:index SCARD ="
-docker exec redis-auth sh -c 'wget -q -O- http://127.0.0.1:18081/ >/dev/null && echo "commander UI OK"'
-PORTA_CMD=$(docker port redis-auth 18081/tcp | head -1)
+docker inspect redis --format 'health={{.State.Health.Status}}'
+docker exec redis redis-cli --raw SCARD users:index | xargs echo "users:index SCARD ="
+docker exec redis sh -c 'wget -q -O- http://127.0.0.1:18081/ >/dev/null && echo "commander UI OK"'
+PORTA_CMD=$(docker port redis 18081/tcp | head -1)
 echo "commander no host: $PORTA_CMD"
 echo "-- matando o commander (banco deve sobreviver) --"
-docker exec redis-auth pkill -f redis-commander
+docker exec redis pkill -f redis-commander
 sleep 2
-docker ps --filter name=redis-auth --format '{{.Names}} {{.Status}}'
-docker exec redis-auth redis-cli ping
+docker ps --filter name=redis --format '{{.Names}} {{.Status}}'
+docker exec redis redis-cli ping
 
 echo; echo "== edgegateway: superficies distintas =="
 docker run --rm --network ginga_net alpine:3 sh -c '
