@@ -136,7 +136,7 @@ Depois `docker compose up -d` (ou `docker compose restart ccws` se a stack já t
 | Mosquitto MQTT | 1883 | Broker TCP |
 | Mosquitto WS | `${MQTT_WS_PORT:-9001}` | WebSocket — em Windows usar **9003** |
 | Redis | 6379 | Estado de sessão + perfis (acesso TCP, ex.: `redis-cli`) |
-| Redis Commander (embutido no redis) | dinâmica | `docker port redis-auth 18081` mostra a porta |
+| Redis Commander (embutido no redis) | dinâmica | `docker port redis 18081` mostra a porta |
 | edgegateway — docs | dinâmica | Swagger UI + 2 specs: `docker port edgegateway 8085` |
 
 ---

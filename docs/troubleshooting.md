@@ -132,9 +132,9 @@ E suba a stack de novo.
 
 ```bash
 # Redis
-docker exec redis-auth redis-cli SMEMBERS users:index
-docker exec redis-auth redis-cli HGETALL user:user_xxx
-docker exec redis-auth redis-cli GET session:current-user
+docker exec redis redis-cli SMEMBERS users:index
+docker exec redis redis-cli HGETALL user:user_xxx
+docker exec redis redis-cli GET session:current-user
 
 # MQTT
 docker exec mqtt-broker mosquitto_sub -t '#' -v
