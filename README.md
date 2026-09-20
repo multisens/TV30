@@ -2,7 +2,7 @@
 
 ![Node Version](https://img.shields.io/badge/Node.js-23.11.0-blueviolet?logo=nodedotjs)  ![MQTT](https://img.shields.io/badge/MQTT-blueviolet?logo=mqtt)  ![Docker](https://img.shields.io/badge/Docker-blue?logo=docker)
 
-Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 25608). Implementa, em microsserviços, os papéis da plataforma TV 3.0 — receptor (AoP), webservices Ginga CC (CCWS) e broadcaster simulado (bcast) — sobre uma infraestrutura de apoio escolhida por este projeto: gateways KrakenD, broker MQTT (Mosquitto com plugin C de validação de schema) e estado em Redis.
+Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 25608). Implementa, em microsserviços, os papéis da plataforma TV 3.0 — receptor (AoP), TV 3.0 WebServices (tv3ws) e broadcaster simulado (bcast) — sobre uma infraestrutura de apoio escolhida por este projeto: gateways KrakenD, broker MQTT (Mosquitto com plugin C de validação de schema) e estado em Redis.
 
 > **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices (CCWS), o modelo de consentimento e os perfis de usuário. O transporte interno via **MQTT**, os **gateways KrakenD** e o **Redis** são decisões de arquitetura deste testbed — **não fazem parte da norma**.
 
@@ -55,13 +55,13 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 > dono da porta já está nomeado ali (triagem completa em
 > [`docs/troubleshooting.md`](./docs/troubleshooting.md)). O
 > `userfiles-seed` cria e popula `./user-files` a partir do template —
-> não é preciso criar nada manualmente. O `ccws/.env` também é
+> não é preciso criar nada manualmente. O `tv3ws/.env` também é
 > **opcional**: sem ele o CCWS sobe em HTTP com um `JWT_SECRET` default
 > de desenvolvimento (ver seção de HTTPS abaixo para habilitar o 44653).
 
-> **Importante — não rode `docker compose` em `infra/`.** O `infra/` é submodule e seu compose é incluído automaticamente via `include:` no `docker-compose.yml` da raiz. **Toda a stack sobe de uma vez pela raiz.** Subir `compose` dentro de `infra/` não vê os serviços `aop`, `ccws` e `bcast` (que ficam no compose raiz) e gera confusão de rede.
+> **Importante — não rode `docker compose` em `infra/`.** O `infra/` é submodule e seu compose é incluído automaticamente via `include:` no `docker-compose.yml` da raiz. **Toda a stack sobe de uma vez pela raiz.** Subir `compose` dentro de `infra/` não vê os serviços `aop`,  `tv3ws` e `bcast` (que ficam no compose raiz) e gera confusão de rede.
 
-> **Importante — sem `.env` na raiz, os serviços principais ficam fora silenciosamente.** Os containers `aop`, `ccws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: [linux]` ou `[mqtt]` no compose. Sem `COMPOSE_PROFILES=mqtt,linux` (que vem no `.env.example`), só sobe a infra (redis, edgegateway) e nada funciona end-to-end. Sempre comece com `cp .env.example .env`.
+> **Importante — sem `.env` na raiz, os serviços principais ficam fora silenciosamente.** Os containers `aop`, `tv3ws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: [linux]` ou `[mqtt]` no compose. Sem `COMPOSE_PROFILES=mqtt,linux` (que vem no `.env.example`), só sobe a infra (redis, edgegateway) e nada funciona end-to-end. Sempre comece com `cp .env.example .env`.
 
 > **Importante — Windows + Hyper-V:** o serviço Hyper-V costuma ocupar as portas 9001/9002 no host. Como o Mosquitto WebSocket precisa expor a porta no host (o browser do AoP conecta direto no `localhost:MQTT_WS_PORT`), edite o `.env` **antes do `up -d`** e troque para `MQTT_WS_PORT=9003`. Sintoma quando esquece: o console do navegador mostra erro de conexão WebSocket no MQTT.
 
@@ -71,19 +71,19 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 
 | Variável | Default | Descrição |
 |----------|---------|-----------|
-| `COMPOSE_PROFILES` | `mqtt,linux` | Profiles ativos. Sem isto, `aop`/`ccws`/`bcast`/`mosquitto`/`sysctl-init` não sobem. |
+| `COMPOSE_PROFILES` | `mqtt,linux` | Profiles ativos. Sem isto, `aop`/`tv3ws`/`bcast`/`mosquitto`/`sysctl-init` não sobem. |
 | `DOCKERHUB_NS` | `labmultisens` | Namespace do Docker Hub de onde puxar as imagens. |
 | `IMAGE_TAG` | `latest` | Tag das imagens. `latest` puxa o build mais recente da main de cada submodule. |
 | `MQTT_WS_PORT` | `9001` | Porta WebSocket do Mosquitto exposta no host. **Em Windows com Hyper-V, trocar para `9003`.** |
 | `BCAST_PORT` | `8081` | Porta do bcast exposta no host. Sobrescrever se 8081 estiver ocupada. |
 
-O `ccws/.env` é **opcional**: sem ele o CCWS sobe normalmente, em HTTP, com um `JWT_SECRET` default de desenvolvimento. Para usar um `JWT_SECRET` próprio, defina-o no **`.env` da raiz** (a seção `environment:` do compose tem precedência sobre `env_file`, então `JWT_SECRET` dentro de `ccws/.env` não tem efeito). Para habilitar HTTPS, ver a próxima seção — `HTTPS_CERT`/`HTTPS_KEY` estes sim vêm do `ccws/.env`.
+O `tv3ws/.env` é **opcional**: sem ele o CCWS sobe normalmente, em HTTP, com um `JWT_SECRET` default de desenvolvimento. Para usar um `JWT_SECRET` próprio, defina-o no **`.env` da raiz** (a seção `environment:` do compose tem precedência sobre `env_file`, então `JWT_SECRET` dentro de `tv3ws/.env` não tem efeito). Para habilitar HTTPS, ver a próxima seção — `HTTPS_CERT`/`HTTPS_KEY` estes sim vêm do `tv3ws/.env`.
 
 ---
 
 ## (Opcional) Habilitando HTTPS no CCWS
 
-Por padrão o CCWS sobe **somente em HTTP** (porta 44652) — suficiente para desenvolvimento local. Para habilitar também o HTTPS (porta 44653), forneça cert + chave em **base64** nas variáveis `HTTPS_CERT` e `HTTPS_KEY` do arquivo `ccws/.env` (crie a partir de `ccws/.env.example`). Para desenvolvimento, gere um certificado autoassinado:
+Por padrão o CCWS sobe **somente em HTTP** (porta 44652) — suficiente para desenvolvimento local. Para habilitar também o HTTPS (porta 44653), forneça cert + chave em **base64** nas variáveis `HTTPS_CERT` e `HTTPS_KEY` do arquivo `tv3ws/.env` (crie a partir de `tv3ws/.env.example`). Para desenvolvimento, gere um certificado autoassinado:
 
 ### 1. Gerar cert e chave
 
@@ -113,14 +113,14 @@ base64 -i key.pem
 [Convert]::ToBase64String([IO.File]::ReadAllBytes('key.pem'))
 ```
 
-### 3. Colar no `ccws/.env`
+### 3. Colar no `tv3ws/.env`
 
 ```env
 HTTPS_CERT=<saída base64 do cert.pem>
 HTTPS_KEY=<saída base64 do key.pem>
 ```
 
-Depois `docker compose up -d` (ou `docker compose restart ccws` se a stack já tava no ar).
+Depois `docker compose up -d` (ou `docker compose restart tv3ws` se a stack já tava no ar).
 
 ---
 
@@ -129,7 +129,7 @@ Depois `docker compose up -d` (ou `docker compose restart ccws` se a stack já t
 | Serviço | Porta(s) host | URL / observação |
 |---------|---------------|------------------|
 | AoP (UI do receptor) | 8080 | http://localhost:8080 |
-| TV3 WS Subset | 44652, 44653 | HTTP (sempre) e HTTPS (somente com `HTTPS_CERT`/`HTTPS_KEY` no `ccws/.env`) |
+| tv3ws (TV 3.0 WebServices) | 44652, 44653 | HTTP (sempre) e HTTPS (somente com `HTTPS_CERT`/`HTTPS_KEY` no `tv3ws/.env`) |
 | edgegateway — superfície externa | 44643 | rotas para clientes não-locais (tabela única M4) |
 | edgegateway — superfície interna | 44642 | porta FIXA da norma (C.3.4); rotas de clientes locais |
 | bcast (broadcaster) | `${BCAST_PORT:-8081}` | http://localhost:8081 — apps de serviço (webmedia, uff, etc.) |
@@ -154,7 +154,7 @@ git submodule update --remote
 git submodule update --remote aop
 ```
 
-Cada submodule (aop, bcast, ccws, infra) tem um workflow `.github/workflows/bump-tv30-pointer.yml` que dispara em push na main e atualiza automaticamente o ponteiro do submodule aqui no TV30 — então em geral basta `git pull` periódico na raiz.
+Cada submodule (aop, bcast, tv3ws, infra) tem um workflow `.github/workflows/bump-tv30-pointer.yml` que dispara em push na main e atualiza automaticamente o ponteiro do submodule aqui no TV30 — então em geral basta `git pull` periódico na raiz.
 
 ---
 

@@ -62,16 +62,16 @@ services:
       sh -c "sysctl -w net.bridge.bridge-nf-call-iptables=0 2>/dev/null || echo 'sysctl skipped (read-only or unsupported kernel)'"
     restart: "no"
 
-  ccws:
+  tv3ws:
     profiles: ["linux"]
-    image: ${DOCKERHUB_NS:-tv30}/tv30-ws-subset:${IMAGE_TAG:-dev}
+    image: ${DOCKERHUB_NS:-tv30}/tv30-tv3ws:${IMAGE_TAG:-dev}
     build:
-      context: ./ccws
-      dockerfile: ../infra/dockerfiles/ccws.Dockerfile
+      context: ./tv3ws
+      dockerfile: ../infra/dockerfiles/tv3ws.Dockerfile
       additional_contexts:
         tv30-data:    ./infra/user-files-template
         tv30-scripts: ./infra/dockerfiles
-    container_name: ccws
+    container_name: tv3ws
     networks: [ginga_net]
     ports:
       - "44652:44652"
@@ -96,16 +96,16 @@ services:
       REDIS_PORT: 6379
       USER_DATA_FILE: /user-files/userData.json
       USER_THUMBS:    /user-files/thumbs
-      # Default de dev: permite subir em maquina virgem sem ccws/.env.
+      # Default de dev: permite subir em maquina virgem sem tv3ws/.env.
       # Override: JWT_SECRET no .env da RAIZ (ou no shell) — a secao
       # `environment` tem precedencia sobre env_file, entao JWT_SECRET em
-      # ccws/.env NAO tem efeito.
+      # tv3ws/.env NAO tem efeito.
       JWT_SECRET: ${JWT_SECRET:-tv30-dev-secret-nao-usar-em-producao}
     env_file:
       # Opcional: HTTPS_KEY/HTTPS_CERT proprios (fora da imagem; nao estao
       # na secao environment, entao valem daqui). Ausente => CCWS sobe so
       # em HTTP.
-      - path: ./ccws/.env
+      - path: ./tv3ws/.env
         required: false
     volumes:
       - ./user-files:/user-files
@@ -141,13 +141,13 @@ services:
       # docker-compose.yml da infra — escapando do Windows WSL mirrored).
       MQTT_WS_PORT: 9001
       USER_DATA_PATH: /user-files
-      # Endpoint do CCWS pra ler users (Redis eh source-of-truth, userData.json eh seed inicial)
-      CCWS_URL: http://ccws:44652
+      # Endpoint do tv3ws pra ler users (Redis eh source-of-truth, userData.json eh seed inicial)
+      TV3WS_URL: http://tv3ws:44652
     volumes:
       - ./user-files:/user-files
     depends_on:
       - mosquitto
-      - ccws
+      - tv3ws
       - userfiles-seed
     restart: unless-stopped
 

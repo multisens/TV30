@@ -141,7 +141,7 @@ docker exec mqtt-broker mosquitto_sub -t '#' -v
 
 # Logs
 docker logs aop --tail 50
-docker logs ccws --tail 50
+docker logs tv3ws --tail 50
 docker logs mqtt-broker --tail 50
 ```
 

@@ -80,7 +80,7 @@ Defaults vêm do `.env` (raiz). Em Windows + WSL2 com 9001 ocupada no host, defi
 | `validation-middleware` | 3000 | Valida JWT + OpenAPI do gateway externo |
 | `middleware-internal` | 3001 | OpenAPI do gateway interno |
 | `swagger` | 8085 | Swagger UI único (dropdown external/internal) |
-| `ccws` | 44652, 44653 | TV 3.0 WebServices (HTTP, HTTPS) |
+|  `tv3ws` | 44652, 44653 | TV 3.0 WebServices (HTTP, HTTPS) |
 | `aop` | 8080 | Interface do receptor |
 | `bcast` | 8081 | Broadcaster + módulos de apps de serviço |
 

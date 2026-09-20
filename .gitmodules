@@ -7,6 +7,6 @@
 [submodule "aop"]
 	path = aop
 	url = https://github.com/multisens/AOP.git
-[submodule "ccws"]
-	path = ccws
+[submodule "tv3ws"]
+	path = tv3ws
 	url = https://github.com/multisens/CCWS.git
