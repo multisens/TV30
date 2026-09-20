@@ -5,8 +5,10 @@ nav_order: 10
 
 # Plano de mudança — consolidação de containers
 
-> **Status: fases 0–3 EXECUTADAS (20/09/2026)**; resta a fase 4 (renome
-> R1 + faxina do Docker Hub). Decisões V1–V13 validadas pelo mantenedor
+> **Status: fases 0–4 EXECUTADAS (20/09/2026)** — renome R1 concluído
+> (tv3ws em toda a cadeia: submodule, service, container, imagem,
+> variável TV3WS_URL com fallback, CI bumpando o caminho novo). Única
+> pendência: **deleção manual dos órfãos no Docker Hub** (lista em §6). Decisões V1–V13 validadas pelo mantenedor
 > em 19/09; overrides a alinhar com o orientador em §5.
 >
 > Resultado medido: **11 → 6 contínuos** (aop, bcast, ccws, mqtt-broker,
@@ -95,3 +97,19 @@ com exceções (§3) · V11 investigar SSDP antes · V12 fase 3 · V13 fase 4.
 **Pendências externas:** lista de identificadores do orientador pode
 renomear `edgegateway` e módulos na fase 4; detalhamento do Privacy
 Manager (frente paralela, não bloqueia este plano).
+
+## 6. Faxina do Docker Hub (única pendência — deleção manual)
+
+Manter no `labmultisens` (as 6 imagens vivas, uma por container):
+`tv30-aop`, `tv30-bcast`, `tv30-tv3ws`, `tv30-mosquitto`, `tv30-redis`,
+`tv30-edgegateway`.
+
+**Deletar** (hub.docker.com → repositório → Settings → Delete):
+
+- `labmultisens` (9 órfãos): tv30-ccws, tv30-ws-subset,
+  tv30-validation-middleware, tv30-middleware-internal,
+  tv30-gateway-validation-middleware,
+  tv30-gateway-validation-middleware-internal, tv30-gatewayhttps,
+  tv30-gatewayhttp, tv30-swagger
+- `luiscrjr` (pessoal, 8): todos os tv30-* de jun/2026 — manter apenas o
+  que não é do projeto (livy-jupyter)
