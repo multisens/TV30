@@ -31,7 +31,7 @@ err()    { echo -e "    ${c_red}[ERRO]${c_off} $*"; }
 
 # (apps tv30) name: ctx-dir, dockerfile-relative-to-ROOT
 declare -a APPS=(
-    "tv30-ws-subset|ccws|infra/dockerfiles/ccws.Dockerfile"
+    "tv30-tv3ws|tv3ws|infra/dockerfiles/tv3ws.Dockerfile"
     "tv30-aop|aop|infra/dockerfiles/aop.Dockerfile"
     "tv30-bcast|bcast|infra/dockerfiles/bcast.Dockerfile"
 )
@@ -46,7 +46,7 @@ declare -a INFRA=(
 )
 
 # --- 1. Build (skipavel) ---
-# tv30-aop e tv30-ws-subset usam contextos adicionais (template de user-files +
+# tv30-aop e tv30-tv3ws usam contextos adicionais (template de user-files +
 # entrypoint compartilhado). Demais apps usam build simples.
 if [ "$NO_BUILD" != "--no-build" ]; then
     step "Buildando ${#APPS[@]} apps + ${#INFRA[@]} infra customs..."
@@ -54,7 +54,7 @@ if [ "$NO_BUILD" != "--no-build" ]; then
         IFS='|' read -r name ctx df <<< "$entry"
         echo
         echo "  -> ${NS}/${name}:${TAG}"
-        if [ "$name" = "tv30-aop" ] || [ "$name" = "tv30-ws-subset" ]; then
+        if [ "$name" = "tv30-aop" ] || [ "$name" = "tv30-tv3ws" ]; then
             docker build -t "${NS}/${name}:${TAG}" \
                 -f "${ROOT}/${df}" \
                 --build-context tv30-data="${ROOT}/infra/user-files-template" \
