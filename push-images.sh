@@ -37,15 +37,12 @@ declare -a APPS=(
 )
 
 # (infra customs) name: context (relative-to-ROOT) | dockerfile (relative-to-ROOT)
-# Pastas renomeadas na fase 0 (R5): mqtt-broker, gateway-external, gateway-internal.
-# Nomes de IMAGEM permanecem os atuais ate a fase 4 do plano de consolidacao.
+# Pos-consolidacao (fases 2-3): borda inteira = edgegateway; redis leva
+# seed+commander. Imagens antigas (gateways/middlewares/swagger) sairam.
 declare -a INFRA=(
     "tv30-mosquitto|infra/mqtt-broker|infra/mqtt-broker/infra/Dockerfile"
-    "tv30-gatewayhttps|infra/gateway-external|infra/dockerfiles/gatewayhttps.Dockerfile"
-    "tv30-gatewayhttp|infra/gateway-internal|infra/dockerfiles/gatewayhttp.Dockerfile"
-    "tv30-gateway-validation-middleware|infra/middleware|infra/middleware/Dockerfile"
-    "tv30-gateway-validation-middleware-internal|infra/middleware_internal|infra/middleware_internal/Dockerfile"
-    "tv30-swagger|infra/swagger|infra/swagger/Dockerfile"
+    "tv30-edgegateway|infra/edgegateway|infra/edgegateway/Dockerfile"
+    "tv30-redis|infra|infra/redis/Dockerfile"
 )
 
 # --- 1. Build (skipavel) ---

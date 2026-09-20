@@ -61,7 +61,7 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 
 > **Importante — não rode `docker compose` em `infra/`.** O `infra/` é submodule e seu compose é incluído automaticamente via `include:` no `docker-compose.yml` da raiz. **Toda a stack sobe de uma vez pela raiz.** Subir `compose` dentro de `infra/` não vê os serviços `aop`, `ccws` e `bcast` (que ficam no compose raiz) e gera confusão de rede.
 
-> **Importante — sem `.env` na raiz, os serviços principais ficam fora silenciosamente.** Os containers `aop`, `ccws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: [linux]` ou `[mqtt]` no compose. Sem `COMPOSE_PROFILES=mqtt,linux` (que vem no `.env.example`), só sobe a infra (redis, krakend, middlewares) e nada funciona end-to-end. Sempre comece com `cp .env.example .env`.
+> **Importante — sem `.env` na raiz, os serviços principais ficam fora silenciosamente.** Os containers `aop`, `ccws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: [linux]` ou `[mqtt]` no compose. Sem `COMPOSE_PROFILES=mqtt,linux` (que vem no `.env.example`), só sobe a infra (redis, edgegateway) e nada funciona end-to-end. Sempre comece com `cp .env.example .env`.
 
 > **Importante — Windows + Hyper-V:** o serviço Hyper-V costuma ocupar as portas 9001/9002 no host. Como o Mosquitto WebSocket precisa expor a porta no host (o browser do AoP conecta direto no `localhost:MQTT_WS_PORT`), edite o `.env` **antes do `up -d`** e troque para `MQTT_WS_PORT=9003`. Sintoma quando esquece: o console do navegador mostra erro de conexão WebSocket no MQTT.
 
@@ -130,16 +130,14 @@ Depois `docker compose up -d` (ou `docker compose restart ccws` se a stack já t
 |---------|---------------|------------------|
 | AoP (UI do receptor) | 8080 | http://localhost:8080 |
 | TV3 WS Subset | 44652, 44653 | HTTP (sempre) e HTTPS (somente com `HTTPS_CERT`/`HTTPS_KEY` no `ccws/.env`) |
-| TV3 WS Gateway external | 44643 | HTTPS — gateway com plugin Go `consent-validator` |
-| TV3 WS Gateway internal | 44642 | HTTP — gateway interno (sem plugin) |
+| edgegateway — superfície externa | 44643 | rotas para clientes não-locais (tabela única M4) |
+| edgegateway — superfície interna | 44642 | porta FIXA da norma (C.3.4); rotas de clientes locais |
 | bcast (broadcaster) | `${BCAST_PORT:-8081}` | http://localhost:8081 — apps de serviço (webmedia, uff, etc.) |
 | Mosquitto MQTT | 1883 | Broker TCP |
 | Mosquitto WS | `${MQTT_WS_PORT:-9001}` | WebSocket — em Windows usar **9003** |
 | Redis | 6379 | Estado de sessão + perfis (acesso TCP, ex.: `redis-cli`) |
-| Redis Commander | 18081 | http://localhost:18081 — UI de inspeção do Redis |
-| Validation middleware | 3000 | valida JWT + gera OpenAPI do gateway externo |
-| Middleware internal | 3001 | gera OpenAPI do gateway interno |
-| Swagger UI | 8085 | http://localhost:8085 — doc dos dois gateways (dropdown external/internal) |
+| Redis Commander (embutido no redis) | dinâmica | `docker port redis-auth 18081` mostra a porta |
+| edgegateway — docs | dinâmica | Swagger UI + 2 specs: `docker port edgegateway 8085` |
 
 ---
 
