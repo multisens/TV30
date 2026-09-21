@@ -16,7 +16,7 @@ A comunicação entre serviços é feita exclusivamente via **MQTT** (broker Mos
 | Pasta | Repositório | Responsabilidade |
 |-------|-------------|------------------|
 | `aop/` | https://github.com/multisens/AOP | **Application-Oriented Platform** — interface do receptor TV 3.0. Renderiza UI, gerencia perfis de usuário, exibe catálogo de apps e camadas de vídeo/gráficos. Node.js, porta **8080** |
-| `ccws/` | https://github.com/multisens/CCWS | **TV 3.0 Ginga CC WebServices** — API REST/HTTPS do padrão TV 3.0. Autenticação JWT, gerenciamento de usuários (estado em Redis), serviços e dispositivos remotos. TypeScript, portas **44652** (HTTP) e **44653** (HTTPS) |
+| `tv3ws/` | https://github.com/multisens/TV3WS | **TV 3.0 WebServices** — API REST do padrão TV 3.0 (Anexo C). JWT, usuários (Redis), serviços e dispositivos remotos. TypeScript, portas **44652** (HTTP) e **44653** (HTTPS opcional) |
 | `infra/` | https://github.com/multisens/Infra | **Infraestrutura Docker** — Redis, KrakenD (gateways externo e interno), Mosquitto com plugin C, middlewares de validação, dockerfiles |
 | `bcast/` | https://github.com/multisens/BcastService | **Broadcaster** — simula transmissão de sinal TV 3.0. Streaming via FFmpeg, sinalização via MQTT. Hospeda módulos de apps de serviço (webmedia, uff, etc.) seguindo padrão `src/modules/<nome>/` |
 | `eduplay/` | https://github.com/motadv/eduplay | **EduPlay** — funcionalidades educacionais |
