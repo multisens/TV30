@@ -9,4 +9,4 @@
 	url = https://github.com/multisens/AOP.git
 [submodule "tv3ws"]
 	path = tv3ws
-	url = https://github.com/multisens/CCWS.git
+	url = https://github.com/multisens/TV3WS.git

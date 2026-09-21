@@ -32,7 +32,7 @@ Dispositivo Remoto / App
 | Pasta | Repositório | Responsabilidade |
 |-------|-------------|------------------|
 | `aop/` | [multisens/AOP](https://github.com/multisens/AOP) | Interface do receptor TV 3.0. UI, perfis de usuário, catálogo de apps, camadas de vídeo/gráficos. Node.js, porta **8080** |
-| `ccws/` | [multisens/CCWS](https://github.com/multisens/CCWS) | API REST/HTTPS do padrão. JWT, gerenciamento de usuários (Redis), serviços e dispositivos. TypeScript, portas **44652/44653** |
+| `tv3ws/` | [multisens/TV3WS](https://github.com/multisens/TV3WS) | API REST/HTTPS do padrão. JWT, gerenciamento de usuários (Redis), serviços e dispositivos. TypeScript, portas **44652/44653** |
 | `infra/` | [multisens/Infra](https://github.com/multisens/Infra) | Redis, KrakenD (externo+interno), Mosquitto + plugin C, middlewares de validação |
 | `bcast/` | [multisens/BcastService](https://github.com/multisens/BcastService) | Simula broadcaster. Streaming via FFmpeg, sinalização MQTT. Hospeda apps de serviço |
 | `eduplay/` | [motadv/eduplay](https://github.com/motadv/eduplay) | Funcionalidades educacionais |
