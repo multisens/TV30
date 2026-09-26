@@ -74,11 +74,13 @@ services:
     container_name: tv3ws
     networks: [ginga_net]
     ports:
-      - "44652:44652"
-      - "44653:44653"
+      # As portas de API (44652/44653) NAO sao publicadas no host: todo
+      # acesso de cliente passa pelo edgegateway (44642/44643). Quem entrava
+      # por elas nao tinha credencial validada (defeito 6 da vacina).
+      #
       # WebSockets de remote-device usam portas dinamicas nesse range. Tem
       # que estar publicado no host pra apps externas alcancarem a URL que o
-      # CCWS devolve no registro (ws://SERVER_URL:<porta>).
+      # tv3ws devolve no registro (ws://SERVER_URL:<porta>).
       - "45000-45199:45000-45199"
     environment:
       MQTT_HOST: mosquitto
@@ -87,7 +89,8 @@ services:
       # Host que apps externas usam pra abrir o websocket devolvido no
       # registro em /tv3/remote-device. Tem que bater com o IP/hostname
       # alcancavel de fora do container (nao localhost/nome-de-servico).
-      SERVER_URL: 192.168.1.150
+      # Configuravel via .env da raiz; localhost atende demo em maquina unica.
+      SERVER_URL: ${SERVER_URL:-localhost}
       # Range de portas pros websockets de remote-device. Tem que coincidir
       # com o range publicado em `ports` acima.
       WS_PORT_MIN: 45000
@@ -141,13 +144,14 @@ services:
       # docker-compose.yml da infra — escapando do Windows WSL mirrored).
       MQTT_WS_PORT: 9001
       USER_DATA_PATH: /user-files
-      # Endpoint do tv3ws pra ler users (Redis eh source-of-truth, userData.json eh seed inicial)
-      TV3WS_URL: http://tv3ws:44652
+      # A plataforma le perfis e escreve a lista de origens associadas
+      # DIRETO no Redis (P1) — nao passa mais pela porta HTTP do tv3ws.
+      REDIS_HOST: redis
     volumes:
       - ./user-files:/user-files
     depends_on:
       - mosquitto
-      - tv3ws
+      - redis
       - userfiles-seed
     restart: unless-stopped
 
@@ -177,6 +181,9 @@ services:
       WEBMEDIA_SID:   urn:tv30:service:webmedia
       UFF_SID:        urn:tv30:service:uff
       EDUPLAY_SID:    urn:tv30:service:eduplay
+      # Caminhos no dispositivo remoto do demo webmedia (ver .env.example).
+      WEBMEDIA_REMOTE_MEDIA_PATH:     ${WEBMEDIA_REMOTE_MEDIA_PATH:-}
+      WEBMEDIA_REMOTE_USERFILES_PATH: ${WEBMEDIA_REMOTE_USERFILES_PATH:-}
     volumes:
       # public/ (templates estaticos + media, ~2.3GB) fica FORA da imagem:
       # nao entra no build (.dockerignore) e e servido daqui via
