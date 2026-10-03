@@ -1,70 +1,33 @@
 # Known Issues
 
-## Sensory-effect POST returns HTTP 500 through KrakenD (effect still works)
+## `GET /tv3/authorize` reemite o refresh token de qualquer cliente já autorizado — ABERTO (aguarda o Joel)
 
-**Symptom**
-`POST /tv3/sensory-effect-renderers/{rendererId}` (e.g. from the uff service on
-bcast) returns `500 Internal Server Error` in ~3ms, even though the effect
-actually fires — the device receives the command and the lights change.
+Anterior à semana de 28/09. Em `tv3ws/src/api/client-identification/controller.ts`, um `GET /tv3/authorize?clientid=<id>&display-name=x` **sem `pm`** devolve o `refreshToken` corrente do cliente `<id>` quando ele já está autorizado, sem pop-up e sem conferir a classe gravada (o trecho "Cliente local ja autorizado que perdeu o refresh token"). A classe que decide a reemissão é a de quem pede, não a do cliente gravado. Com o refresh token, `GET /tv3/token` devolve um access token com a classe da vítima. Basta conhecer o `clientid`, que trafega em query string. A borda não impede, porque `/tv3/authorize` é `auth=none`. A norma trata o reuso de `clientid` na C.6.1.2 como colisão, com erro 101 (C.6.1.4.4). Verificado lendo o código; não foi explorado contra a stack.
 
-**Root cause**
-The call goes `uff → KrakenD (gateway, :44642) → ccws`.
+## Redis sem senha e publicado no host — ABERTO (decidir antes de qualquer `enforce`)
 
-1. CCWS handles the request, sends the WebSocket command to the device (effect
-   works), then replies `204 No Content` with an **empty body**
-   (`ccws/src/modules/sensory-effect-renderers-api/controller.ts` →
-   `res.status(204).json({})`).
-2. The KrakenD endpoint for this route uses the **default `json` encoding**
-   (no `no-op`), so KrakenD tries to **JSON-decode the empty 204 body**, fails,
-   and returns **500** to the caller.
+O Redis publica a 6379 no host (`infra/redis/docker-compose.yml`) e não tem senha. Em `enforce`, a borda decide a partir de chaves desse Redis: um `HSET origins:associated <origem> x` faz uma origem passar por local associado (sem access token nem bind-token), e um `RPUSH bind-context:<serviço>` registra uma chave de bind. Opções: publicar só em `127.0.0.1` ou exigir senha. Registrado em `docs/avaliacao-item9-credenciais.md`.
 
-The side effect happens *before* the response is built, which is why it "works
-but 500s." It is deterministic — reproduces on every call, and a restart does
-not change it (it's code/config, not corrupted runtime state).
+## SSDP anuncia `localhost` por padrão e um endereço "seguro" sem TLS — ABERTO (aguarda o Joel)
 
-Confirmed in `infra/krakenD_external/krakend.json` and
-`infra/krakenD_internal/krakend.json` (+ their `.linux.json` variants): the
-`POST /tv3/sensory-effect-renderers/{rendererId}` endpoint has no
-`output_encoding`/backend `encoding` set → defaults to JSON parsing.
+Com o padrão do compose (`SERVER_URL=localhost`), o anúncio SSDP e o `/manifest` divulgam `http://localhost:44642/manifest` e `Server-BaseURL: localhost:44642`. Um cliente em outro equipamento recebe o anúncio e não alcança o endereço (medido pela integração: `ECONNREFUSED`, ver `docs/ssdp-verificacao.md`). O tv3ws avisa no boot (`[ssdp] AVISO`); para anunciar outro host, defina `SSDP_ADVERTISE_HOST` no `tv3ws/.env`. O `Server-SecureBaseURL` anuncia `<host>:44643`, que na borda é HTTP puro (lacuna L3).
 
-**Status:** Not fixed on purpose — the effect works and a fix touches gateway
-config / backend response shape that we don't want to disturb right now.
+## Caminho não declarado resetava a conexão na borda — RESOLVIDO em 02/10/2026
 
-**Fix options (when we decide to address it)**
+**Era assim:** no `edgegateway`, caminhos NÃO declarados que colidem com o miolo das rotas-curinga (`GET /tv3/abc`, `GET /tv3/xyz/abc`, `POST /tv3/users`, `GET /tv3/naoexiste`) disparavam um panic do roteador Gin embutido no KrakenD 2.7.2 ("invalid node type"). O cliente via a conexão fechada sem resposta, e não um 404. O tratamento de rota não encontrada do tv3ws (erro 100, `tv3ws/src/util/error.ts`) não era alcançável, porque esses caminhos nunca chegavam a ele.
 
-- *Option A (gateway, recommended):* set `"output_encoding": "no-op"` on the
-  endpoint and `"encoding": "no-op"` on its backend, in all four KrakenD config
-  files. KrakenD then passes the 204 through without parsing. Config-only, no
-  rebuild.
-- *Option B (backend):* return a JSON body instead of an empty 204, e.g.
-  `res.status(200).json({ status: "ok" })` in the CCWS controller. Requires
-  rebuilding/redeploying the CCWS image and deviates from the spec's 204.
+**Como ficou:** o plugin `tv30-auth` (`infra/edgegateway/plugin/`, carregado nas duas superfícies) casa método e caminho com a tabela única (`infra/edgegateway/routes.json`) **antes** do roteador.
+- Fora da tabela, a borda responde 404 com `{"error":100,"description":"API not found: <método> <caminho>"}` (C.3.2.1, C.3.3.2), `Content-Type: application/json` e `Access-Control-Allow-Origin: *`.
+- Isso vale nos dois modos (`AUTH_ENFORCE=warn` e `enforce`) e também para `OPTIONS` sem `Access-Control-Request-Method` em caminho não declarado. Desde 03/10, o `OPTIONS` sem preflight num caminho **declarado** recebe 200 com `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods` e `Access-Control-Allow-Headers` (C.4.1.9.3).
+- O preflight CORS passa ao roteador e responde 204, inclusive em caminho não declarado.
+- Um `recover()` em volta do roteador transforma qualquer panic restante em 404 `{"error":200}`.
 
-**Quick verification (fires the light once):** direct call to CCWS returns a
-clean 204, gateway call returns 500:
+**Verificado em 02/10/2026** com `scripts/test-auth.sh` (84 PASS, 0 FAIL), na stack completa e com a imagem reconstruída. Nas portas 44642 e 44643, cada um destes devolveu 404 `{error:100}` com a conexão íntegra (saída 0 do curl):
+- `GET /tv3/naoexiste`, `GET /tv3/xyz/abc` e `GET /tv3/abc`;
+- `POST /tv3/users`;
+- `PUT /tv3/current-service`, que tem método não declarado;
+- `OPTIONS` sem preflight.
 
-```
-curl -i -X POST http://localhost:44652/tv3/sensory-effect-renderers/{id} \
-  -H 'Content-Type: application/json' \
-  -d '{"effectType":"LightType","action":"start","properties":[]}'   # → 204
+**O panic continua no roteador; o plugin só o torna inalcançável.** No mesmo dia, a configuração gerada da superfície interna rodou **sem** o bloco do plugin num KrakenD 2.7.2 avulso. Os mesmos quatro caminhos voltaram a fechar a conexão (curl 52, sem resposta), e o log mostrou `http: panic serving ...: invalid node type`. Se o plugin deixar de carregar, o defeito volta. Por isso o build da imagem falha quando o `.so` não casa com o binário: o `krakend check-plugin` e o `test-plugin` rodam no Dockerfile. Pelo mesmo motivo, configuração inválida do plugin derruba o container.
 
-curl -i -X POST http://localhost:44642/tv3/sensory-effect-renderers/{id} \
-  -H 'Content-Type: application/json' \
-  -d '{"effectType":"LightType","action":"start","properties":[]}'   # → 500
-```
-
-## Superfície externa: caminho não-mapeado pode resetar a conexão (pós-consolidação)
-
-No `edgegateway`, caminhos NÃO declarados que colidem com o miolo das
-rotas-curinga (ex.: `GET /tv3/abc`, `POST /tv3/users` — que só existe na
-superfície interna) provocam um panic conhecido do roteador Gin embutido
-no KrakenD ("invalid node type"): o cliente vê conexão resetada em vez de
-404. As rotas declaradas não são afetadas, e o panic é recuperado por
-conexão (o gateway continua no ar). Correção definitiva virá com o
-trabalho de formato de erro da norma/erro 106 (lacuna com decisão de
-desenho pendente).
-
-Contexto que a consolidação revelou: no arranjo anterior o plugin Go do
-gateway externo **proxyava qualquer caminho** direto ao CCWS, ignorando as
-rotas declaradas — toda a API interna era alcançável por fora. O
-edgegateway fecha esse vazamento: só serve o que a tabela única declara.
+Contexto que a consolidação revelou: no arranjo anterior, o plugin Go do gateway externo **repassava qualquer caminho** direto ao tv3ws (na época, CCWS), ignorando as rotas declaradas, e toda a API interna era alcançável por fora. O edgegateway fecha esse vazamento: só serve o que a tabela única declara.

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Aceite das fases 2-3: edgegateway (borda unica) + redis consolidado.
 set -u
-cd /mnt/d/Proj_CEFET/TV30
+cd "$(dirname "$0")/.." || exit 1
 
 echo "== derrubando stack antigo (leva os 5 extintos junto) =="
 docker compose down --remove-orphans >/dev/null 2>&1
@@ -27,12 +27,24 @@ echo; echo "== edgegateway: superficies distintas =="
 docker run --rm --network ginga_net alpine:3 sh -c '
   wget -q -O- http://edgegateway:44642/health >/dev/null && echo "interna  /health OK"
   wget -q -O- http://edgegateway:44643/health >/dev/null && echo "externa  /health OK"
-  # /tv3/users so existe na INTERNA: na externa o krakend responde 404
-  ci=$(wget -q -O /dev/null -S http://edgegateway:44642/tv3/users --post-data="{}" 2>&1 | awk "/HTTP\//{print \$2}" | head -1)
-  ce=$(wget -q -O /dev/null -S http://edgegateway:44643/tv3/users --post-data="{}" 2>&1 | awk "/HTTP\//{print \$2}" | head -1)
-  echo "POST /tv3/users interna=$ci externa=$ce (esperado: interna!=404, externa=404)"
   wget -q -O- http://edgegateway:8085/specs/openapi-internal.json | head -c 60; echo " ...spec interna OK"
   wget -q -O /dev/null http://edgegateway:8085/ && echo "swagger UI OK"'
+
+# A antiga POST /tv3/users (so na interna) saiu da tabela de rotas (infra
+# 8d5949d) e hoje toda rota existe nas duas superficies. Rota existente
+# equivalente (POST com corpo JSON): POST /tv3/current-service/users
+# (C.6.14.1), que tem de chegar ao tv3ws pelas duas portas. Caminho NAO
+# declarado tem de voltar 404 com corpo C.3.2 {"error":100,...} (C.3.2.1),
+# nao resetar a conexao (000).
+echo; echo "== edgegateway: rota declarada x caminho nao declarado =="
+docker run --rm --network ginga_net --entrypoint sh curlimages/curl:8.10.1 -c '
+  for s in 44642 44643; do
+    c=$(curl -s -m 5 -o /tmp/b -D /tmp/h -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "{}" http://edgegateway:$s/tv3/current-service/users)
+    w=$(grep -i "^X-TV30-Auth-Warn:" /tmp/h | tr -d "\r")
+    echo "POST /tv3/current-service/users porta=$s -> $c $(head -c 80 /tmp/b) $w"
+    c=$(curl -s -m 5 -o /tmp/b -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "{}" http://edgegateway:$s/tv3/users)
+    echo "POST /tv3/users (nao declarada) porta=$s -> $c $(head -c 80 /tmp/b)"
+  done'
 
 echo; echo "== morre-inteiro: matando um krakend interno =="
 docker exec edgegateway sh -c 'pkill -f krakend-internal || pkill krakend'

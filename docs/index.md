@@ -17,16 +17,16 @@ Conjunto de microsserviços que reproduzem o ecossistema TV 3.0. Os componentes 
 **Papéis da plataforma TV 3.0 (ABNT NBR 25608):**
 
 - **AoP** (Application-Oriented Platform) — interface do receptor (Node.js, porta 8080)
-- **CCWS** (TV 3.0 Ginga CC WebServices) — API REST conforme ABNT NBR 25608 (TypeScript, portas 44652/44653)
+- **tv3ws** — implementação dos Ginga CC WebServices (TV 3.0 WebServices) da ABNT NBR 25608 (TypeScript; acessada pela borda nas portas 44642/44643)
 - **bcast** — simulação do broadcaster, hospeda apps de serviço (webmedia, users-test, etc.)
 
 **Infraestrutura de implementação (escolha deste projeto, não exigida pela norma):**
 
-- **Mosquitto + plugin C** — broker MQTT com ACL e validação de consentimento via Redis
-- **KrakenD** — dois gateways (externo com consent-validator Go; interno sem overhead) que permitem a implementação distribuída do CCWS
-- **Redis** — fonte única de verdade para estado de sessão e perfis
+- **Mosquitto + plugin C** — broker MQTT; o plugin valida o **esquema** das mensagens publicadas (não faz controle de acesso a tópicos nem consulta o Redis)
+- **KrakenD** (`edgegateway`) — a borda: um container com as superfícies interna (44642) e externa (44643); valida credenciais (accessToken, bind-token, classe de cliente) no plugin Go `tv30-auth`, em modo `warn` por padrão
+- **Redis** — estado de sessão, perfis e credenciais (parte do estado também vive em memória nos serviços e no `userData.json` de carga)
 
-> **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices, o modelo de consentimento e os perfis de usuário — **não** o transporte interno. O uso de MQTT como canal único entre serviços, os gateways KrakenD e o Redis são decisões de arquitetura deste testbed.
+> **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices, o modelo de consentimento e os perfis de usuário — **não** o transporte interno. O MQTT entre serviços, a borda KrakenD e o Redis são decisões de arquitetura deste testbed. (A comunicação interna não é só por MQTT: o AoP faz proxy HTTP direto ao bcast e AoP/tv3ws acessam o Redis diretamente.)
 
 ---
 
@@ -37,8 +37,10 @@ Conjunto de microsserviços que reproduzem o ecossistema TV 3.0. Os componentes 
 | [Arquitetura]({{ site.baseurl }}/arquitetura) | Topologia, containers, decisões arquiteturais |
 | [Instalação]({{ site.baseurl }}/instalacao) | Pré-requisitos, WSL2/Docker, primeiros comandos |
 | [Modelo de Dados Redis]({{ site.baseurl }}/modelo-redis) | Chaves, hashes, consent, sessão |
-| [APIs CCWS]({{ site.baseurl }}/apis-ccws) | Endpoints, mapeamento ABNT NBR 25608 |
-| [Fluxo: Criação de Perfil]({{ site.baseurl }}/fluxo-criacao-perfil) | Do form até o MQTT `aop/users` |
+| [APIs do tv3ws]({{ site.baseurl }}/apis-tv3ws) | Endpoints, mapeamento ABNT NBR 25608 |
+| [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local) | Infra em containers + um módulo com `npm run dev`; teste `scripts/test-dev-host.sh` |
+| [Verificação: descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao) | Anúncio SSDP medido no container, na bridge e no WSL; roteiro e cliente para a rede doméstica |
+| [Criação de perfil (em Modelo de Dados Redis)]({{ site.baseurl }}/modelo-redis) | Do form do AoP direto ao Redis, seção "Sincronização entre JSON e Redis" |
 | [Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos) | Tabela completa de tópicos e responsabilidades |
 | [Troubleshooting]({{ site.baseurl }}/troubleshooting) | Erros comuns: WSL2, CORS, CRLF, etc. |
 
@@ -52,7 +54,7 @@ cd TV30
 docker compose up -d
 ```
 
-Acesse `http://localhost:8080` (AoP). Para inspecionar o Redis: `http://localhost:18081` (Redis Commander).
+Acesse `http://localhost:8080` (AoP). Para inspecionar o Redis: Redis Commander na porta dinâmica mostrada por `docker port redis 18081`.
 
 ---
 
@@ -61,10 +63,10 @@ Acesse `http://localhost:8080` (AoP). Para inspecionar o Redis: `http://localhos
 | Tecnologia | Uso |
 |------------|-----|
 | Docker + Compose | Orquestração full-container |
-| Node.js 23+ | AoP, CCWS, bcast |
-| TypeScript | CCWS |
-| Redis (ioredis) | Estado de sessão e perfis no CCWS |
-| Mosquitto + plugin C | MQTT broker + ACL/consent via Redis |
-| KrakenD + plugin Go | Gateway externo com consent-validator |
+| Node.js 23+ | AoP, tv3ws, bcast |
+| TypeScript | tv3ws, bcast |
+| Redis (ioredis) | Estado de sessão, perfis e credenciais (tv3ws, AoP) |
+| Mosquitto + plugin C | MQTT broker + validação de esquema das mensagens |
+| KrakenD + plugin Go | Borda única (`edgegateway`) com validação de credenciais (`tv30-auth`) |
 | FFmpeg | Streaming de vídeo no bcast |
 | Jekyll + just-the-docs | Esta documentação |

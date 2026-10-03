@@ -1,10 +1,11 @@
 # TV30 — Compose unificado (raiz da solucao)
 #
 # LINUX (full-container):  docker compose up -d
-#   Defaults vem de .env (COMPOSE_PROFILES=mqtt,linux + DOCKERHUB_NS, IMAGE_TAG, KRAKEND_*_CFG)
+#   Defaults vem de .env (COMPOSE_PROFILES=mqtt,linux + DOCKERHUB_NS, IMAGE_TAG, EDGE_VARIANT)
 #
-# WINDOWS (apps nativas + infra container): use .\start-tv30.ps1
-#   ou: docker compose --env-file .env.windows up -d
+# DESENVOLVIMENTO (infra em containers + um modulo rodando no host com
+# npm run dev): ver docs/dev-local.md e scripts/test-dev-host.sh. Windows
+# nativo (modulo no PowerShell com Docker no WSL) nao e coberto.
 
 # Nome fixo do projeto: independe da pasta onde o repo foi clonado.
 # (Evita containers "orfaos" quando dois clones/paths diferentes rodam o
@@ -104,9 +105,12 @@ services:
       # `environment` tem precedencia sobre env_file, entao JWT_SECRET em
       # tv3ws/.env NAO tem efeito.
       JWT_SECRET: ${JWT_SECRET:-tv30-dev-secret-nao-usar-em-producao}
+      # Emissor do accessToken. Mesma fonte (.env da raiz / shell) e mesmo
+      # padrao que a borda usa para validar o token (infra/docker-compose.yml).
+      JWT_ISSUER: ${JWT_ISSUER:-GenericIssuer}
     env_file:
       # Opcional: HTTPS_KEY/HTTPS_CERT proprios (fora da imagem; nao estao
-      # na secao environment, entao valem daqui). Ausente => CCWS sobe so
+      # na secao environment, entao valem daqui). Ausente => tv3ws sobe so
       # em HTTP.
       - path: ./tv3ws/.env
         required: false
@@ -134,6 +138,12 @@ services:
         tv30-scripts: ./infra/dockerfiles
     container_name: aop
     networks: [ginga_net]
+    extra_hosts:
+      # O aop faz proxy HTTP direto ao bcast (/graphicsAppProxy,
+      # /videoStreamProxy -> bcastEntryPackageUrl). Com o bcast rodando no
+      # HOST (desenvolvimento, BCAST_HOSTNAME=host.docker.internal) o nome
+      # precisa resolver em Linux; inocuo no deploy padrao.
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
     environment:
@@ -171,10 +181,12 @@ services:
     environment:
       PORT: 8081
       MQTT_HOST: mosquitto
-      # Hostname pra construir bcastEntryPackageUrl no BAMT. AoP faz proxy
+      # Hostname pra construir bcastEntryPackageUrl na BALD. AoP faz proxy
       # pra esse host — em Docker precisa ser o service-name (resolve via
-      # ginga_net DNS), nao localhost.
-      BCAST_HOSTNAME: bcast
+      # ginga_net DNS), nao localhost. Override so pro desenvolvimento com o
+      # aop no HOST (BCAST_HOSTNAME=localhost: o aop do host alcanca a porta
+      # publicada 8081) — ver docs/dev-local.md.
+      BCAST_HOSTNAME: ${BCAST_HOSTNAME:-bcast}
       # IDs fixos: cada restart re-publica no MESMO topico, sobrescrevendo o
       # anterior em vez de criar tópicos orfaos retidos no broker.
       BSID:           tv30-default

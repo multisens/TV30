@@ -44,6 +44,16 @@ O one-shot `preflight` do compose imprime, antes da subida, quem esta
 segurando cada porta do stack — se a subida falhar por bind, a causa ja
 esta nomeada no inicio do log.
 
+### `preflight`: "a porta 44642 esta ocupada (-)" com a stack de pé
+
+Até 02/10/2026, um segundo `docker compose up -d` com a stack já de pé parava
+no preflight com essa mensagem. O container do preflight não tem
+`CAP_SYS_PTRACE`, então o `netstat` dele não enxerga que o dono da 44642 é o
+`docker-proxy` e mostra `-`. O `scripts/preflight.sh` atual reconhece o
+`docker-proxy` pela linha de comando. Em clone antigo, atualize o
+repositório. Se a mensagem continuar, há um processo nativo na 44642:
+confira com `sudo ss -ltnp | grep 44642`.
+
 ## `redis-seed` sai com exit 1 e o broker nao sobe
 
 O job de carga instala a dependencia (`pip install redis`) em tempo de
