@@ -23,7 +23,7 @@ docker compose up -d
 
 Acesse `http://localhost:8080`.
 
-> **Importante:** sem o `.env` (ou sem `COMPOSE_PROFILES=mqtt,linux` setado de alguma forma), apenas a infra essencial sobe — `aop`, `ccws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: ["linux"]` ou `["mqtt"]` no compose e ficam de fora do `up` sem o profile ativo.
+> **Importante:** sem o `.env` (ou sem `COMPOSE_PROFILES=mqtt,linux` setado de alguma forma), apenas a infra essencial sobe — `aop`, `tv3ws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: ["linux"]` ou `["mqtt"]` no compose e ficam de fora do `up` sem o profile ativo.
 
 ---
 
@@ -98,6 +98,17 @@ MQTT_WS_PORT=9003
 git clone --recurse-submodules https://github.com/multisens/TV30.git
 ```
 
+> **Clone antigo (anterior ao renome `ccws` → `tv3ws`):** o `git pull` não propaga renome de submódulo para um clone que já existe — o `ccws/` continua lá e o `tv3ws/` não fica registrado como submódulo inicializado (`git submodule status` mostra `-` na frente). Corrija com
+>
+> ```bash
+> git submodule sync --recursive && git submodule update --init --recursive
+> rm -rf ccws    # sobra do nome antigo (antes, confira que nao ha trabalho local nela)
+> ```
+>
+> ou clone de novo.
+
+> **URL SSH do bcast:** o `.gitmodules` aponta o submódulo `bcast` para `git@github.com:multisens/BcastService.git`. Sem chave SSH cadastrada no GitHub, o clone desse submódulo falha (a troca da URL ainda não foi decidida).
+
 ### Atualizar todos para o último commit
 
 ```bash
@@ -121,5 +132,6 @@ git submodule status
 ## Próximos passos
 
 - [Modelo de Dados Redis]({{ site.baseurl }}/modelo-redis) — chaves armazenadas
-- [Fluxo: Criação de Perfil]({{ site.baseurl }}/fluxo-criacao-perfil) — primeiro test-drive
+- [Criação de perfil (em Modelo de Dados Redis)]({{ site.baseurl }}/modelo-redis) — primeiro test-drive, seção "Sincronização entre JSON e Redis"
+- [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local) — infra em containers e um módulo com `npm run dev`
 - [Troubleshooting]({{ site.baseurl }}/troubleshooting) — caso algo dê errado

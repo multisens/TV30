@@ -7,23 +7,34 @@ nav_order: 2
 
 ## Visão geral
 
+O diagrama descreve o estado atual do código, não o desenho publicado anteriormente.
+
 ```
-Dispositivo Remoto / App
-        ↓ HTTPS :44643
-  KrakenD External (infra/)       ← valida consentimento (plugin Go)
-        ↓
-  CCWS (ccws/)                    ← API TV 3.0, JWT, estado em Redis
-        ↓ MQTT
-  Mosquitto + Plugin C (infra/)   ← ACL, consentimento, schema validation
-        ↓ MQTT
-  AoP (aop/)                      ← UI do receptor, perfis, display layers
-        ↑
-  Broadcaster (bcast/)            ← streaming + módulos de apps de serviço
+Cliente (app de emissora, app local autônomo, dispositivo remoto)
+        ↓ HTTP :44642 (interna, porta fixa da C.3.4) | :44643 (externa)
+  edgegateway (infra/)    ← borda única: KrakenD interno + externo + docs;
+                            plugin Go tv30-auth valida credenciais (warn)
+        ↓ HTTP na ginga_net
+  tv3ws (tv3ws/)          ← Ginga CC WebServices (Anexo C); assina o
+                            accessToken; estado no Redis
+        ↕ MQTT                    ↕ Redis
+  Mosquitto + plugin C    ← valida o ESQUEMA das mensagens publicadas
+        ↕ MQTT
+  AoP (aop/)              ← UI do receptor; perfis lidos/escritos direto no Redis
+        ↓ HTTP (proxy /graphicsAppProxy e /videoStreamProxy)
+  bcast (bcast/)          ← sinalização (BAMT/ESG/BALD) por MQTT; apps de
+                            serviço e mídia por HTTP
 ```
 
-**Regra central:** todos os serviços se comunicam via MQTT. Nenhum serviço chama outro diretamente por HTTP internamente.
+**Canais internos.** Pelo código, a comunicação interna não é toda por mensageria:
 
-> **Norma × implementação:** MQTT, os gateways KrakenD e o Redis são decisões de arquitetura deste testbed, **não** exigências da ABNT NBR 25608. A norma especifica os Ginga CC WebServices (CCWS), o modelo de consentimento e os perfis de usuário — não o transporte interno nem a infraestrutura de back-end.
+- **Sinalização e eventos** passam pelo MQTT.
+- **Armazenamento:** o AoP e o tv3ws leem e escrevem no Redis diretamente.
+- **HTTP direto:** o AoP faz proxy HTTP para o bcast, buscando aplicações e vídeo no `bcastEntryPackageUrl` que o bcast anuncia (`aop/src/server.js`).
+
+A versão anterior desta página dizia que "todos os serviços se comunicam via MQTT". Isso não corresponde ao código. Clientes das APIs entram **só pela borda**: as portas do tv3ws não são publicadas no host.
+
+> **Norma × implementação:** o MQTT, a borda KrakenD e o Redis são decisões de arquitetura deste testbed, **não** exigências da ABNT NBR 25608. A norma especifica os Ginga CC WebServices, o modelo de consentimento e os perfis de usuário, mas não o transporte interno nem a infraestrutura de back-end.
 
 ---
 
@@ -31,37 +42,32 @@ Dispositivo Remoto / App
 
 | Pasta | Repositório | Responsabilidade |
 |-------|-------------|------------------|
-| `aop/` | [multisens/AOP](https://github.com/multisens/AOP) | Interface do receptor TV 3.0. UI, perfis de usuário, catálogo de apps, camadas de vídeo/gráficos. Node.js, porta **8080** |
-| `tv3ws/` | [multisens/TV3WS](https://github.com/multisens/TV3WS) | API REST/HTTPS do padrão. JWT, gerenciamento de usuários (Redis), serviços e dispositivos. TypeScript, portas **44652/44653** |
-| `infra/` | [multisens/Infra](https://github.com/multisens/Infra) | Redis, KrakenD (externo+interno), Mosquitto + plugin C, middlewares de validação |
-| `bcast/` | [multisens/BcastService](https://github.com/multisens/BcastService) | Simula broadcaster. Streaming via FFmpeg, sinalização MQTT. Hospeda apps de serviço |
-| `eduplay/` | [motadv/eduplay](https://github.com/motadv/eduplay) | Funcionalidades educacionais |
-| `sepe/` | [motadv/se-presentation-engine](https://github.com/motadv/se-presentation-engine) | Sensory Effect Presentation Engine |
-| `utils/` | [multisens/TV30-Utils](https://github.com/multisens/TV30-Utils) | Explorador web de tópicos MQTT |
+| `aop/` | [multisens/AOP](https://github.com/multisens/AOP) | Interface do receptor TV 3.0: UI, gestor de perfis, catálogo de apps e camadas de vídeo/gráficos. Node.js, porta **8080** |
+| `tv3ws/` | [multisens/TV3WS](https://github.com/multisens/TV3WS) | Implementação dos Ginga CC WebServices: JWT, usuários (Redis), serviços e dispositivos. TypeScript, portas internas **44652/44653**, com acesso pela borda |
+| `infra/` | [multisens/Infra](https://github.com/multisens/Infra) | Redis, a borda KrakenD (`edgegateway`), Mosquitto + plugin C e os dockerfiles |
+| `bcast/` | [multisens/BcastService](https://github.com/multisens/BcastService) | Simula o broadcaster: streaming via FFmpeg, sinalização por MQTT e hospedagem das apps de serviço |
+
+O `.gitmodules` contém só esses quatro. `eduplay`, `sepe` (se-presentation-engine) e `TV30-Utils` são repositórios relacionados, mas não são submódulos deste repositório.
 
 ---
 
 ## Containers e portas
 
-| Container | Porta(s) | Descrição |
+| Container | Porta(s) no host | Descrição |
 |-----------|----------|-----------|
-| `redis` | 6379 | Estado de sessão + usuários |
-| `redis-commander` | 18081 | UI de inspeção do Redis |
-| `mosquitto` | 1883, `${MQTT_WS_PORT:-9001}` | MQTT broker + plugin C ACL |
-| `krakend-external` | 44643 | Gateway externo com consent-validator (Go) |
-| `krakend-internal` | 44642 | Gateway interno, sem overhead |
-| `validation-middleware` | 3000 | Valida JWT + OpenAPI do gateway externo |
-| `middleware-internal` | 3001 | OpenAPI do gateway interno |
-| `swagger` | 8085 | Swagger UI único (dropdown external/internal) |
-| `ccws` | 44652, 44653 | TV 3.0 WebServices (HTTP, HTTPS) |
+| `redis` | 6379; commander em porta dinâmica (`docker port redis 18081`) | Redis, com carga inicial e o redis-commander embutido para debug |
+| `mqtt-broker` (serviço `mosquitto`) | 1883, `${MQTT_WS_PORT:-9001}` | Mosquitto + plugin C de validação de esquema |
+| `edgegateway` | 44642, 44643; docs em porta dinâmica (`docker port edgegateway 8085`) | Borda única. Contém os dois processos KrakenD (superfícies interna e externa) e a documentação Swagger. Morre-inteiro: se um processo cai, o container cai |
+| `tv3ws` | 45000–45199 (WebSockets de remote-device) | Ginga CC WebServices. As portas 44652/44653 ficam só na `ginga_net` |
 | `aop` | 8080 | Interface do receptor |
-| `bcast` | 8081 | Broadcaster + módulos de apps de serviço |
+| `bcast` | `${BCAST_PORT:-8081}` | Broadcaster + módulos de apps de serviço |
+| `tv30-preflight`, `tv30-userfiles-seed`, `tv30-sysctl-init` | — | Tarefas únicas de subida: diagnóstico de DNS e portas, carga de `./user-files` e ajuste de sysctl (Linux) |
 
 ---
 
 ## Apps de serviço (padrão webmedia)
 
-Apps são **módulos** dentro do container `bcast`, não containers separados. Padrão:
+As apps são **módulos** dentro do container `bcast`, não containers separados. Padrão:
 
 ```
 bcast/src/modules/<nome>/
@@ -70,7 +76,7 @@ bcast/src/modules/<nome>/
 └── companion/      # assets, JS auxiliar
 ```
 
-Reaproveitam o cliente MQTT do bcast — não criam nova conexão nem novo container. Exemplos atuais: `webmedia`, `users-test`, `uff`, `eduplay`.
+Os módulos reaproveitam o cliente MQTT do bcast e não criam conexão nem container novos. Exemplos atuais: `webmedia`, `users-test`, `uff` e `eduplay`.
 
 ---
 
@@ -78,18 +84,18 @@ Reaproveitam o cliente MQTT do bcast — não criam nova conexão nem novo conta
 
 | Decisão | Motivo |
 |---------|--------|
-| Docker| Um único caminho de deploy. |
+| Docker | Um único caminho de deploy. Para desenvolvimento, a infra roda em containers e o módulo no host ([dev-local]({{ site.baseurl }}/dev-local)) |
 | Monorepo com submódulos | Cada componente tem ciclo de vida e CI independentes |
-| MQTT como único canal interno | Desacoplamento total entre serviços |
-| Estado de usuários em Redis | Consistência cross-instance. `userData.json` é só seed inicial |
-| Apps de serviço como módulos do bcast | Um único container serve todos (sem duplicar MQTT/CORS/ACL) |
-| Dois gateways KrakenD | Externo valida consent; interno é confiável e sem overhead |
-| Avatares como SVG inline | Sem necessidade de servir arquivos PNG; armazenados no campo `avatar` do hash do user |
+| MQTT para sinalização e eventos entre serviços | Desacoplamento. Não é o único canal interno (ver *Canais internos*) |
+| Estado de usuários em Redis | `userData.json` serve de carga inicial e de re-sincronização (tópico `aop/users`) |
+| Apps de serviço como módulos do bcast | Um único container serve todas, sem duplicar MQTT e CORS |
+| Borda única com duas superfícies (fase 2) | A interna fica na 44642, fixa pela C.3.4, e a externa na 44643. Credenciais validadas na borda (decisão de 28/09, plugin `tv30-auth`): pela decisão, o tv3ws só implementaria as APIs. Estado corrente: o tv3ws ainda responde 107 a credencial inválida e 106 ao não local na superfície HTTP, nos dois modos; limpeza pendente |
+| Avatares como SVG inline | Dispensa servir arquivos PNG. Ficam no campo `avatar` do hash do usuário |
 
 ---
 
 ## CI/CD
 
-Cada submódulo (aop, bcast, ccws, infra) tem workflow `.github/workflows/bump-tv30-pointer.yml` que dispara em push na `main` e atualiza automaticamente o ponteiro do submódulo no repo TV30 (via PAT `TV30_REPO_TOKEN`).
+Cada submódulo (aop, bcast, tv3ws, infra) tem um workflow `.github/workflows/bump-tv30-pointer.yml`. Ele dispara a cada push na `main` e atualiza automaticamente o ponteiro do submódulo no repositório TV30, usando o PAT `TV30_REPO_TOKEN`.
 
-Cada submódulo também faz build+push da própria imagem Docker (`tv30/<componente>:latest`) no Docker Hub.
+Cada submódulo também faz build e push da própria imagem Docker no Docker Hub (`labmultisens/tv30-<componente>`).

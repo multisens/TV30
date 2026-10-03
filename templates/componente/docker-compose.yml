@@ -1,0 +1,66 @@
+# Template de compose para um COMPONENTE NOVO do TV30 (reunioes 21/09 e
+# 28/09: "como e que eu vou montar aqui o meu compose?"). Ver README.md ao
+# lado. Troque "meu-componente", a porta 8090 e as variaveis pelas suas.
+#
+# Uso (com a stack da raiz ja de pe — a rede ginga_net precisa existir):
+#   cp -r templates/componente <pasta-do-componente>
+#   docker compose --env-file <raiz-do-TV30>/.env \
+#     -f <pasta-do-componente>/docker-compose.yml up -d --build
+# (o --env-file faz o .env da RAIZ valer aqui: sem ele, o compose le o .env
+# da pasta do componente, e um JWT_SECRET/DOCKERHUB_NS proprio da raiz nao
+# chega a este arquivo)
+#
+# Projeto separado do "tv30": `docker compose down` na raiz nao derruba este
+# componente, e vice-versa.
+name: tv30-meu-componente
+
+services:
+  meu-componente:
+    image: ${DOCKERHUB_NS:-tv30}/tv30-meu-componente:${IMAGE_TAG:-dev}
+    build:
+      context: .
+    container_name: meu-componente
+    networks: [ginga_net]
+    # Morre-inteiro: se o processo principal cair, o container cai e o
+    # Docker religa. Componente com mais de um processo precisa de um
+    # supervisor que derrube tudo quando qualquer um morrer (modelo:
+    # infra/edgegateway/entrypoint.sh). Nada de meio-vivo.
+    restart: unless-stopped
+    extra_hosts:
+      # Permite alcancar um servico rodando no HOST (ex.: outro modulo em
+      # npm run dev) por host.docker.internal tambem em Linux. Inocuo se nao
+      # for usado.
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Dentro da ginga_net os servicos se acham pelo NOME DO SERVICO, nunca
+      # por localhost (localhost e o proprio container).
+      MQTT_HOST: mosquitto
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PORT: 8090
+      # Componente novo NAO valida credencial (decisao de 28/09, D1): quem
+      # valida access token e bind-token e a borda (plugin tv30-auth). Rota
+      # nova da norma entra em infra/edgegateway/routes.json com auth/classes.
+      # So se o componente EMITIR accessToken (caso a confirmar com o Joel),
+      # use a MESMA fonte do tv3ws e da borda (.env da raiz ou shell):
+      # JWT_SECRET: ${JWT_SECRET:-tv30-dev-secret-nao-usar-em-producao}
+      # JWT_ISSUER: ${JWT_ISSUER:-GenericIssuer}
+    ports:
+      # Publique so o que um cliente FORA do Docker precisa. Clientes das
+      # APIs da norma entram pela borda (44642/44643), nao por porta propria.
+      - "${MEU_COMPONENTE_PORT:-8090}:8090"
+    # depends_on nao alcanca servicos de outro projeto compose: o componente
+    # tem de tolerar broker/Redis ainda subindo (tentar de novo ou sair com
+    # erro e deixar o restart religar — nunca seguir meio-vivo).
+    # healthcheck:
+    #   test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8090/health || exit 1"]
+    #   interval: 5s
+    #   timeout: 3s
+    #   retries: 10
+
+networks:
+  # Rede criada pela stack da raiz (infra/docker-compose.yml). external: o
+  # componente entra nela, nao cria uma propria.
+  ginga_net:
+    external: true
+    name: ginga_net

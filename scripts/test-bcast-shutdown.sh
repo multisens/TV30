@@ -4,7 +4,7 @@
 # 3) docker stop cronometrado (deve encerrar bem antes do timeout de 10s);
 # 4) confere que os retidos foram limpos; 5) religa o bcast.
 set -u
-cd /mnt/d/Proj_CEFET/TV30
+cd "$(dirname "$0")/.." || exit 1
 
 docker compose up -d bcast mosquitto >/dev/null 2>&1
 sleep 6

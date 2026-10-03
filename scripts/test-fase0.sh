@@ -1,7 +1,7 @@
 #!/bin/bash
 # Smoke da fase 0: plugin sem ACL (item 3) + renomes R2/R5.
 set -u
-cd /mnt/d/Proj_CEFET/TV30
+cd "$(dirname "$0")/.." || exit 1
 
 docker compose up -d >/dev/null 2>&1
 sleep 8

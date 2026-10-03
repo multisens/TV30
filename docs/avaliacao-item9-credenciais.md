@@ -5,6 +5,72 @@ nav_order: 12
 
 # Item 9 (P2) — validação de credenciais: avaliação antes de implementar
 
+## Decisão de 28/09
+
+A reunião de 28/09 decidiu o desenho que esta avaliação deixava em aberto. A seção abaixo **prevalece** sobre o resto do documento, que fica como estava em 21/09 com as correções marcadas adiante. A implementação entrou na semana de 28/09 em modo `warn`.
+
+### Decidido
+
+| | Decisão |
+|---|---|
+| **D1** | **Toda a validação de credenciais fica na borda**, num plugin Go **novo** no KrakenD (`edgegateway`, plugin `tv30-auth`). O tv3ws só implementa as APIs. Isso substitui a recomendação da "opção A" mais abaixo. |
+| **D2** | **Access token:** são verificadas a assinatura e a expiração, sem `ignoreExpiration`. |
+| **D3** | **Bind-token:** o testbed **não emite** bind-token. Ele registra o par `{alg, key}` da emissora pela C.6.8 e guarda (serviço, alg, chave) no Redis, em `bind-context:{serviceId}`. Os algoritmos aceitos são HS256, HS512, RS256 e RS512 (C.4.1.4.8). A validação segue as quatro frentes da C.4.1.4, nesta ordem: formato JWT, assinatura, `nbf`/`exp` e `iat`. |
+| **D4** | **Isolamento entre emissoras:** o bind-token só vale se for assinado por uma chave registrada para o **serviço corrente** (`session:current-service-id`). A emissora pode registrar várias chaves, e qualquer uma delas valida. |
+| **D5** | **Erros no formato C.3.2:** HTTP 404 com `{"error": <n>, "description": "..."}`, `Content-Type: application/json` e `Access-Control-Allow-Origin: *`. Os códigos são: 104, bind-token ausente; 107, access token ausente, inválido ou expirado, ou cliente bloqueado; 108, bind-token inválido, revogado ou de outro serviço; 106, classe de cliente errada; 100, rota não suportada. |
+| **D6** | **Flag `AUTH_ENFORCE`**, com valor `warn` (padrão) ou `enforce`. Em `warn` nada é bloqueado: a borda registra `[tv30-auth] WARN ...` e devolve o cabeçalho `X-TV30-Auth-Warn: <código>`. O motivo é que o cliente Guaraná ainda não obtém token. |
+
+**Estado corrente (não é a decisão).** Duas diferenças entre o que foi decidido e o que o código faz hoje:
+- **D1:** o tv3ws ainda valida parte da credencial, nos dois modos. Responde 107 a um `Authorization` presente e inválido (`tv3ws/src/middleware/authorization.ts`) e 106 ao cliente não local que chega por HTTP (`validateClientProtocol` em `tv3ws/src/middleware/basic.ts`; a superfície interna repassa ao `http://tv3ws:44652`). A limpeza do tv3ws não foi decidida.
+- **D6:** em `warn`, a borda bloqueia duas coisas que não são credencial: o 100 (rota não declarada, que antes derrubava a conexão com o panic do Gin) e o 200 (panic do roteador). Nenhum cliente dependia dessas rotas, porque elas nunca chegavam ao tv3ws.
+
+### Lacunas sem decisão
+
+Nenhuma destas lacunas foi resolvida. Onde o código precisa de algum comportamento, adotou-se o mínimo provisório, marcado `PENDENTE (Joel)` no código. **Correção (03/10):** a versão anterior desta frase dizia que o provisório valia "só enquanto a flag estiver em `warn`". É o contrário: o provisório (L1, L2, L4, L5) está ativo nos **dois** modos. Em `warn` ele só registra e marca `X-TV30-Auth-Warn`; em `enforce` ele bloqueia ou libera. Em `enforce`, o reconhecimento do associado pelo `Origin` (L1) é uma porta de entrada sem credencial: um `Origin` forjado fora do navegador, presente em `origins:associated`, dispensa access token e bind-token em toda rota que admite o associado, inclusive `POST` e `DELETE /tv3/bind-context`.
+
+| | Lacuna | Comportamento provisório |
+|---|---|---|
+| **L1** | Mecanismo definitivo para reconhecer o cliente local associado. A C.4.1.7 sugere a porta de origem. | Requisição sem `Authorization` cujo `Origin` está em `origins:associated` é tratada como associada. Com `Authorization` presente e inválido, o `Origin` também é consultado, só para o 106 (não dispensa credencial). |
+| **L2** | Identidade do serviço e `serviceContextId` próprio de cada serviço. Hoje o `serviceContextId` é uma constante (`tv3ws/src/core.ts:51`). | Nas rotas `/tv3/{serviceContextId}/...`, o scid do caminho conta como serviço corrente quando é `current-service` ou igual à constante. Qualquer outro valor dá 108. |
+| **L3** | TLS na borda e PKI. A porta 44643 ainda está em HTTP. | Nada implementado na borda, nem o 106 por protocolo. O 106 por protocolo existe no tv3ws (`basic.ts`), para o não local que chega por HTTP. O `Server-SecureBaseURL` do `/manifest` anuncia `<host>:44643`, porta sem TLS. |
+| **L4** | Se o tv3ws deve parar de emitir token para o associado (106 em `/authorize` e `/token`). | Só no plugin, e só em `enforce`. O 106 depende do `Origin`: um `/tv3/token` chamado fora do navegador, sem `Origin`, passa. |
+| **L5** | Relógio de referência do bind-token. A norma usa o System Time Fragment. | Relógio do host. |
+| **L6** | SSDP: anunciante na borda em rede do host (A) ou anunciante separado (B). | O anúncio continua no tv3ws. |
+| **L7** | Liberação dos recursos compartilhados ao revogar uma chave (C.4.4). | Não implementado. |
+
+### Pontos sem decisão levantados na implementação (para o Joel)
+
+Estes pontos não estão entre L1–L7. Nenhum foi resolvido; o código só registra.
+
+- **Redis sem senha e publicado no host (6379).** Em `enforce`, a decisão da borda vem de chaves desse Redis. Quem alcança a porta pode gravar `origins:associated` (vira local associado) ou `bind-context:{serviceId}` (registra a própria chave de bind) e contornar a borda. Publicar a 6379 é decisão anterior (V10 do plano de consolidação). Precisa de decisão antes de qualquer `enforce`. Opções: publicar só em `127.0.0.1` (o teste dev-host continua funcionando, porque usa `127.0.0.1` e `--network host`) ou exigir senha no Redis.
+- **Onde fica a API C.6.8 (`POST|GET|DELETE /tv3/bind-context`).** A reunião não decidiu se ela fica no tv3ws ou no plugin. A especificação da semana a pôs no tv3ws, que por isso tem um segundo leitor de chave e de bind-token (`broadcaster-security/bind-token.ts`) para o `GET /tv3/bind-context`. Na mesma reunião, o Joel rejeitou um `bind-token.ts` no tv3ws ("tem que ser lá no KrakenD ainda. No plugin"). Enquanto não houver decisão, os dois leitores de chave são mantidos iguais por um teste cruzado (`tv3ws/test/fixtures/keyformats.json` = `infra/edgegateway/plugin/testdata/keyformats.json`).
+- **`POST /tv3/{serviceContextId}/users`.** A rota não existe na norma (só `POST /tv3/current-service/users`, C.6.14.1, bind-token *shall*), mas o tv3ws a atende com o mesmo handler. Ela começou como `token`, o que deixava passar sem bind-token. Agora está como `token+bind`, com a regra provisória da L2. Falta decidir se a rota fica ou sai.
+- **`GET /tv3/authorize` sem `pm` reemite o refresh token de qualquer cliente já autorizado.** É anterior a esta semana (`tv3ws/src/api/client-identification/controller.ts`, "Cliente local ja autorizado que perdeu o refresh token"). Quem conhece o `clientid` de um cliente autorizado obtém o refresh token dele e, com o `/tv3/token`, um access token com a classe da vítima. A borda não impede, porque `/tv3/authorize` é `auth=none`. A norma prevê 101 no reuso de `clientid` na C.6.1.2 (C.6.1.4.4). Mínimo sugerido: só reemitir quando a classe gravada for local e igual à atual, e exigir prova de posse (o refresh token antigo).
+- **SSDP.** Com o padrão do compose (`SERVER_URL=localhost`), o anúncio e o `/manifest` divulgam o host de loopback, e um cliente em outro equipamento não alcança o `LOCATION`. O tv3ws agora avisa no boot (`[ssdp] AVISO`), mas o padrão não mudou. Falta decidir entre cair no IP local quando `SERVER_URL` for loopback e exigir `SSDP_ADVERTISE_HOST`. Também falta decidir o que o `Server-SecureBaseURL` anuncia enquanto a L3 estiver aberta: a 44643 da borda, que é HTTP, ou o HTTPS do próprio tv3ws, que não é publicado no host.
+
+### Correções a esta avaliação
+
+As afirmações de 21/09 que estão erradas seguem abaixo, cada uma marcada como **correção**.
+
+- **Correção: o plugin Go antigo nunca validou nada.** O handler de `infra@60e527f:gateway-external/plugin/consent-validator.go` repassava toda requisição ao ccws e devolvia a resposta sem olhar credencial; ignorava até o próximo handler do KrakenD. Era proxy puro. Por isso o plugin `tv30-auth` foi escrito do zero. Quando a seção *O que mudou* fala no "plugin Go que o chamaria", supõe um validador que nunca existiu.
+- **Correção: o cliente local associado não usa bind-token nem access token.** Ele usa as APIs do próprio contexto de serviço sem bind-token (C.4.1.1: "may use the APIs protected by the broadcaster, referencing their own service context, without using the bind-token") e não passa pelas etapas da C.6.1. O mecanismo que o reconhece fica a cargo da implementação (C.4.1.7). Estão erradas, portanto:
+  - a frase "ele se identifica pelo bind-token";
+  - a linha "local associado | bind-token" da tabela;
+  - o item 3 do plano de ativação, que dá bind-token ao associado.
+- **Correção: o cliente local autônomo também precisa de bind-token.** Além do access token, ele envia bind-token nas APIs protegidas. Os erros 104 e 108 de cada API valem para "non-local client or stand-alone local client".
+- **Correção: o receptor não assina nem emite bind-token.** Ele só registra a chave (C.6.8.2), valida o token e revoga a chave (C.6.8.4). O token é obtido "directly with DTV service providers" (A.4.9). Estão erradas as afirmações "a mais nova assina" e "hoje não há emissor... pré-requisito de implementação". Uma ferramenta que simule a emissora seria decisão do projeto, não exigência da norma.
+- **Correção: a contagem é 27, não 20.** São **27 APIs** cujo campo "Security requirements" exige o bind-token (*shall*), além de 3 classes de evento. Somando as 8 que listam 104/108 com o campo em branco, chega-se a 35. Somando também as 2 de persistência, 37. Nenhum critério dá 20; o número veio da vacina (P2.5) e foi copiado para cá.
+
+Tabela corrigida, que substitui a da seção *Descoberta na norma*. Os nomes de classe são os que o tv3ws grava no claim `class`:
+
+| Classe (`class`) | Credencial nas APIs |
+|---|---|
+| local associado (`local-associated`) | nenhuma, nas APIs do próprio contexto de serviço (C.4.1.1) |
+| local autônomo (`local-autonomous`) | accessToken; bind-token nas 27 APIs *shall* |
+| não local (`non-local`) | accessToken, via HTTPS fora de C.6.1.2 e C.6.1.3 (C.4.1.6); bind-token nas 27 APIs *shall* |
+
+---
+
 > Combinado da reunião de 21/09: **avaliar primeiro e apresentar**, porque
 > "tem que ver se vai ser tão tranquilo assim". Este documento é essa
 > avaliação. Nada daqui está implementado.

@@ -24,12 +24,29 @@ fi
 echo "[preflight] verificando portas usadas pelo stack..."
 LISTEN=$(netstat -ltn 2>/dev/null | awk '{print $4}')
 
+# Dono de uma porta em LISTEN. Este container nao tem CAP_SYS_PTRACE, entao o
+# netstat nao le /proc/<pid>/fd de processo do host com capacidades plenas —
+# caso do docker-proxy — e o dono sai "-" (medido em 02/10: com a stack de pe,
+# um segundo `docker compose up -d` parava aqui com "ocupada (-)"). Nesse caso
+# a linha de comando do docker-proxy (/proc/<pid>/cmdline, legivel sem ptrace
+# com pid: host) identifica a porta.
+owner_of() {
+  o=$(netstat -ltnp 2>/dev/null | grep -E "[:.]$1 " | awk '{print $7}' | head -1)
+  case "$o" in
+    ""|-)
+      if ps -o args 2>/dev/null | grep -qE "[d]ocker-proxy .*-host-port $1( |$)"; then
+        o="docker-proxy"
+      fi ;;
+  esac
+  printf '%s' "$o"
+}
+
 # 44642: unica porta INEGOCIAVEL (fixa pela norma C.3.4).
 #   - ocupada por processo NATIVO  -> ERRO bloqueante (conflito real)
 #   - ocupada por docker-proxy     -> aviso (ou e o proprio stack num re-up,
 #     e o compose reusa o bind, ou e daemon Docker duplo — ver troubleshooting)
 if echo "$LISTEN" | grep -qE "[:.]${PORT_BLOCK}$"; then
-  OWNER=$(netstat -ltnp 2>/dev/null | grep -E "[:.]${PORT_BLOCK} " | awk '{print $7}' | head -1)
+  OWNER=$(owner_of "$PORT_BLOCK")
   case "$OWNER" in
     *docker-proxy*)
       echo "[preflight] AVISO: 44642 em LISTEN por docker-proxy — re-up do proprio"
@@ -45,7 +62,7 @@ fi
 
 for p in $PORTS_WARN; do
   if echo "$LISTEN" | grep -qE "[:.]${p}$"; then
-    OWNER=$(netstat -ltnp 2>/dev/null | grep -E "[:.]${p} " | awk '{print $7}' | head -1)
+    OWNER=$(owner_of "$p")
     echo "[preflight] AVISO: porta ${p} ja esta em LISTEN (${OWNER:-dono desconhecido})."
     WARN=1
   fi
