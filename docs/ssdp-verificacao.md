@@ -79,16 +79,26 @@ Dois testes novos. O primeiro foi feito com um anunciante **descartável**, sepa
 
 O teste 9 só prova que o celular fala SSDP com o roteador. Não prova a ausência de isolamento entre clientes do Wi-Fi.
 
+**Medido em 04/10: modo host no WSL e celular.** Notebook na rede doméstica (Wi-Fi 192.168.0.12/24, VPN corporativa desligada), mesmo roteador do teste 9.
+
+| # | Teste | Como | Resultado |
+|---|---|---|---|
+| 11 | Anunciante descartável em `network_mode: host` no WSL, agora com `ssdpTtl: 4` (TTL 1 seria descartado no primeiro salto e enviesaria o teste) | o mesmo do teste 6; captura na `eth0` da VM | NOTIFY saindo pela `eth0` da VM (172.27.57.172) |
+| 12 | Controle no próprio PC, logo antes do 13 | M-SEARCH pela `vEthernet (WSL)` (172.27.48.1) | 16 respostas de 172.27.57.172 |
+| 13 | Celular no Wi-Fi doméstico, com o anunciante do 11 no ar | `M-SEARCH` com `ST: urn:schemas-sbtvd-org:service:TV3.0WebServices:1`, rodado duas vezes | **0 respostas** nas duas |
+
+O anunciante foi removido depois do teste.
+
 ### Onde o anúncio para
 
 ```
 container tv3ws        VM do WSL (Linux)                        Windows                       rede doméstica
-eth0 172.20.0.2 ──▶ br-8db76461e4d3 ─✗─▶ eth0 172.27.57.172 ──▶ vEthernet (WSL) 172.27.48.1 ─?─▶ Wi-Fi ──▶ celular
-     ✅ (1)               ✅ (2a)            ❌ (2b)                  ✅ só em modo host (7)            ❌ (10)
+eth0 172.20.0.2 ──▶ br-8db76461e4d3 ─✗─▶ eth0 172.27.57.172 ──▶ vEthernet (WSL) 172.27.48.1 ─✗─▶ Wi-Fi ──▶ celular
+     ✅ (1)               ✅ (2a)            ❌ (2b)                  ✅ só em modo host (7, 12)        ❌ (10, 13)
 ```
 
 1. **Primeira barreira, medida:** o kernel da VM do WSL, entre a bridge `br-*` e a `eth0`. Sem rota multicast (`ip mroute` vazio), ele entrega o pacote dentro da VM e não o encaminha. O NAT do Docker só traduz unicast. Essa barreira é do kernel Linux, não do WSL: num Linux nativo, a bridge do Docker barra do mesmo jeito.
-2. **Segunda barreira, inferida e ainda não medida:** o Windows, entre a `vEthernet (WSL)` e o Wi-Fi. Em modo host o anúncio chega ao próprio Windows (teste 7), mas o Windows não roteia multicast entre interfaces por padrão. Para medir: anunciante em modo host + celular (teste 10 repetido).
+2. **Segunda barreira, medida em 04/10:** o Windows, entre a `vEthernet (WSL)` e o Wi-Fi. Em modo host o anúncio chega ao próprio Windows (testes 7 e 12), mas não ao celular na mesma rede doméstica (teste 13). Isso bate com o Windows não rotear multicast entre interfaces por padrão.
 
 **Consequência:** numa máquina Windows com WSL2 em NAT, nenhuma das opções da L6 leva o anúncio ao celular sozinha. O teste positivo da camada 3 precisa de Linux nativo com Docker Engine (o Docker Desktop roda numa VM e tem o mesmo problema).
 
@@ -180,4 +190,4 @@ setTimeout(() => {
 
 - **L6, sem decisão:** onde roda o anunciante. As opções e o custo de cada uma estão na seção "L6: o que cada opção exige". Nada foi mudado.
 - **Camada 3:** medida em 03/10 a partir do WSL2, com resultado negativo (teste 10), como esperado. Falta o teste positivo em Linux nativo com o anunciante em modo host.
-- **Segunda barreira (Windows):** não medida. Repetir o teste 10 com o anunciante em modo host.
+- **Segunda barreira (Windows):** medida em 04/10 (teste 13). Com o anunciante em modo host no WSL2, o celular continua sem receber nada.

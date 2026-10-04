@@ -57,7 +57,7 @@ Medido em 02 e 03/10:
 | B2 | **Host padrão do anúncio** | Hoje é `localhost` (`SERVER_URL`). Opções: cair no IP local quando for loopback, ou exigir `SSDP_ADVERTISE_HOST` |
 | B3 | **Expor os cabeçalhos do `/manifest` ao navegador (CORS)** | expor `Server-*`/`Device-*` ou não |
 
-Nenhuma opção funciona em Windows com WSL2 em NAT. O teste positivo precisa de Linux nativo com Docker Engine; o roteiro está em [ssdp-verificacao.md](ssdp-verificacao.md).
+Nenhuma opção funciona em Windows com WSL2 em NAT. Isso foi medido em 04/10: com o anunciante em modo host, o anúncio chega ao Windows, mas o celular na mesma rede doméstica recebe 0 respostas. O teste positivo precisa de Linux nativo com Docker Engine; o roteiro está em [ssdp-verificacao.md](ssdp-verificacao.md).
 
 ## C. Outros pontos
 
