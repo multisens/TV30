@@ -1,8 +1,24 @@
 # Template: componente novo no TV30
 
-Pedido das reuniões de 21/09 e 28/09: quem cria um componente novo precisa saber como montar o compose dele e como rodar o mesmo componente fora do Docker enquanto desenvolve. Este diretório traz o modelo de compose ([`docker-compose.yml`](./docker-compose.yml)) e as regras. O passo a passo do desenvolvimento no host está em [`docs/dev-local.md`](../../docs/dev-local.md).
+Pedido das reuniões de 21/09 e 28/09: quem cria um componente novo precisa saber como montar o compose dele e como rodar o mesmo componente fora do Docker enquanto desenvolve. Este diretório traz o modelo de compose ([`docker-compose.yml`](./docker-compose.yml)), um componente de exemplo que sobe com ele e as regras. O passo a passo do desenvolvimento no host está em [`docs/dev-local.md`](../../docs/dev-local.md).
 
 > Mensageria (MQTT), borda (KrakenD) e armazenamento (Redis) são decisões de implementação deste testbed, não exigências da ABNT NBR 25608. O template segue essas decisões; não é requisito da norma.
+
+## O que vem na pasta
+
+| Arquivo | Papel |
+|---|---|
+| `docker-compose.yml` | O modelo: rede, nomes de serviço, restart, `init`, healthcheck e portas, com o porquê de cada escolha em comentário. |
+| `Dockerfile`, `index.js`, `package.json` | Componente de **exemplo**, executável como veio. Um processo Node só com a biblioteca padrão (sem `npm install`), que dá `PING` e lê a chave `tv30:<nome>:exemplo` no Redis, assina `tv30/<nome>/exemplo/ping` no broker e responde em `tv30/<nome>/exemplo/pong` com o valor da chave. Expõe `GET /health` na 8090 e sai com erro se perder o Redis ou o broker. Troque pelo código do seu componente; um componente real usa as bibliotecas do projeto (`mqtt`, `ioredis`), como o tv3ws. |
+
+Para conferir o template de ponta a ponta, rode `scripts/test-template.sh` com a stack de pé. O teste copia esta pasta para um diretório temporário, troca o nome do componente, sobe o exemplo e confere:
+
+- que o container entrou só na `ginga_net`;
+- que o exemplo falou com o `redis` e com o `mosquitto` pelo nome do serviço: uma mensagem de ping por MQTT volta com o valor que o teste gravou no Redis;
+- que o `/health` responde pela porta publicada;
+- a regra morre-inteiro: matar o processo do componente derruba o container, e o `restart` o traz de volta respondendo.
+
+No fim, o teste remove o container, a imagem e a chave de teste.
 
 ## Como usar
 
@@ -28,6 +44,7 @@ Se o componente for passar a fazer parte da stack, cole o bloco do serviço no `
 | MQTT e Redis **pelo nome do serviço**: `MQTT_HOST=mosquitto`, `REDIS_HOST=redis` | Dentro do container, `localhost` é o próprio container. |
 | `extra_hosts: host.docker.internal:host-gateway` | Faz `host.docker.internal` resolver também em Linux, para alcançar um processo rodando no host. Sem uso, é inócuo. |
 | `restart: unless-stopped` e **morre-inteiro** | Se um processo do componente cair, o container inteiro cai e o Docker religa. Nenhuma parte morre em silêncio. Com mais de um processo, use um supervisor no modelo de `infra/edgegateway/entrypoint.sh`. |
+| `init: true` | O init mínimo do Docker fica como PID 1 e o processo do componente como filho. O `SIGTERM` do `docker stop` chega ao processo (o Node como PID 1 o ignoraria e esperaria o `SIGKILL`). Se o processo morrer, o init sai junto, e o container cai como a regra anterior exige. |
 | Publicar só a porta que um cliente fora do Docker usa | Clientes das APIs da norma acessam a **borda** (44642, porta fixa da C.3.4, e 44643), não a implementação interna. |
 | Tolerar dependência ainda subindo | O `depends_on` não alcança serviços de outro projeto compose. Tente de novo ou saia com erro e deixe o `restart` religar. |
 | Componente novo **não valida credencial** | Decisão de 28/09 (D1): access token e bind-token são validados só na borda (plugin `tv30-auth`). Uma rota nova da norma entra em `infra/edgegateway/routes.json`, com `auth` e `classes`. |
@@ -51,6 +68,8 @@ docker compose -f <pasta-do-componente>/docker-compose.yml stop
 cd <pasta-do-componente>
 MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 PORT=8090 npm run dev
 ```
+
+No exemplo, o `npm run dev` é `node --watch index.js`: o processo reinicia a cada mudança no arquivo.
 
 Se um container precisar chamar o componente no host, configure nele `http://host.docker.internal:8090` e garanta o `extra_hosts` nesse container.
 

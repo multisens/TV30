@@ -55,7 +55,7 @@ O `.gitmodules` contém só esses quatro. `eduplay`, `sepe` (se-presentation-eng
 
 | Container | Porta(s) no host | Descrição |
 |-----------|----------|-----------|
-| `redis` | 6379; commander em porta dinâmica (`docker port redis 18081`) | Redis, com carga inicial e o redis-commander embutido para debug |
+| `redis` | 6379 (sem senha); commander em porta dinâmica (`docker port redis 18081`), com login | Redis, com carga inicial e o redis-commander embutido para debug |
 | `mqtt-broker` (serviço `mosquitto`) | 1883, `${MQTT_WS_PORT:-9001}` | Mosquitto + plugin C de validação de esquema |
 | `edgegateway` | 44642, 44643; docs em porta dinâmica (`docker port edgegateway 8085`) | Borda única. Contém os dois processos KrakenD (superfícies interna e externa) e a documentação Swagger. Morre-inteiro: se um processo cai, o container cai |
 | `tv3ws` | 45000–45199 (WebSockets de remote-device) | Ginga CC WebServices. As portas 44652/44653 ficam só na `ginga_net` |

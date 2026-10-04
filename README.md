@@ -8,6 +8,8 @@ Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 2560
 
 É um **monorepo com submodules Git** orquestrado por um único `docker-compose.yml` na raiz. Toda a stack sobe de uma vez só, em qualquer host com Docker, sem build local — as imagens vêm do Docker Hub e são atualizadas automaticamente pelos workflows de cada submodule.
 
+> **Exceção temporária (04/10/2026):** as imagens com as mudanças de 03 e 04/10 (`tv30-redis` com login no Redis Commander, `tv30-tv3ws` com o 101 no reuso de `clientid` e o `kex` com `key`, `tv30-edgegateway` com o 404 `{"error":200}` no lugar do 500 vazio) ainda só existem em build local. Até serem publicadas, um clone novo puxa do Docker Hub as versões anteriores; para ter as novas, rode `docker compose build redis tv3ws edgegateway` antes do `docker compose up -d`.
+
 ---
 
 ## Pré-requisitos
@@ -82,6 +84,7 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 | `SERVER_URL` | `localhost` | Host que dispositivos externos usam para abrir os WebSockets de remote-device. |
 | `JWT_SECRET` / `JWT_ISSUER` | default de desenvolvimento / `GenericIssuer` | Segredo e emissor do accessToken. O **mesmo** valor vai para o tv3ws (que assina) e para a borda (que valida). |
 | `AUTH_ENFORCE` | `warn` | Validação de credenciais na borda: `warn` só registra (log `[tv30-auth] WARN` + cabeçalho `X-TV30-Auth-Warn`); `enforce` rejeita com 404 + corpo C.3.2. |
+| `REDIS_COMMANDER_USER` / `REDIS_COMMANDER_PASSWORD` | `admin` / `tv30-redis-admin` | Login da interface administrativa do Redis (ver [seção própria](#interface-administrativa-do-redis)). Não muda a conexão com o banco (6379), que segue sem senha. |
 
 O `tv3ws/.env` é **opcional**: sem ele o tv3ws sobe normalmente, em HTTP, com um `JWT_SECRET` default de desenvolvimento. Para usar um `JWT_SECRET` próprio, defina-o no **`.env` da raiz** (a seção `environment:` do compose tem precedência sobre `env_file`, então `JWT_SECRET` dentro de `tv3ws/.env` não tem efeito) — assim a borda recebe o mesmo valor. Para habilitar HTTPS, ver a próxima seção — `HTTPS_CERT`/`HTTPS_KEY` estes sim vêm do `tv3ws/.env`.
 
@@ -142,9 +145,25 @@ Depois `docker compose up -d` (ou `docker compose restart tv3ws` se a stack já 
 | bcast (broadcaster) | `${BCAST_PORT:-8081}` | http://localhost:8081 — apps de serviço (webmedia, uff, etc.) |
 | Mosquitto MQTT | 1883 | Broker TCP |
 | Mosquitto WS | `${MQTT_WS_PORT:-9001}` | WebSocket — em Windows usar **9003** |
-| Redis | 6379 | Estado de sessão + perfis (acesso TCP, ex.: `redis-cli`) |
-| Redis Commander (embutido no redis) | dinâmica | `docker port redis 18081` mostra a porta |
+| Redis | 6379 | Estado de sessão + perfis (acesso TCP, ex.: `redis-cli`), sem senha |
+| Redis Commander (embutido no redis) | dinâmica | `docker port redis 18081` mostra a porta; exige login (ver abaixo) |
 | edgegateway — docs | dinâmica | Swagger UI + 2 specs: `docker port edgegateway 8085` |
+
+---
+
+## Interface administrativa do Redis
+
+O container `redis` embute o Redis Commander (0.9.0, versão fixada no `infra/redis/Dockerfile`, porque o login depende dos nomes de variável dela), interface web para inspecionar o banco durante o desenvolvimento. Ela exige usuário e senha (decisão D-L1, tomada pelo Luís em 03/10).
+
+- **URL:** a porta de host é dinâmica. `docker port redis 18081` mostra qual é (ex.: `0.0.0.0:32768`), e a interface fica em `http://localhost:<porta>/`.
+- **Usuário padrão:** `admin`
+- **Senha padrão:** `tv30-redis-admin`
+- **Para trocar:** defina `REDIS_COMMANDER_USER` e `REDIS_COMMANDER_PASSWORD` no `.env` da raiz e recrie o container com `docker compose up -d redis`. Valor vazio volta ao padrão. Troque a senha padrão fora do laboratório.
+- **Como o login funciona:** não é HTTP basic auth, então o navegador não abre a janela de autenticação. A página inicial carrega e mostra um formulário de login. Sem login, as rotas que leem o banco respondem 401.
+
+> **A conexão com o banco (porta 6379) continua sem senha.** A senha protege só a interface administrativa. tv3ws, AoP, borda e `redis-cli` conectam como antes, sem `requirepass`.
+
+O login é configurado pelo entrypoint da imagem `tv30-redis`. Uma imagem construída antes de 03/10, ou puxada do Docker Hub antes da publicação das imagens novas, sobe a interface **sem** login, mesmo com as variáveis definidas. Nesse caso, reconstrua com `docker compose build redis && docker compose up -d redis`.
 
 ---
 

@@ -84,7 +84,7 @@ Defaults vêm do `.env` (raiz). Em Windows + WSL2 com 9001 ocupada no host, defi
 
 | Container | Porta(s) no host | Descrição |
 |-----------|----------|-----------|
-| `redis` | 6379; commander em porta dinâmica | Estado de sessão, usuários e credenciais + redis-commander embutido (debug) |
+| `redis` | 6379 (sem senha); commander em porta dinâmica, com login | Estado de sessão, usuários e credenciais + redis-commander embutido (debug) |
 | `mqtt-broker` (serviço `mosquitto`) | 1883, `${MQTT_WS_PORT:-9001}` | MQTT broker + plugin C de validação de esquema |
 | `edgegateway` | 44642, 44643; docs (8085) em porta dinâmica | Borda única: KrakenD interno e externo + Swagger UI; plugin `tv30-auth`; morre-inteiro |
 | `tv3ws` | 45000–45199 (WebSockets) | TV 3.0 WebServices. 44652/44653 só na `ginga_net` |

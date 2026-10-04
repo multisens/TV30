@@ -134,7 +134,10 @@ O tv3ws **assina** o accessToken (HS256, `JWT_SECRET`, emissor `JWT_ISSUER`). A 
    - A porta embutida na URL é a interna (8081), então com o aop no host a porta publicada do bcast também tem de ser 8081.
 3. **As portas do tv3ws no host (44654/44655) têm de casar com a variante windows** (`infra/edgegateway/routes.json`, `backends.*.windows`).
 4. **Cliente acessa a borda**, não a implementação. As portas 44652/44653 do tv3ws não são publicadas no host.
-5. **Componente novo em container segue o template** [`templates/componente/`](../templates/componente/README.md): `ginga_net` externa, MQTT/Redis pelo nome do serviço, `extra_hosts`, `restart: unless-stopped` e morre-inteiro. Se um processo interno cair, o container cai inteiro. O modelo é `infra/edgegateway/entrypoint.sh`.
+5. **Componente novo em container segue o template** [`templates/componente/`](../templates/componente/README.md): `ginga_net` externa, MQTT/Redis pelo nome do serviço, `extra_hosts`, `restart: unless-stopped`, `init: true` e morre-inteiro. Se um processo interno cair, o container cai inteiro. O modelo com mais de um processo é `infra/edgegateway/entrypoint.sh`.
+   - O template sobe como veio: traz um componente de exemplo (`Dockerfile`, `index.js`, `package.json`, só com a biblioteca padrão do Node). O exemplo responde por MQTT com um valor lido do Redis e expõe `/health`.
+   - `scripts/test-template.sh` executa o template com a stack de pé. Ele copia a pasta, troca o nome, sobe o exemplo e confere a `ginga_net`, a conversa com `redis` e `mosquitto` pelo nome do serviço, a porta publicada e a regra morre-inteiro: mata o processo, o container cai e o `restart` o traz de volta. No fim, remove tudo o que criou.
+   - O mesmo exemplo roda no host com `npm run dev`, como na seção "O mesmo componente rodando no host" do README do template.
 
 ## Limites
 
