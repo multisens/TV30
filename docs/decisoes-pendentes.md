@@ -9,7 +9,7 @@ Lista única dos pontos que dependem do orientador. Os que seguem em aberto est�
 
 **Decididos pelo Luís em 03/10:** A1 (D-L1), A2 (D-L2) e A5 (D-L4). Os rótulos D-L1, D-L2 e D-L4 que aparecem no código, nos scripts e nos outros documentos são estas três decisões. Ficam na tabela, marcados como decididos, com o que foi feito, para o orientador ver. Não foram decididos pelo Joel. O A3 continua aberto, em consulta. Da A5 só o risco do `Origin` forjado foi decidido; a origem própria por app (P1.3) continua aberta.
 
-**Esperam confirmação do Luís** (feitas na implementação e na integração, fora do texto das decisões): o 101 para `clientid` bloqueado, que antes dava 102, e a correção do `kex`. As duas estão descritas abaixo.
+**Esperam confirmação do Luís** (feitas na implementação e na integração, fora do texto das decisões, e já enviadas no tv3ws `cc0d1a9`): o 101 para `clientid` bloqueado, que antes dava 102, e a correção do `kex`. As duas estão descritas abaixo.
 
 - [Avaliação do item 9](avaliacao-item9-credenciais.md): credenciais e lacunas L1–L7.
 - [Verificação SSDP](ssdp-verificacao.md): descoberta, L6 e testes de rede.
@@ -72,9 +72,32 @@ Nenhuma opção funciona em Windows com WSL2 em NAT. O teste positivo precisa de
 | C7 | **Detalhamento do Privacy Manager** | Aguardando o material prometido em 15/09 |
 | C8 | **Sem rede, o SSDP derruba o tv3ws inteiro** (regra morre-inteiro) | Num notebook offline, as APIs HTTP caem junto. Aceitar ou abrir exceção |
 
+## D. Negociação de versão de API
+
+> **Origem desta seção:** o documento de trabalho **`negociacao-de-versao-no-testbed.md`**, recebido em 04/10. Ele fica na raiz do TV30 e está **fora do controle de versão** (`.git/info/exclude`). As perguntas abaixo **não vêm das reuniões**: saem do confronto desse documento com o código atual. O próprio documento declara que é "documento de trabalho" e "não é decisão de projeto". As lacunas **L-04, L-05 e L-06** que ele cita são da numeração dele, não as L1–L8 deste testbed.
+
+O que o documento propõe, em resumo:
+- usar o mecanismo da C.3.6: `Accept-Version`, valendo 2.0 quando ausente, e `API-Version` em toda resposta, inclusive nas de erro;
+- gravar a versão no recurso que sobrevive à requisição;
+- manter um modelo interno único com uma projeção por versão;
+- a borda negocia (passos 1 a 4) e o serviço monta a resposta;
+- conjunto de versões `{2.0, 2.1, 3.0}`.
+
+| # | Ponto | Hoje no código | Pergunta |
+|---|---|---|---|
+| D1 | **Qual conjunto de versões vale** | `SUPPORTED_VERSIONS = ['2.0', '2.1']` (`tv3ws/src/middleware/basic.ts:10`). A **2.1 de hoje** é o fluxo de remote-device por `handle`, a proposta do Luís ao Fórum (decisão de 21/09, item 15). No documento, a 2.1 é outra coisa: a "recomposição aditiva" da *Avaliação*, 6.3. Ele classifica a separação por `handle` (Issue #30) como 3.0, ou como 2.1 só se a rota antiga continuar servindo o formato 2.0, o que o código já faz | Adotar `{2.0, 2.1, 3.0}`? Se sim, a 2.1 atual muda de número ou é absorvida? |
+| D2 | **Onde a versão é negociada** | O tv3ws faz tudo (`basic.ts:35-57`). O plugin da borda repete a lista `2.0`/`2.1` à mão (`infra/edgegateway/plugin/handler.go:432`), só para os erros dele | Passar os passos 1 a 4 para a borda, com um cabeçalho interno para o serviço, como o documento propõe (Seção 6)? |
+| D3 | **Gravar a versão no recurso** (registro de dispositivo remoto, registro de notificação, ponto de entrada WebSocket) | Não grava. A forma da listagem é decidida a cada requisição (`tv3ws/src/api/multi-device/controller.ts:50`) | Gravar `registrationVersion` no `handle`, como na Seção 3 do documento? |
+| D4 | **APIs de consulta de versão por API** (C.6.7.8 e C.6.7.9) | Não existem | Implementar como projeção do registro de versões (Seção 8.a do documento)? |
+| D5 | **Escopo** | O documento lembra que o grupo de notificações do Anexo C e as unidades `rd-` (software do dispositivo remoto) estão fora do escopo (*Escopo e desenho*, Seção 9) | Trazer para o escopo, para exercitar a 3.0 (Seção 8.b e 8.c)? |
+
+O documento cita outros que não estão no repositório: *Avaliação das propostas de alteração das APIs de dispositivo remoto*, *Escopo e desenho*, *Princípios e critérios*, *Unidades de implementação da TV 3.0 AoP* e *Lacunas sem decisão*. As referências a eles não foram conferidas.
+
+**Divergência que não depende de decisão:** os erros 100 e 101 que o tv3ws devolve na negociação saem **sem** `API-Version`, porque o cabeçalho só é gravado depois da validação (`basic.ts:44-52`). A C.3.6.6 e o passo 6 do documento pedem `API-Version` em toda resposta. A borda já o põe nos erros dela, mas num erro 100 devolve `2.0` em vez da versão mais recente suportada. Ainda não foi corrigido.
+
 ## Correções e respostas para levar
 
 - **O plugin Go antigo nunca validou nada.** Era proxy puro (`infra@60e527f:gateway-external/plugin/consent-validator.go`). O `tv30-auth` foi escrito do zero.
 - **"Registrar para quem cada token foi emitido?"** A norma não manda registrar, mas o bloqueio de cliente (C.4.2.2) e o refresh token por cliente (Tabela C.4) só funcionam com esse vínculo, e o código já o guarda em `client:{id}`. O ponto A2 enfraquecia essa garantia; com o 101 no reuso de `clientid` (decidido pelo Luís em 03/10), o `/tv3/authorize` deixou de reemitir o refresh token.
 - **O item 5 o Joel dispensou em 28/09.** Ele mesmo está avançando a parte de transporte (21/09).
-- **O pareamento por PIN (`pm=kex`) nunca se completava.** O tv3ws respondia só `{challenge}`, e a Tabela C.3 (formato 3, p. 214; p. 232 do PDF) manda responder também `key`, a chave parcial ECDH do servidor (C.4.3.3, passo 1). Sem ela, o aplicativo não deriva a chave. O teste novo do não local achou a falha, e ela foi corrigida na integração de 04/10 (uma linha em `tv3ws/src/api/client-identification/controller.ts`). É correção de conformidade (Tabela C.3, formato 3; C.4.3.3, passo 1), não decisão de desenho, mas **espera o aval do Luís** antes do commit. O PIN continua publicado sem zeros à esquerda (por exemplo, `42`); a nota da C.4.3.3 fala em "a four-digit number".
+- **O pareamento por PIN (`pm=kex`) nunca se completava.** O tv3ws respondia só `{challenge}`, e a Tabela C.3 (formato 3, p. 214; p. 232 do PDF) manda responder também `key`, a chave parcial ECDH do servidor (C.4.3.3, passo 1). Sem ela, o aplicativo não deriva a chave. O teste novo do não local achou a falha, e ela foi corrigida na integração de 04/10 (uma linha em `tv3ws/src/api/client-identification/controller.ts`). É correção de conformidade (Tabela C.3, formato 3; C.4.3.3, passo 1), não decisão de desenho. Já foi commitada e enviada (tv3ws `cc0d1a9`, 04/10) e **espera o aval do Luís**; para reverter, basta tirar o campo `key` da resposta do `kex`. O PIN continua publicado sem zeros à esquerda (por exemplo, `42`); a nota da C.4.3.3 fala em "a four-digit number".
