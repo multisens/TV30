@@ -188,6 +188,7 @@ setTimeout(() => {
 
 ## Pendências
 
+- **Plataforma, decidida pelo Joel (informado pelo Luís em 04/10):** a descoberta SSDP só precisa funcionar em **Linux nativo** com Docker Engine. Windows com WSL2 e Docker Desktop ficam fora, como limitação documentada (testes 10 e 13).
 - **L6, sem decisão:** onde roda o anunciante. As opções e o custo de cada uma estão na seção "L6: o que cada opção exige". Nada foi mudado.
 - **Camada 3:** medida em 03/10 a partir do WSL2, com resultado negativo (teste 10), como esperado. Falta o teste positivo em Linux nativo com o anunciante em modo host.
 - **Segunda barreira (Windows):** medida em 04/10 (teste 13). Com o anunciante em modo host no WSL2, o celular continua sem receber nada.

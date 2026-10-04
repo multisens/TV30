@@ -51,9 +51,11 @@ Medido em 02 e 03/10:
 - com o anunciante em `network_mode: host`, ele chega ao próprio Windows;
 - um celular na rede doméstica faz SSDP com o roteador, mas não acha o testbed (0 respostas).
 
+**Decidido pelo Joel (informado pelo Luís em 04/10): a descoberta SSDP só precisa funcionar em Linux nativo.** Em Windows com WSL2 e no Docker Desktop (Windows, Mac ou Linux), que rodam o Docker dentro de uma VM, o anúncio não chega aos outros aparelhos da rede. Isso fica como limitação documentada, e não como defeito. Nesses ambientes, o cliente não local pode chegar ao receptor pelo IP, sem a etapa de descoberta (`http://<IP>:44642/manifest`).
+
 | # | Ponto | Opções |
 |---|---|---|
-| B1 | **L6: onde roda o anunciante** | **A:** a borda anuncia, em modo host (direção de 28/09; a borda é KrakenD, então o anúncio precisa ser reescrito). **B:** container só para o anúncio, em modo host (contraria "borda num container só"). **tv3ws em modo host:** o caminho mais curto, mas exige escutar só em `127.0.0.1` para não reabrir a porta direta |
+| B1 | **L6: onde roda o anunciante** (continua aberto; com a decisão acima, qualquer opção só precisa servir ao Linux nativo) | **A:** a borda anuncia, em modo host (direção de 28/09; a borda é KrakenD, então o anúncio precisa ser reescrito). **B:** container só para o anúncio, em modo host (contraria "borda num container só"). **tv3ws em modo host:** o caminho mais curto, mas exige escutar só em `127.0.0.1` para não reabrir a porta direta |
 | B2 | **Host padrão do anúncio** | Hoje é `localhost` (`SERVER_URL`). Opções: cair no IP local quando for loopback, ou exigir `SSDP_ADVERTISE_HOST` |
 | B3 | **Expor os cabeçalhos do `/manifest` ao navegador (CORS)** | expor `Server-*`/`Device-*` ou não |
 
