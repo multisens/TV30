@@ -65,6 +65,46 @@ Com o padrão `localhost`, o mesmo cliente recebeu o anúncio, mas o GET no LOCA
 
 Os comandos acima rodaram dentro da VM do WSL (`wsl.exe -u root bash <script>`). O M-SEARCH enviado à bridge usou TTL 1 e não saiu da VM. Nenhum pacote foi enviado à rede da ONS.
 
+## Medido em 03/10: modo host no WSL e celular na rede doméstica
+
+Dois testes novos. O primeiro foi feito com um anunciante **descartável**, separado da stack; nada da stack mudou.
+
+| # | Teste | Como | Resultado |
+|---|---|---|---|
+| 6 | Anunciante em `network_mode: host` no WSL | container `node:20-alpine` com a mesma biblioteca do tv3ws (`@lvcabral/node-ssdp`), `ssdpTtl: 1`, LOCATION `http://172.27.57.172:44699/manifest` (manifesto falso numa porta livre) | o NOTIFY **aparece na `eth0` da VM do WSL**, onde com a bridge apareciam 0 pacotes |
+| 7 | Cliente no Windows, preso à interface `vEthernet (WSL)` (172.27.48.1), TTL 1 | script Node com `dgram`: escuta passiva do grupo + M-SEARCH | 8 NOTIFY, 32 respostas a cerca de 5 M-SEARCH e GET no LOCATION com 200 e os seis cabeçalhos. As respostas vêm duplicadas porque, em modo host, a biblioteca responde por todas as interfaces IPv4 da VM (`eth0`, `docker0`, `br-*`) |
+| 8 | Controle negativo do 7 | o mesmo cliente, só com a stack (tv3ws na bridge) | 0 NOTIFY, 0 respostas |
+| 9 | Celular Android na rede doméstica (Termux, Python com `socket`), controle positivo | `M-SEARCH` com `ST: ssdp:all` | cerca de 15 respostas do roteador doméstico (192.168.0.1), uma por serviço UPnP. A rede e o celular fazem SSDP |
+| 10 | O mesmo celular, buscando o receptor | `M-SEARCH` com `ST: urn:schemas-sbtvd-org:service:TV3.0WebServices:1`, com a stack de pé no notebook (WSL2) na mesma rede | **0 respostas** |
+
+O teste 9 só prova que o celular fala SSDP com o roteador. Não prova a ausência de isolamento entre clientes do Wi-Fi.
+
+### Onde o anúncio para
+
+```
+container tv3ws        VM do WSL (Linux)                        Windows                       rede doméstica
+eth0 172.20.0.2 ──▶ br-8db76461e4d3 ─✗─▶ eth0 172.27.57.172 ──▶ vEthernet (WSL) 172.27.48.1 ─?─▶ Wi-Fi ──▶ celular
+     ✅ (1)               ✅ (2a)            ❌ (2b)                  ✅ só em modo host (7)            ❌ (10)
+```
+
+1. **Primeira barreira, medida:** o kernel da VM do WSL, entre a bridge `br-*` e a `eth0`. Sem rota multicast (`ip mroute` vazio), ele entrega o pacote dentro da VM e não o encaminha. O NAT do Docker só traduz unicast. Essa barreira é do kernel Linux, não do WSL: num Linux nativo, a bridge do Docker barra do mesmo jeito.
+2. **Segunda barreira, inferida e ainda não medida:** o Windows, entre a `vEthernet (WSL)` e o Wi-Fi. Em modo host o anúncio chega ao próprio Windows (teste 7), mas o Windows não roteia multicast entre interfaces por padrão. Para medir: anunciante em modo host + celular (teste 10 repetido).
+
+**Consequência:** numa máquina Windows com WSL2 em NAT, nenhuma das opções da L6 leva o anúncio ao celular sozinha. O teste positivo da camada 3 precisa de Linux nativo com Docker Engine (o Docker Desktop roda numa VM e tem o mesmo problema).
+
+## L6: o que cada opção exige (decisão do projeto, não da norma)
+
+A norma não diz onde o anunciante roda (C.3.4). O que segue é decisão de implementação deste testbed. Para o teste em Linux nativo não é preciso mexer em código: dá para colocar o tv3ws em `network_mode: host` só por compose e `.env`, com `MQTT_HOST`/`REDIS_HOST=localhost`, `EDGE_VARIANT=windows` com o tv3ws em 44654/44655 (o arranjo do cenário 1 do dev-host) e `SERVER_URL=<IP da LAN>`.
+
+| Opção | O que muda | Código |
+|---|---|---|
+| tv3ws em modo host (caminho mais curto, fora de A e B) | a borda acha o tv3ws por `host.docker.internal`; o tv3ws acha MQTT e Redis por `localhost` | **pequeno:** o tv3ws escuta em todas as interfaces (`tv3ws/src/server.ts:20`, `listen(httpPort)` sem endereço), então em modo host a API fica exposta na LAN sem passar pela borda, o que reabre a porta direta fechada no item 8. Precisa de um endereço de escuta configurável (`127.0.0.1`). Também é preciso restringir o anúncio à interface certa (`tv3ws/src/ssdp-server.ts`, `new Server` sem `interfaces`), para evitar as duplicatas |
+| **B:** container só para o anúncio, em modo host | serviço novo no compose; borda e tv3ws continuam na bridge | **médio:** o anúncio está acoplado ao tv3ws. O `ssdp-server.ts` registra `/manifest` no app do tv3ws (linha 42) e é chamado no boot (`server.ts:46`). É preciso um modo "só anunciar". Contraria "a borda num container só" |
+| **A:** a borda anuncia, em modo host (direção dita pelo Joel em 28/09) | a borda sai da `ginga_net` e passa a achar tv3ws e Redis por `localhost` | **grande:** a imagem da borda é KrakenD, sem Node. O anunciante precisa ser reescrito (Go, por exemplo) ou virar um processo Node a mais na borda. O `generate.js` precisa de uma variante nova, e o tv3ws precisa ser publicado em `127.0.0.1` |
+| macvlan | o container ganha IP próprio na LAN | nenhum no código; configuração de rede específica de cada máquina |
+
+Em todas as opções continuam valendo: `SERVER_URL` (ou `SSDP_ADVERTISE_HOST`) com o IP da LAN, UDP 1900 e TCP 44642 liberados no firewall do host, e nenhum isolamento de clientes no Wi-Fi.
+
 ## O que exige rede doméstica e um segundo dispositivo
 
 A camada 3, a descoberta por outro dispositivo da LAN, precisa de:
@@ -138,5 +178,6 @@ setTimeout(() => {
 
 ## Pendências
 
-- **L6, sem decisão:** onde roda o anunciante. As opções são a borda em `network_mode: host` ou um anunciante separado na rede do host. Nada foi mudado.
-- **Camada 3 não medida:** depende de rede doméstica, Linux nativo e um segundo dispositivo (roteiro acima).
+- **L6, sem decisão:** onde roda o anunciante. As opções e o custo de cada uma estão na seção "L6: o que cada opção exige". Nada foi mudado.
+- **Camada 3:** medida em 03/10 a partir do WSL2, com resultado negativo (teste 10), como esperado. Falta o teste positivo em Linux nativo com o anunciante em modo host.
+- **Segunda barreira (Windows):** não medida. Repetir o teste 10 com o anunciante em modo host.
