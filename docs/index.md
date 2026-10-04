@@ -40,6 +40,7 @@ Conjunto de microsserviços que reproduzem o ecossistema TV 3.0. Os componentes 
 | [APIs do tv3ws]({{ site.baseurl }}/apis-tv3ws) | Endpoints, mapeamento ABNT NBR 25608 |
 | [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local) | Infra em containers + um módulo com `npm run dev`; teste `scripts/test-dev-host.sh` |
 | [Verificação: descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao) | Anúncio SSDP medido no container, na bridge e no WSL; roteiro e cliente para a rede doméstica |
+| [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes) | Pontos que dependem do orientador: antes do enforce, SSDP (L6) e outros |
 | [Criação de perfil (em Modelo de Dados Redis)]({{ site.baseurl }}/modelo-redis) | Do form do AoP direto ao Redis, seção "Sincronização entre JSON e Redis" |
 | [Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos) | Tabela completa de tópicos e responsabilidades |
 | [Troubleshooting]({{ site.baseurl }}/troubleshooting) | Erros comuns: WSL2, CORS, CRLF, etc. |
