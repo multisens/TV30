@@ -3,9 +3,13 @@ title: "Decisões pendentes (para o orientador)"
 nav_order: 14
 ---
 
-# Decisões pendentes — estado em 03/10/2026
+# Decisões pendentes — estado em 04/10/2026
 
-Lista única dos pontos que dependem do orientador. Cada um está marcado `PENDENTE (Joel)` no código ou na documentação. Nenhum foi resolvido por conta própria. O detalhe técnico está nos documentos citados.
+Lista única dos pontos que dependem do orientador. Os que seguem em aberto estão marcados `PENDENTE (Joel)` no código ou na documentação, e nenhum deles foi resolvido por conta própria. O detalhe técnico está nos documentos citados.
+
+**Decididos pelo Luís em 03/10:** A1 (D-L1), A2 (D-L2) e A5 (D-L4). Os rótulos D-L1, D-L2 e D-L4 que aparecem no código, nos scripts e nos outros documentos são estas três decisões. Ficam na tabela, marcados como decididos, com o que foi feito, para o orientador ver. Não foram decididos pelo Joel. O A3 continua aberto, em consulta. Da A5 só o risco do `Origin` forjado foi decidido; a origem própria por app (P1.3) continua aberta.
+
+**Esperam confirmação do Luís** (feitas na implementação e na integração, fora do texto das decisões): o 101 para `clientid` bloqueado, que antes dava 102, e a correção do `kex`. As duas estão descritas abaixo.
 
 - [Avaliação do item 9](avaliacao-item9-credenciais.md): credenciais e lacunas L1–L7.
 - [Verificação SSDP](ssdp-verificacao.md): descoberta, L6 e testes de rede.
@@ -16,11 +20,11 @@ A validação na borda está em produção em modo `warn`: nada é bloqueado, s�
 
 | # | Ponto | Por que importa | Opções |
 |---|---|---|---|
-| A1 | **Redis 6379 publicado no host e sem senha** | A borda decide com dados do Redis. Quem alcança a 6379 grava `origins:associated` (vira associado) ou `bind-context:*` (registra a própria chave de emissora) | publicar só em `127.0.0.1` (o dev-host continua funcionando), ou senha no Redis |
-| A2 | **`GET /tv3/authorize` sem `pm` reemite o refresh token de qualquer cliente já autorizado** (anterior a esta semana) | Quem conhece o `clientid` de outro cliente obtém um access token com a classe dele | 101 no reuso de `clientid` (C.6.1.4.4), ou exigir prova de posse (o refresh token antigo) |
-| A3 | **Onde fica a API C.6.8** (`/tv3/bind-context`) | Ficou no tv3ws; a reunião de 28/09 falou em "no plugin". Hoje há dois leitores de chave (tv3ws e borda), mantidos iguais por teste | manter no tv3ws, ou mover para o plugin |
+| A1 | **Redis 6379 publicado no host e sem senha** — **DECIDIDO (Luís, 03/10)** | A borda decide com dados do Redis. Quem alcança a 6379 grava `origins:associated` (vira associado) ou `bind-context:*` (registra a própria chave de emissora) | **Decidido:** a conexão com o Redis fica como está, sem senha e com a 6379 publicada. Só a interface administrativa (redis-commander) passa a exigir senha. Ver abaixo. Opções levantadas antes: publicar só em `127.0.0.1`, ou senha no Redis |
+| A2 | **`GET /tv3/authorize` sem `pm` reemitia o refresh token de qualquer cliente já autorizado** (anterior à semana de 28/09) — **DECIDIDO (Luís, 03/10)** | Quem conhecesse o `clientid` de outro cliente obtinha um access token com a classe dele | **Decidido:** 101 no reuso de `clientid`, para qualquer classe (C.6.1.4.4). Ver abaixo. A outra opção era exigir prova de posse (o refresh token antigo) |
+| A3 | **Onde fica a API C.6.8** (`/tv3/bind-context`) | Ficou no tv3ws; a reunião de 28/09 falou em "no plugin". Hoje há dois leitores de chave (tv3ws e borda), mantidos iguais por teste | manter no tv3ws, ou mover para o plugin. **Em aberto, em consulta** |
 | A4 | **`POST /tv3/{serviceContextId}/users`** | Não existe na norma (só `current-service/users`). Foi para `token+bind` para não furar o bind-token | manter, ou tirar da tabela de rotas |
-| A5 | **L1: como reconhecer o local associado** | Hoje é o `Origin` em `origins:associated`. As apps de emissora são servidas pelo proxy do AoP na mesma origem (P1.3 não feito), e um `Origin` forjado fora do navegador passa | origem própria por app (P1.3), porta de origem (C.4.1.7), outro |
+| A5 | **L1: como reconhecer o local associado** — risco do `Origin` forjado **DECIDIDO (Luís, 03/10)**; P1.3 **em aberto** | Hoje é o `Origin` em `origins:associated`. Um `Origin` forjado fora do navegador passa. E as apps de emissora são servidas pelo proxy do AoP, na origem do próprio AoP, enquanto o AoP grava em `origins:associated` a origem própria da app (alvo do proxy): elas não são reconhecidas como associadas | **Decidido: risco aceito do `Origin` forjado.** O critério continua sendo o `Origin`, sem mudança de comportamento. Ver abaixo. **Continua aberto: P1.3, origem própria por app**, pré-requisito do `enforce`: sem ela, as apps de emissora levam `X-TV30-Auth-Warn: 107` em `warn` e seriam bloqueadas em `enforce` (ver abaixo e `KNOWN-ISSUES.md`). Outra opção levantada antes: porta de origem (C.4.1.7) |
 | A6 | **L2: identidade do serviço** | `serviceContextId` é constante para todo serviço; rotas `/tv3/<scid>/...` usam uma regra provisória | definir scid por serviço |
 | A7 | **L3: TLS na borda (44643 em HTTP)** | Sem TLS não há 106 por protocolo para o não local, o `Server-SecureBaseURL` aponta para porta sem TLS e o remote-device devolve `ws://` em vez de `wss://` | decidir a PKI |
 | A8 | **L4: 106 ao associado em `/authorize` e `/token`** | Implementado só no plugin e só em `enforce`; `/tv3/token` sem `Origin` passa | confirmar a regra |
@@ -28,6 +32,17 @@ A validação na borda está em produção em modo `warn`: nada é bloqueado, s�
 | A10 | **L7: liberar recursos ao revogar chave (C.4.4)** | Não implementado | prioridade |
 
 Dependência fora do projeto: o Guaraná (Pedro) precisa obter o access token antes do `enforce`.
+
+### Decididos pelo Luís em 03/10: o que foi feito
+
+- **A1. Senha só na interface administrativa do Redis.** A conexão com o banco não mudou: continua sem senha e com a 6379 publicada. Os clientes (tv3ws, aop e plugin da borda), a carga inicial e o healthcheck seguem iguais. O redis-commander é um processo auxiliar do container `redis` (`infra/redis/entrypoint.sh`) e agora exige login com usuário e senha. Na versão instalada (0.9.0, fixada no `infra/redis/Dockerfile` desde 04/10, porque o login depende dos nomes de variável dessa versão), isso não é HTTP basic auth: a página de login abre sem credencial, e as rotas de dados respondem 401 sem o token que o login devolve. As variáveis são `REDIS_COMMANDER_USER` (padrão `admin`) e `REDIS_COMMANDER_PASSWORD` (padrão `tv30-redis-admin`), lidas do `.env` da raiz e repassadas por `infra/redis/docker-compose.yml`. A URL e a senha padrão estão no `README.md` da raiz, seção *Interface administrativa do Redis*. **A decisão não fecha o risco da linha A1:** quem alcança a 6379 continua podendo gravar `origins:associated` e `bind-context:*`.
+- **A2. 101 no reuso de `clientid`.** O `GET /tv3/authorize` responde 404 `{"error":101}` quando o `clientid` já foi usado, para qualquer classe. Na norma:
+  - Tabela C.3, erro 101: "if clientid has been used before" (p. 215; p. 233 do PDF);
+  - C.6.1.4.4: "it is considered an error to try to use the API C.6.1.2 by passing a previously used clientid" (p. 219; p. 237 do PDF).
+
+  Saiu do tv3ws o trecho que reemitia o refresh token ao cliente local já autorizado (`tv3ws/src/api/client-identification/controller.ts`). **A confirmar pelo Luís:** o `clientid` recusado pelo espectador (`clients:blocked`), que antes dava 102, também passou a dar 101. A nota da Tabela C.3 manda isso ("any attempt to authorize immediately returns error 101, without displaying the authorization dialog", p. 233 do PDF), mas a decisão de 03/10 falava só do `clientid` já usado. É uma leitura da D-L2 feita na implementação, e está no código e nos testes. A consequência é que quem perdeu o refresh token roda a autorização de novo, com `clientid` novo, e passa por nova autorização do espectador (C.6.1.4.5). O detalhe está em [APIs do tv3ws](apis-tv3ws.md).
+- **A5. L1: risco aceito.** O associado continua reconhecido pelo `Origin` em `origins:associated`. Em `enforce`, um `Origin` forjado fora do navegador, presente nessa lista, passa como associado e dispensa access token e bind-token nas rotas que admitem o associado. O comentário `PENDENTE (Joel)` da L1 virou `DECIDIDO (Luis, 03/10): risco aceito` no plugin da borda (`infra/edgegateway/plugin/handler.go`), e o mesmo marcador entrou na classificação do cliente no tv3ws (`classifyClient`, em `tv3ws/src/api/client-identification/controller.ts`), que usa o mesmo critério.
+  - **Continua aberto: P1.3, origem própria por app.** A decisão de 03/10 aceitou só o risco do `Origin` forjado. As apps de emissora servidas pelo proxy do AoP chegam à borda com o `Origin` do AoP, e o AoP grava em `origins:associated` a origem própria da app (`aop/src/core.js`, `registerAssociatedOrigin`). Medido em 04/10: com o serviço sintonizado, `origins:associated` tinha só `http://bcast:8081`, e a chamada da lista de perfis das páginas users-test e webmedia, reproduzida por curl com `Origin: http://localhost:8080`, recebeu `X-TV30-Auth-Warn: 107`. Em `enforce`, seriam bloqueadas. Sem o P1.3, o `enforce` barra os associados legítimos. Registrado em `KNOWN-ISSUES.md`; não resolvido.
 
 ## B. Descoberta SSDP (item 23, L6)
 
@@ -60,5 +75,6 @@ Nenhuma opção funciona em Windows com WSL2 em NAT. O teste positivo precisa de
 ## Correções e respostas para levar
 
 - **O plugin Go antigo nunca validou nada.** Era proxy puro (`infra@60e527f:gateway-external/plugin/consent-validator.go`). O `tv30-auth` foi escrito do zero.
-- **"Registrar para quem cada token foi emitido?"** A norma não manda registrar, mas o bloqueio de cliente (C.4.2.2) e o refresh token por cliente (Tabela C.4) só funcionam com esse vínculo, e o código já o guarda em `client:{id}`. O ponto A2 enfraquece essa garantia.
+- **"Registrar para quem cada token foi emitido?"** A norma não manda registrar, mas o bloqueio de cliente (C.4.2.2) e o refresh token por cliente (Tabela C.4) só funcionam com esse vínculo, e o código já o guarda em `client:{id}`. O ponto A2 enfraquecia essa garantia; com o 101 no reuso de `clientid` (decidido pelo Luís em 03/10), o `/tv3/authorize` deixou de reemitir o refresh token.
 - **O item 5 o Joel dispensou em 28/09.** Ele mesmo está avançando a parte de transporte (21/09).
+- **O pareamento por PIN (`pm=kex`) nunca se completava.** O tv3ws respondia só `{challenge}`, e a Tabela C.3 (formato 3, p. 214; p. 232 do PDF) manda responder também `key`, a chave parcial ECDH do servidor (C.4.3.3, passo 1). Sem ela, o aplicativo não deriva a chave. O teste novo do não local achou a falha, e ela foi corrigida na integração de 04/10 (uma linha em `tv3ws/src/api/client-identification/controller.ts`). É correção de conformidade (Tabela C.3, formato 3; C.4.3.3, passo 1), não decisão de desenho, mas **espera o aval do Luís** antes do commit. O PIN continua publicado sem zeros à esquerda (por exemplo, `42`); a nota da C.4.3.3 fala em "a four-digit number".

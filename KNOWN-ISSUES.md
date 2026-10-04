@@ -1,12 +1,33 @@
 # Known Issues
 
-## `GET /tv3/authorize` reemite o refresh token de qualquer cliente já autorizado — ABERTO (aguarda o Joel)
+## Redis sem senha e publicado no host — DECIDIDO pelo Luís em 03/10: a conexão fica assim, e o risco continua
 
-Anterior à semana de 28/09. Em `tv3ws/src/api/client-identification/controller.ts`, um `GET /tv3/authorize?clientid=<id>&display-name=x` **sem `pm`** devolve o `refreshToken` corrente do cliente `<id>` quando ele já está autorizado, sem pop-up e sem conferir a classe gravada (o trecho "Cliente local ja autorizado que perdeu o refresh token"). A classe que decide a reemissão é a de quem pede, não a do cliente gravado. Com o refresh token, `GET /tv3/token` devolve um access token com a classe da vítima. Basta conhecer o `clientid`, que trafega em query string. A borda não impede, porque `/tv3/authorize` é `auth=none`. A norma trata o reuso de `clientid` na C.6.1.2 como colisão, com erro 101 (C.6.1.4.4). Verificado lendo o código; não foi explorado contra a stack.
+O Redis publica a 6379 no host (`infra/redis/docker-compose.yml`) e não tem senha. Em `enforce`, a borda decide a partir de chaves desse Redis: um `HSET origins:associated <origem> x` faz uma origem passar por local associado (sem access token nem bind-token), e um `RPUSH bind-context:<serviço>` registra uma chave de bind.
 
-## Redis sem senha e publicado no host — ABERTO (decidir antes de qualquer `enforce`)
+**Decidido pelo Luís em 03/10:** a conexão com o banco fica como está. Só a interface administrativa (redis-commander) passou a exigir login com usuário e senha; usuário, senha padrão e como trocar estão no `README.md` da raiz, seção *Interface administrativa do Redis*. O risco descrito acima continua valendo. Registrado em `docs/decisoes-pendentes.md` (A1) e em `docs/avaliacao-item9-credenciais.md`.
 
-O Redis publica a 6379 no host (`infra/redis/docker-compose.yml`) e não tem senha. Em `enforce`, a borda decide a partir de chaves desse Redis: um `HSET origins:associated <origem> x` faz uma origem passar por local associado (sem access token nem bind-token), e um `RPUSH bind-context:<serviço>` registra uma chave de bind. Opções: publicar só em `127.0.0.1` ou exigir senha. Registrado em `docs/avaliacao-item9-credenciais.md`.
+## Backend mais lento que 2 s ou fora do ar: a borda corta a requisição — ABERTO (formato do erro corrigido em 03/10)
+
+Nas 24 rotas sem `timeout` próprio em `infra/edgegateway/routes.json`, a borda espera o tv3ws por no máximo 2 s, o padrão do KrakenD (`infra/edgegateway/generate.js`). Só o `GET /tv3/authorize` tem limite próprio, de 15 s, por causa do pop-up. Com o backend mais lento que isso, ou fora do ar, quem responde é o próprio KrakenD.
+- **Até 03/10:** a resposta era 500 com corpo vazio, fora do formato C.3.2.
+- **Desde 03/10:** o plugin `tv30-auth` troca qualquer 5xx que sai do KrakenD por 404 `{"error":200,"description":"Platform resource unavailable: <motivo>"}`, com `Content-Type: application/json`, `Access-Control-Allow-Origin: *` e `API-Version`, nos dois modos.
+- **Continua:** os limites de tempo não mudaram. A rota cujo backend demora mais de 2 s recebe o erro 200, e não a resposta.
+
+**Verificado na stack em 04/10** (imagem do edgegateway reconstruída): no `scripts/test-auth.sh`, com o tv3ws parado (`docker stop`), as duas superfícies (44642 e 44643) responderam 404 `{"error":200}` vindo da borda, com `API-Version: 2.0`, para um `GET /tv3/current-service` com token válido; com o tv3ws congelado (`docker pause`), caso do backend que não responde, a 44642 respondeu o mesmo 404 `{"error":200}`. Os testes Go do plugin (`krakend/builder:2.7.2`, go1.22.7) passaram: 44 PASS, 0 FAIL.
+
+## Apps de emissora servidas pelo proxy do AoP não são reconhecidas como associadas — ABERTO (P1.3, pré-requisito do `enforce`)
+
+O associado é reconhecido pelo `Origin` em `origins:associated` (L1; o risco do `Origin` forjado foi aceito pelo Luís em 03/10, D-L4). O AoP grava nessa lista a origem **própria** da app, alvo do proxy (`aop/src/core.js`, `registerAssociatedOrigin`). Mas o navegador abre a app pelo proxy do AoP (`/graphicsAppProxy/...`), e as chamadas dela chegam à borda com o `Origin` do próprio AoP. A origem própria por app (P1.3) não foi feita e **não** foi decidida em 03/10.
+
+**Medido na stack em 04/10**, com o serviço sintonizado pelo catálogo do AoP: `origins:associated` tinha só `http://bcast:8081`. A sequência de chamadas das páginas users-test e webmedia, com `Origin: http://localhost:8080`, recebeu `X-TV30-Auth-Warn: 107` na lista de perfis, nas duas páginas e nas duas cargas. Em `warn` a chamada passa. Em `enforce`, pela lógica do plugin, essas apps seriam bloqueadas com 107, como cliente sem access token.
+
+## Duas autorizações ao mesmo tempo se misturam no pop-up sim/não — ABERTO
+
+O 101 no reuso de `clientid` (D-L2) não cobre o reuso **simultâneo**. Em `checkAuthorization` (`tv3ws/src/api/client-identification/controller.ts`), o `clientid` só passa a contar como autorizado ou bloqueado depois que o espectador responde ao pop-up, e essa espera chega a 10 s (`askAuthorization`). Um segundo `/tv3/authorize` com o mesmo `clientid` dentro dessa janela passa pelas duas checagens e abre outro pop-up.
+
+Por trás disso há um defeito anterior a esta rodada: o tv3ws guarda **um** callback por tópico (`subscribe` em `tv3ws/src/core.ts`, `_topics.set(topic, callback)`). O segundo pop-up toma o lugar do primeiro no tópico de resposta. A resposta do espectador vai só para a segunda chamada. A primeira expira, cai em `wrapup(false)`, tira a inscrição do tópico (o que também derruba a da segunda, se ela ainda esperava) e grava o `clientid` em `clients:blocked`.
+
+Com o mesmo `clientid`, o resultado é `client:{id}` autorizado com a classe da segunda chamada e o mesmo id em `clients:blocked`; a primeira chamada recebe 102. Em `enforce` a borda barra esse id pelo bloqueio (107). O defeito do callback único também mistura autorizações simultâneas de `clientid` **diferentes**. Lido no código em 04/10; não reproduzido na stack. Correção possível, não feita: marcar o `clientid` como pendente antes do pop-up (por exemplo, `SET client-pending:{id} NX EX 15` no Redis) e devolver 101 se a marca existir; e uma fila ou um id por pop-up no `core.ts`.
 
 ## SSDP anuncia `localhost` por padrão e um endereço "seguro" sem TLS — ABERTO (aguarda o Joel)
 

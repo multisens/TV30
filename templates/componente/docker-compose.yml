@@ -1,6 +1,9 @@
 # Template de compose para um COMPONENTE NOVO do TV30 (reunioes 21/09 e
 # 28/09: "como e que eu vou montar aqui o meu compose?"). Ver README.md ao
 # lado. Troque "meu-componente", a porta 8090 e as variaveis pelas suas.
+# Como veio, sobe o componente de EXEMPLO (Dockerfile + index.js ao lado:
+# fala com o Redis e com o broker pelo nome do servico e expoe /health);
+# scripts/test-template.sh executa este arquivo de verdade.
 #
 # Uso (com a stack da raiz ja de pe — a rede ginga_net precisa existir):
 #   cp -r templates/componente <pasta-do-componente>
@@ -26,6 +29,11 @@ services:
     # supervisor que derrube tudo quando qualquer um morrer (modelo:
     # infra/edgegateway/entrypoint.sh). Nada de meio-vivo.
     restart: unless-stopped
+    # init minimo do Docker como PID 1, com o processo como filho: repassa o
+    # SIGTERM do `docker stop` (o node como PID 1 o ignoraria e esperaria o
+    # SIGKILL) e, se o processo morrer por sinal, sai junto com o mesmo
+    # codigo — o container cai e o restart acima religa.
+    init: true
     extra_hosts:
       # Permite alcancar um servico rodando no HOST (ex.: outro modulo em
       # npm run dev) por host.docker.internal tambem em Linux. Inocuo se nao
@@ -35,9 +43,14 @@ services:
       # Dentro da ginga_net os servicos se acham pelo NOME DO SERVICO, nunca
       # por localhost (localhost e o proprio container).
       MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
       REDIS_HOST: redis
       REDIS_PORT: 6379
       PORT: 8090
+      # So do exemplo (index.js): topico e chave de teste. Os padroes derivam
+      # do nome do componente: tv30/<nome>/exemplo e tv30:<nome>:exemplo.
+      # EXEMPLO_TOPICO: tv30/meu-componente/exemplo
+      # EXEMPLO_CHAVE: tv30:meu-componente:exemplo
       # Componente novo NAO valida credencial (decisao de 28/09, D1): quem
       # valida access token e bind-token e a borda (plugin tv30-auth). Rota
       # nova da norma entra em infra/edgegateway/routes.json com auth/classes.
@@ -51,12 +64,15 @@ services:
       - "${MEU_COMPONENTE_PORT:-8090}:8090"
     # depends_on nao alcanca servicos de outro projeto compose: o componente
     # tem de tolerar broker/Redis ainda subindo (tentar de novo ou sair com
-    # erro e deixar o restart religar — nunca seguir meio-vivo).
-    # healthcheck:
-    #   test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8090/health || exit 1"]
-    #   interval: 5s
-    #   timeout: 3s
-    #   retries: 10
+    # erro e deixar o restart religar — nunca seguir meio-vivo; o exemplo
+    # sai com erro).
+    # healthcheck: o /health do exemplo so abre com Redis e broker
+    # conectados (wget e o do busybox da imagem alpine)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8090/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 networks:
   # Rede criada pela stack da raiz (infra/docker-compose.yml). external: o

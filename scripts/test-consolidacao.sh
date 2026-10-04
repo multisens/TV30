@@ -14,7 +14,35 @@ docker ps --format '{{.Names}}\t{{.Status}}' | sort
 echo; echo "== redis consolidado =="
 docker inspect redis --format 'health={{.State.Health.Status}}'
 docker exec redis redis-cli --raw SCARD users:index | xargs echo "users:index SCARD ="
-docker exec redis sh -c 'wget -q -O- http://127.0.0.1:18081/ >/dev/null && echo "commander UI OK"'
+# D-L1 (Luis, 03/10): a UI do commander exige login; a conexao com o banco
+# (6379) segue sem senha. No redis-commander 0.9.0 o login nao e HTTP basic:
+# GET / (formulario) abre sem credencial; POST /signin troca usuario/senha
+# por um token e as rotas de dados respondem 401 sem ele. Prova: rota de
+# dados GET /connections -> 401 sem credencial e 200 com a credencial
+# configurada (lida do proprio container; a senha nao e impressa).
+# A senha nao entra em argv nem em variavel de ambiente do container de
+# teste (o ps do host e o docker inspect mostrariam): vai pela entrada
+# padrao do docker run, e dali pela entrada padrao do curl
+# (--data-urlencode "password@-" le e codifica o stdin); printf e read sao
+# internos do shell.
+CMD_USER=$(docker exec redis printenv REDIS_COMMANDER_USER)
+export CMD_USER
+docker exec redis printenv REDIS_COMMANDER_PASSWORD \
+  | docker run --rm -i --network ginga_net -e CMD_USER --entrypoint sh curlimages/curl:8.10.1 -c '
+  IFS= read -r p
+  u=http://redis:18081
+  sem=$(curl -s -m 5 -o /dev/null -w "%{http_code}" $u/connections)
+  r=$(printf %s "$p" | curl -s -m 5 -X POST --data-urlencode "username=$CMD_USER" --data-urlencode "password@-" $u/signin)
+  tok=$(printf %s "$r" | sed -n "s/.*\"bearerToken\":\"\([^\"]*\)\".*/\1/p")
+  com=$(curl -s -m 5 -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $tok" $u/connections)
+  r=$(printf x%s "$p" | curl -s -m 5 -X POST --data-urlencode "username=$CMD_USER" --data-urlencode "password@-" $u/signin)
+  if [ "$sem" = 401 ] && [ -n "$tok" ] && [ "$com" = 200 ] && [ "$r" = "{\"ok\":false}" ]; then
+    echo "commander UI OK (sem credencial=401, com credencial=200, senha errada recusada)"
+  else
+    echo "commander UI FALHA: sem credencial=$sem, token=$([ -n "$tok" ] && echo sim || echo nao), com credencial=$com, senha errada=$(printf %s "$r" | cut -c1-12)"
+    [ "$sem" = 200 ] && echo "  (UI aberta: imagem do redis anterior a D-L1? docker compose build redis && docker compose up -d redis)"
+  fi'
+docker exec redis redis-cli ping | xargs echo "redis-cli ping sem senha (6379 segue aberto) ="
 PORTA_CMD=$(docker port redis 18081/tcp | head -1)
 echo "commander no host: $PORTA_CMD"
 echo "-- matando o commander (banco deve sobreviver) --"

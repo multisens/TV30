@@ -73,6 +73,49 @@ A coluna **bind-token** marca as APIs cujo campo "Security requirements" diz que
 
 ---
 
+## Autorização de cliente (`/tv3/authorize` e `/tv3/token`)
+
+**`clientid` repetido dá 101.** Decisão do Luís em 03/10 (A2 de [`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes)). O `GET /tv3/authorize` responde 404 `{"error":101}` quando o `clientid` já foi usado, para qualquer classe de cliente, com ou sem `pm`. Na norma:
+- Tabela C.3, erro 101: "if clientid has been used before" (p. 215; p. 233 do PDF);
+- C.6.1.4.4: no mesmo servidor, passar ao C.6.1.2 um `clientid` já usado é colisão e dá 101 (p. 219; p. 237 do PDF).
+
+No tv3ws, "já usado" vale para dois casos, os dois sem pop-up (`checkAuthorization`, em `tv3ws/src/api/client-identification/controller.ts`):
+- o cliente já autorizado, que tem o registro `client:{clientid}` no Redis, gravado quando o espectador o autoriza (`tv3ws/src/modules/auth-manager/manager.ts`);
+- o cliente recusado pelo espectador, que fica em `clients:blocked`. A Tabela C.3 diz que, nesse caso, "any attempt to authorize immediately returns error 101, without displaying the authorization dialog". Até 03/10, o tv3ws respondia 102 aqui. Este segundo caso é conformidade com a nota da tabela, numa leitura da decisão de 03/10 feita na implementação, e **ainda espera a confirmação do Luís**.
+
+O 101 não cobre o reuso **simultâneo**: um segundo `/tv3/authorize` com o mesmo `clientid` enquanto o pop-up do primeiro ainda está aberto abre outro pop-up (ver `KNOWN-ISSUES.md`).
+
+O 102 fica só para a recusa no próprio pop-up ("If the user does not grant access"). Até 03/10, o cliente local já autorizado que chamava o `/tv3/authorize` de novo sem `pm` recebia o refresh token corrente, sem pop-up. Esse atalho saiu.
+
+**O que o cliente faz** (C.6.1.4.5, p. 219; p. 237 do PDF):
+1. Gera um `clientid` no formato UUID da RFC 9562 (C.6.1.4.3) e o guarda.
+2. Chama o `/tv3/authorize` uma vez. O local autônomo recebe o refresh token direto. O não local recebe o `challenge` e obtém o primeiro access token e o refresh token no `/tv3/token`.
+3. Guarda o refresh token. Nos acessos seguintes, chama `GET /tv3/token?clientid=<id>&refresh-token=<rt>`, sem voltar ao `/tv3/authorize`.
+4. Guarda sempre o último refresh token recebido: o tv3ws troca o refresh token a cada `/tv3/token` (`rotateRefreshToken`, em `manager.ts`).
+
+**Resposta do não local por método de pareamento** (Tabela C.3, formatos 2 e 3, p. 214; p. 232 do PDF):
+- `pm=qrcode`: `{"challenge"}`. A chave vai no QR code que a TV mostra.
+- `pm=kex`: `{"challenge","key"}`. O `key` é a chave parcial ECDH do servidor (ponto SEC 1 sem compressão, em base64 URL safe, C.4.3.4). O cliente deriva dela o segredo (C.4.3.3) e resolve o `challenge`. Até a integração de 04/10, o tv3ws respondia só `{"challenge"}` no `kex`, e o pareamento por PIN não se completava. A correção é de conformidade (Tabela C.3, formato 3; C.4.3.3, passo 1) e espera o aval do Luís. O PIN continua publicado sem zeros à esquerda (por exemplo, `42`).
+
+**Quem perdeu o refresh token** precisa de `clientid` novo e de nova autorização do espectador, com novo pop-up. É o caso da recarga de página sem armazenamento persistente e do armazenamento apagado. O mesmo vale quando o `/tv3/token` responde 101 porque o refresh token não está associado ao cliente (C.6.1.4.5). Repetir o `clientid` antigo só dá 101.
+
+**Verificado na stack em 04/10**, na integração e de novo na rodada de correção, com um script de curl que **não faz parte do repositório** (não há teste versionado que reproduza esta seção). Duas cargas seguidas de um cliente local autônomo:
+- a primeira carga autoriza um `clientid` novo, com pop-up;
+- a segunda usa só o `/tv3/token` com o refresh token guardado, sem pop-up, e a API responde 200;
+- o refresh token já trocado dá 101;
+- repetir o `clientid` no `/tv3/authorize` dá 101, sem pop-up;
+- com o armazenamento apagado, um `clientid` novo abre o pop-up de novo.
+
+Páginas do bcast que chamam a API (users-test e webmedia): o navegador não foi usado. O script baixou a página e reproduziu por curl a sequência de chamadas dela, com o serviço sintonizado pelo catálogo do AoP e o `Origin` do AoP (`http://localhost:8080`). As duas cargas deram respostas iguais entre si:
+- users-test: a lista (`POST /tv3/current-service/users`) deu 404 `{"error":300}` nas duas cargas, e o `current-user` deu 200. O 300 vem de `resolveActiveService` (`tv3ws/src/api/user/service.ts`): nenhum perfil tem esse serviço em `user:{id}:consent` (visibilidade de perfil, C.6.14.1), e o tv3ws trata o serviço como não ativo;
+- webmedia: a lista deu 200 com 5 perfis, e os detalhes e o `current-user` deram 200, nas duas cargas; o `remote-device` (`Accept-Version: 2.1`) também deu 200.
+
+Nenhuma dessas chamadas usa o `/tv3/authorize`, então o resultado não depende da D-L2. Em `warn`, a chamada da lista levou `X-TV30-Auth-Warn: 107` nas duas páginas e nas duas cargas (o aviso das outras chamadas não foi registrado), porque o `Origin` do AoP não está em `origins:associated`, que tinha só `http://bcast:8081` (P1.3, ver `KNOWN-ISSUES.md`).
+
+**Consumidores neste repositório.** Nenhum app do bcast nem o aop chama o `/tv3/authorize`. Os `clientId` fixos que aparecem neles (`bcast_svc`, `aop-core`, `rp-display`) são identificadores de cliente MQTT. O único consumidor é o `scripts/test-auth.sh`, que gera um `clientid` novo a cada execução.
+
+---
+
 ## Filtragem de usuários (`POST /tv3/current-service/users`)
 
 O corpo aceita expressões de filtro (`and`, `or` e expressão simples):

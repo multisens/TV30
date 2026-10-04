@@ -55,7 +55,7 @@ cd TV30
 docker compose up -d
 ```
 
-Acesse `http://localhost:8080` (AoP). Para inspecionar o Redis: Redis Commander na porta dinâmica mostrada por `docker port redis 18081`.
+Acesse `http://localhost:8080` (AoP). Para inspecionar o Redis: Redis Commander na porta dinâmica mostrada por `docker port redis 18081`. Ele pede login; o usuário e a senha padrão estão na seção *Interface administrativa do Redis* do `README.md` da raiz. A conexão com o banco (6379) segue sem senha.
 
 ---
 

@@ -7,7 +7,7 @@ nav_order: 4
 
 O Redis guarda o estado de sessão, os perfis de usuário e as credenciais. Ele **não** é fonte única de verdade: parte do estado também vive em memória nos serviços (lista de serviços e usuários no AoP, serviço corrente no tv3ws) e o `userData.json` é a carga inicial — a imagem do Redis aplica a carga na primeira subida (`seed:done`) e o tv3ws re-sincroniza a partir do arquivo em `initFromRedis` (quando `users:index` está vazio) e a cada `aop/users`.
 
-UI de inspeção: Redis Commander, em porta dinâmica do host — `docker port redis 18081` mostra qual.
+UI de inspeção: Redis Commander, em porta dinâmica do host — `docker port redis 18081` mostra qual. A UI exige login: usuário `admin` e senha `tv30-redis-admin` por padrão, trocáveis por `REDIS_COMMANDER_USER`/`REDIS_COMMANDER_PASSWORD` no `.env` da raiz (decisão D-L1, tomada pelo Luís em 03/10; ver [README](../README.md#interface-administrativa-do-redis)). A senha vale só para a UI: a conexão com o banco (6379) segue sem senha.
 
 ---
 
