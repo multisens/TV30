@@ -42,7 +42,12 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
         ↓ HTTP (proxy /graphicsAppProxy e /videoStreamProxy)
   bcast (bcast/)          ← sinalização (BAMT/ESG/BALD) por MQTT; apps de
                             serviço e mídia por HTTP
+
+  tv3ws-ssdp (opcional)   ← anúncio SSDP (C.3.4) em UDP 1900, na rede do
+                            host; LOCATION aponta para a borda (/manifest)
 ```
+
+**Descoberta SSDP.** O anúncio sai do container `tv3ws-ssdp` (perfil `ssdp`), que usa a mesma imagem do tv3ws com outro comando (`node dist/ssdp-announcer.js`), roda em `network_mode: host` e só anuncia: sem Express, sem Redis, sem MQTT e sem porta TCP. O `/manifest` continua no tv3ws, atrás da borda, e o tv3ws da bridge não anuncia (`SSDP_ENABLED: "false"` no compose). A descoberta só é suportada em Linux nativo com Docker Engine (decisão do Joel, informada pelo Luís em 04/10; decisão do projeto, não da norma). Nesse ambiente, o teste com outro aparelho ainda não foi feito. Ver [`docs/ssdp-verificacao.md`](./docs/ssdp-verificacao.md).
 
 **Canais internos.** A comunicação interna não é só por MQTT, ao contrário do que esta seção dizia antes (o código desmente):
 
@@ -78,9 +83,11 @@ Publicadores e consumidores conferidos nas chamadas `publish`/`subscribe` do có
 docker compose up -d
 ```
 
-Defaults vêm do `.env` (raiz). Em Windows + WSL2 com 9001 ocupada no host, definir `MQTT_WS_PORT=9003` no `.env`. Para desenvolver com um módulo no host (`npm run dev`), ver [`docs/dev-local.md`](./docs/dev-local.md).
+Defaults vêm do `.env` (raiz). Em Windows + WSL2 com 9001 ocupada no host, definir `MQTT_WS_PORT=9003` no `.env`. Para desenvolver com um módulo no host (`npm run dev`), ver [`docs/dev-local.md`](./docs/dev-local.md). Para a descoberta SSDP em Linux nativo, acrescente `ssdp` a `COMPOSE_PROFILES` e defina `SSDP_ADVERTISE_HOST` com o IP da máquina na LAN (`README.md`, seção *Descoberta SSDP*).
 
 ### Containers e portas
+
+Seis containers contínuos (os seis primeiros abaixo) e o `tv3ws-ssdp`, opcional, que só sobe com o perfil `ssdp`.
 
 | Container | Porta(s) no host | Descrição |
 |-----------|----------|-----------|
@@ -90,6 +97,7 @@ Defaults vêm do `.env` (raiz). Em Windows + WSL2 com 9001 ocupada no host, defi
 | `tv3ws` | 45000–45199 (WebSockets) | TV 3.0 WebServices. 44652/44653 só na `ginga_net` |
 | `aop` | 8080 | Interface do receptor |
 | `bcast` | `${BCAST_PORT:-8081}` | Broadcaster + módulos de apps de serviço |
+| `tv3ws-ssdp` (opcional, perfil `ssdp`) | UDP 1900, na rede do host (`network_mode: host`); nenhuma porta TCP | Anunciante SSDP: mesma imagem do tv3ws, comando `node dist/ssdp-announcer.js`. Só Linux nativo. Morre-inteiro: se o anúncio falha, só ele cai |
 
 ### Apps de serviço (módulos do bcast)
 
@@ -138,6 +146,7 @@ Clone anterior ao renome `ccws` → `tv3ws`: `git submodule sync --recursive && 
 | Estado de usuários em Redis | Consistência entre serviços; `userData.json` é carga inicial e re-sync |
 | Apps de serviço como módulos do bcast | Único container `bcast` serve tudo (sem duplicação MQTT/CORS) |
 | Borda única com duas superfícies | Interna 44642 (fixa C.3.4) e externa 44643; credenciais validadas na borda (decisão de 28/09: o tv3ws só implementaria as APIs). Estado corrente: o tv3ws ainda responde 107 a credencial inválida e 106 ao não local na superfície HTTP, nos dois modos; limpeza pendente |
+| Anunciante SSDP num container próprio, em rede do host (L6, opção B; decidido, informado pelo Luís em 04/10) | O multicast do anúncio não saiu da bridge do Docker para a rede (medido no WSL2 em 02/10). Só o anunciante vai para a rede do host: borda e tv3ws continuam na `ginga_net`, e uma falha do SSDP não derruba as APIs. A C.3.4 não diz onde o anunciante roda; é decisão do projeto |
 
 ---
 

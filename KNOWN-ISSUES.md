@@ -31,7 +31,11 @@ Com o mesmo `clientid`, o resultado é `client:{id}` autorizado com a classe da 
 
 ## SSDP anuncia `localhost` por padrão e um endereço "seguro" sem TLS — ABERTO (aguarda o Joel)
 
-Com o padrão do compose (`SERVER_URL=localhost`), o anúncio SSDP e o `/manifest` divulgam `http://localhost:44642/manifest` e `Server-BaseURL: localhost:44642`. Um cliente em outro equipamento recebe o anúncio e não alcança o endereço (medido pela integração: `ECONNREFUSED`, ver `docs/ssdp-verificacao.md`). O tv3ws avisa no boot (`[ssdp] AVISO`); para anunciar outro host, defina `SSDP_ADVERTISE_HOST` no `tv3ws/.env`. O `Server-SecureBaseURL` anuncia `<host>:44643`, que na borda é HTTP puro (lacuna L3).
+Com o padrão do compose (`SERVER_URL=localhost`), o anúncio SSDP e o `/manifest` divulgam `http://localhost:44642/manifest` e `Server-BaseURL: localhost:44642`. Um cliente em outro equipamento recebe o anúncio e não alcança o endereço (medido pela integração: `ECONNREFUSED`, ver `docs/ssdp-verificacao.md`). O boot avisa (`[ssdp] AVISO`); para anunciar outro host, defina `SSDP_ADVERTISE_HOST` no `.env` da raiz (ou no `tv3ws/.env`; o da raiz prevalece). O tv3ws (`/manifest`) e o `tv3ws-ssdp` (anúncio, desde a opção B da L6, 04/10) leem os dois arquivos. O `Server-SecureBaseURL` anuncia `<host>:44643`, que na borda é HTTP puro (lacuna L3).
+
+## `tv3ws-ssdp` fica de pé quando o perfil `ssdp` sai — ABERTO (aguarda o Luís; medido em 04/10)
+
+Depois de tirar o `ssdp` do `COMPOSE_PROFILES`, nem `docker compose up -d` nem `docker compose down` param o `tv3ws-ssdp`: o compose só mexe nos serviços dos perfis ativos. O anunciante segue no ar com a configuração da subida anterior. Na medição, o `LOCATION` continuou em 172.27.57.172, enquanto o tv3ws recriado já respondia `Server-BaseURL: localhost:44642`. Para desligar: `docker compose --profile ssdp rm -sf tv3ws-ssdp`. Detalhes no teste 22 de `docs/ssdp-verificacao.md`.
 
 ## Caminho não declarado resetava a conexão na borda — RESOLVIDO em 02/10/2026
 

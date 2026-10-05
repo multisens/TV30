@@ -25,6 +25,18 @@ Acesse `http://localhost:8080`.
 
 > **Importante:** sem o `.env` (ou sem `COMPOSE_PROFILES=mqtt,linux` setado de alguma forma), apenas a infra essencial sobe — `aop`, `tv3ws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: ["linux"]` ou `["mqtt"]` no compose e ficam de fora do `up` sem o profile ativo.
 
+### Descoberta SSDP (opcional)
+
+Para que outro aparelho da rede encontre o receptor por SSDP (C.3.4), suba o container `tv3ws-ssdp`, que anuncia em rede do host. A descoberta só é suportada em Linux nativo com Docker Engine (decisão do Joel, informada pelo Luís em 04/10); nesse ambiente, o teste com um segundo aparelho ainda não foi feito. No `.env` da raiz:
+
+```bash
+COMPOSE_PROFILES=mqtt,linux,ssdp
+SSDP_ADVERTISE_HOST=192.168.0.12   # IP desta máquina na rede local
+#SSDP_INTERFACE=wlan0              # só se a interface escolhida sozinha estiver errada
+```
+
+Depois, `docker compose up -d`, e libere a UDP 1900 e a TCP 44642 no firewall. Sem o perfil `ssdp`, nada é anunciado, e o cliente chega pelo IP (`http://<IP>:44642/manifest`). O passo a passo da verificação, com um segundo aparelho, está em [Verificação: descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao).
+
 ---
 
 ## Windows + WSL2
@@ -69,6 +81,8 @@ cp .env.example .env       # ativa profiles "linux" e "mqtt"
 docker compose up -d
 ```
 
+> **Descoberta SSDP no WSL2:** o perfil `ssdp` sobe, mas o anúncio não sai da máquina. Ele chega ao próprio Windows e não chega aos outros aparelhos da rede (medido em 03 e 04/10 com um anunciante descartável no mesmo arranjo, [Verificação: descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao)). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte (não medido). Nesses ambientes, o cliente chega ao receptor pelo IP, sem a etapa de descoberta.
+
 ---
 
 ## Configurações via `.env`
@@ -80,7 +94,7 @@ O `.env` na raiz controla defaults. Exemplo:
 DOCKERHUB_NS=tv30
 IMAGE_TAG=latest
 
-# Profile padrão
+# Profile padrão (Linux nativo com descoberta SSDP: mqtt,linux,ssdp)
 COMPOSE_PROFILES=mqtt,linux
 
 # Porta WebSocket MQTT no host (default 9001).
