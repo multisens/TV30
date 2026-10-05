@@ -68,6 +68,29 @@ for p in $PORTS_WARN; do
   fi
 done
 
+# UDP 1900 (SSDP), so com o perfil "ssdp": o tv3ws-ssdp anuncia em rede do
+# host. Aviso, sem bloquear: o anunciante abre a porta com SO_REUSEADDR e
+# convive com outro socket que tambem use a opcao; se o dono atual nao usar,
+# o bind falha e o tv3ws-ssdp sai com [ssdp] FALHA e reinicia em laco.
+# COMPOSE_PROFILES chega pela secao environment do preflight no compose;
+# perfil ligado so por --profile na linha de comando nao e visto aqui.
+PROFILES=$(printf '%s' "${COMPOSE_PROFILES:-}" | tr -d ' ')
+case ",${PROFILES}," in
+  *,ssdp,*|*,\*,*)
+    if netstat -lun 2>/dev/null | awk '{print $4}' | grep -qE '[:.]1900$'; then
+      if ps -o args 2>/dev/null | grep -qE '[n]ode dist/ssdp-announcer\.js'; then
+        echo "[preflight] ok: UDP 1900 em uso pelo tv3ws-ssdp ja em execucao (re-up)."
+      else
+        # dono "-" = sem CAP_SYS_PTRACE para ler o processo (ver owner_of)
+        OWNER=$(netstat -lunp 2>/dev/null | grep -E '[:.]1900 ' | awk '{print $NF}' | grep -v '^-$' | sort -u | tr '\n' ' ' | sed 's/ *$//')
+        echo "[preflight] AVISO: UDP 1900 (SSDP) ja esta em uso no host (${OWNER:-dono desconhecido})."
+        echo "[preflight]        O tv3ws-ssdp convive se o outro socket usar SO_REUSEADDR; senao"
+        echo "[preflight]        sai com '[ssdp] FALHA' e reinicia (docker logs tv3ws-ssdp)."
+        WARN=1
+      fi
+    fi ;;
+esac
+
 if [ "$WARN" -eq 1 ]; then
   echo "[preflight] ---------------------------------------------------------------"
   echo "[preflight] Avisos acima NAO impedem a subida. Se o compose falhar com"

@@ -5,7 +5,9 @@
 # Docker em tres combinacoes:
 #
 #   1  tv3ws no host | containers: redis, mosquitto, edgegateway (variante
-#      windows: backends em host.docker.internal:44654/44655), aop, bcast
+#      windows: backends em host.docker.internal:44654/44655), aop, bcast;
+#      o tv3ws-ssdp (perfil ssdp), se estiver de pe, e parado: o tv3ws do
+#      host anuncia sozinho
 #   2  aop no host   | containers: redis, mosquitto, edgegateway (variante
 #      linux), tv3ws, bcast (BCAST_HOSTNAME=localhost, BCAST_PORT=8081)
 #   3  bcast no host | containers: redis, mosquitto, edgegateway (variante
@@ -24,8 +26,9 @@
 #      pelo proxy HTTP; depois de matar o processo do host o proxy falha
 #
 # Ao fim de cada cenario o processo do host morre. No fim de tudo a stack
-# padrao (EDGE_VARIANT=linux) e restaurada se estava de pe antes do teste, ou
-# derrubada (docker compose down) se nao estava.
+# padrao (EDGE_VARIANT=linux) e restaurada se estava de pe antes do teste
+# (com o tv3ws-ssdp, se ele foi parado no cenario 1), ou derrubada (docker
+# compose down) se nao estava.
 #
 # "Host" = processo na rede do host. Duas formas (DEVHOST_MODO):
 #   node    node/npm do PATH, numa copia temporaria do modulo (sem
@@ -213,6 +216,20 @@ parar() { # parar <servico>: o modulo do host nao pode coexistir com o container
   ok "container $1 parado (o modulo roda so no host)"
 }
 
+# No cenario 1 o tv3ws do host anuncia o SSDP sozinho (SSDP_ENABLED ligado por
+# padrao). O tv3ws-ssdp (perfil ssdp), se estiver de pe, seria um segundo
+# anunciante do mesmo UDN na rede do host, com o LOCATION tirado do .env da
+# raiz, que o tv3ws do host nao le. O compose() abaixo nao ativa o perfil
+# ssdp: o container e parado direto e volta na restauracao.
+SSDP_PARADO=""
+parar_anunciante() {
+  container_rodando tv3ws-ssdp || return 0
+  docker stop tv3ws-ssdp >>"$LOGDIR/compose.log" 2>&1 || true
+  if container_rodando tv3ws-ssdp; then falha "container tv3ws-ssdp continua rodando"; return 1; fi
+  SSDP_PARADO=1
+  ok "container tv3ws-ssdp parado (no cenario 1 o tv3ws do host anuncia sozinho)"
+}
+
 # ------------------------------------------------------ processo do host ---
 
 HOST_MOD=""; HOST_PID=""; HOST_DIR=""; HOST_CTR=""; HOST_LOG=""
@@ -387,6 +404,7 @@ cenario_1() {
   CEN=1
   titulo "CENARIO 1 — tv3ws no host | containers: infra (borda windows) + aop + bcast"
   parar tv3ws || return
+  parar_anunciante || return
   subir windows $INFRA aop bcast || return
   porta_livre 44654 || { falha "porta 44654 ja ocupada no host"; return; }
   local ud; ud=$(dir_userfiles)
@@ -491,9 +509,12 @@ restaurar() {
   RESTAURADO=1
   host_stop
   CEN="-"
+  # o tv3ws-ssdp parado no cenario 1 volta junto (perfil ssdp so neste caso)
+  local extra=()
+  [ -z "$SSDP_PARADO" ] || extra=(--profile ssdp)
   if [ -n "${ANTES// /}" ]; then
-    titulo "restaurando a stack padrao (EDGE_VARIANT=linux)"
-    if EDGE_VARIANT=linux compose up -d >>"$LOGDIR/compose.log" 2>&1; then
+    titulo "restaurando a stack padrao (EDGE_VARIANT=linux${SSDP_PARADO:+, com o tv3ws-ssdp})"
+    if EDGE_VARIANT=linux compose ${extra[@]+"${extra[@]}"} up -d >>"$LOGDIR/compose.log" 2>&1; then
       echo "  ok    stack padrao de pe"
     else
       echo "  ERRO  falha ao restaurar (ver $LOGDIR/compose.log)"

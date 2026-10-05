@@ -9,7 +9,9 @@ Lista única dos pontos que dependem do orientador. Os que seguem em aberto est�
 
 **Decididos pelo Luís em 03/10:** A1 (D-L1), A2 (D-L2) e A5 (D-L4). Os rótulos D-L1, D-L2 e D-L4 que aparecem no código, nos scripts e nos outros documentos são estas três decisões. Ficam na tabela, marcados como decididos, com o que foi feito, para o orientador ver. Não foram decididos pelo Joel. O A3 continua aberto, em consulta. Da A5 só o risco do `Origin` forjado foi decidido; a origem própria por app (P1.3) continua aberta.
 
-**Esperam confirmação do Luís** (feitas na implementação e na integração, fora do texto das decisões, e já enviadas no tv3ws `cc0d1a9`): o 101 para `clientid` bloqueado, que antes dava 102, e a correção do `kex`. As duas estão descritas abaixo.
+**Decidido em 04/10 (informado pelo Luís):** B1, a L6, pela opção B (anunciante SSDP num container próprio, em modo host). Com ela, o C8 ficou resolvido no deploy em container. A B2 (host padrão do anúncio) continua aberta.
+
+**Esperam confirmação do Luís** (feitas na implementação e na integração, fora do texto das decisões, e já enviadas no tv3ws `cc0d1a9`): o 101 para `clientid` bloqueado, que antes dava 102, e a correção do `kex`. As duas estão descritas abaixo. Da integração da opção B (04/10), ainda não enviados: o `SSDP_ADVERTISE_HOST` lido por `env_file` (`tv3ws/.env` e depois o `.env` da raiz) e não pela seção `environment` do compose, com os efeitos colaterais descritos em [ssdp-verificacao.md](ssdp-verificacao.md) (valor só exportado no shell não chega aos containers, e as outras chaves do `.env` da raiz entram nos dois); e se o compose ou o `preflight` devem tratar o `tv3ws-ssdp` que fica de pé quando o perfil `ssdp` sai (`KNOWN-ISSUES.md`). Hoje esse caso só está documentado.
 
 - [Avaliação do item 9](avaliacao-item9-credenciais.md): credenciais e lacunas L1–L7.
 - [Verificação SSDP](ssdp-verificacao.md): descoberta, L6 e testes de rede.
@@ -46,20 +48,32 @@ Dependência fora do projeto: o Guaraná (Pedro) precisa obter o access token an
 
 ## B. Descoberta SSDP (item 23, L6)
 
-Medido em 02 e 03/10:
+Medido em 02, 03 e 04/10, com o arranjo anterior à decisão da L6 (o tv3ws anunciava de dentro da bridge `ginga_net`) e com um anunciante descartável em modo host:
 - o anúncio sai do container e chega à bridge do Docker, mas o kernel da VM do WSL não o repassa;
 - com o anunciante em `network_mode: host`, ele chega ao próprio Windows;
 - um celular na rede doméstica faz SSDP com o roteador, mas não acha o testbed (0 respostas).
 
-**Decidido pelo Joel (informado pelo Luís em 04/10): a descoberta SSDP só precisa funcionar em Linux nativo.** Em Windows com WSL2 e no Docker Desktop (Windows, Mac ou Linux), que rodam o Docker dentro de uma VM, o anúncio não chega aos outros aparelhos da rede. Isso fica como limitação documentada, e não como defeito. Nesses ambientes, o cliente não local pode chegar ao receptor pelo IP, sem a etapa de descoberta (`http://<IP>:44642/manifest`).
+**Decidido pelo Joel (informado pelo Luís em 04/10): a descoberta SSDP só precisa funcionar em Linux nativo.** Em Windows com WSL2, o anúncio não chega aos outros aparelhos da rede (medido). No Docker Desktop (Windows, Mac ou Linux), que também roda o Docker dentro de uma VM, espera-se o mesmo (não medido). Isso fica como limitação documentada, e não como defeito. Nesses ambientes, o cliente não local pode chegar ao receptor pelo IP, sem a etapa de descoberta (`http://<IP>:44642/manifest`).
 
 | # | Ponto | Opções |
 |---|---|---|
-| B1 | **L6: onde roda o anunciante** (continua aberto; com a decisão acima, qualquer opção só precisa servir ao Linux nativo) | **A:** a borda anuncia, em modo host (direção de 28/09; a borda é KrakenD, então o anúncio precisa ser reescrito). **B:** container só para o anúncio, em modo host (contraria "borda num container só"). **tv3ws em modo host:** o caminho mais curto, mas exige escutar só em `127.0.0.1` para não reabrir a porta direta |
-| B2 | **Host padrão do anúncio** | Hoje é `localhost` (`SERVER_URL`). Opções: cair no IP local quando for loopback, ou exigir `SSDP_ADVERTISE_HOST` |
+| B1 | **L6: onde roda o anunciante** — **DECIDIDO (informado pelo Luís em 04/10): opção B** | **Decidido:** um container só para o anúncio (`tv3ws-ssdp`), em modo host; a borda, o tv3ws e o resto continuam na bridge `ginga_net`. Ver abaixo. Opções levantadas antes: **A**, a borda anuncia em modo host (direção de 28/09; a borda é KrakenD, e o anúncio precisaria ser reescrito); **tv3ws em modo host**, o caminho mais curto, mas exigiria escutar só em `127.0.0.1` para não reabrir a porta direta. Contra a B pesava contrariar "a borda num container só" |
+| B2 | **Host padrão do anúncio** (continua aberto) | Hoje é `localhost` (`SERVER_URL`), tanto no `LOCATION` do `tv3ws-ssdp` quanto no `/manifest` do tv3ws. Opções: cair no IP local quando for loopback, ou exigir `SSDP_ADVERTISE_HOST` |
 | B3 | **Expor os cabeçalhos do `/manifest` ao navegador (CORS)** | expor `Server-*`/`Device-*` ou não |
 
-Nenhuma opção funciona em Windows com WSL2 em NAT. Isso foi medido em 04/10: com o anunciante em modo host, o anúncio chega ao Windows, mas o celular na mesma rede doméstica recebe 0 respostas. O teste positivo precisa de Linux nativo com Docker Engine; o roteiro está em [ssdp-verificacao.md](ssdp-verificacao.md).
+A opção B, como as outras, não leva o anúncio à rede em Windows com WSL2 em NAT. Isso foi medido em 04/10: com o anunciante em modo host, o anúncio chega ao Windows, mas o celular na mesma rede doméstica recebe 0 respostas. O teste positivo precisa de Linux nativo com Docker Engine; o roteiro está em [ssdp-verificacao.md](ssdp-verificacao.md).
+
+### B1 decidido (opção B): o que foi feito
+
+Onde o anunciante roda é decisão de implementação deste testbed. A C.3.4 pede o anúncio e o GET no `LOCATION`, sem dizer quem anuncia.
+
+- **Uma imagem, dois containers.** O `tv3ws-ssdp` usa a mesma imagem `tv30-tv3ws`, do mesmo build, e só troca o comando: `node dist/ssdp-announcer.js` (`tv3ws/src/ssdp-announcer.ts`). Esse processo só anuncia: não sobe Express, não conecta no Redis nem no MQTT e não abre porta TCP. Fica no perfil `ssdp` do compose da raiz, em `network_mode: host`, com `restart: unless-stopped`.
+- **O `/manifest` continua no tv3ws,** na bridge, atrás da borda (`infra/edgegateway/routes.json`, `auth: none`), e responde sempre. O compose põe `SSDP_ENABLED: "false"` no tv3ws, que não anuncia e registra `[ssdp] anuncio desligado (SSDP_ENABLED=false)`. Fora do compose o padrão é ligado, para o tv3ws rodando sozinho no host (cenário 1 do [dev-host](dev-local.md)).
+- **Mesmo host no anúncio e no `/manifest`.** Os dois saem do `tv3ws/src/ssdp-config.ts`. No compose, os dois containers recebem o mesmo `SERVER_URL` e leem o `SSDP_ADVERTISE_HOST` dos mesmos arquivos de ambiente: `tv3ws/.env` e depois o `.env` da raiz, que prevalece. A cadeia não mudou, porque a B2 segue aberta: `SSDP_ADVERTISE_HOST`, senão `SERVER_URL`, senão o IP local, com o aviso de loopback no boot.
+- **Uma interface só.** O anunciante usa a interface IPv4 que tem o IP do host anunciado. Quando o host não é um IP da máquina (um nome, por exemplo), usa a interface da rota padrão e avisa no log. `SSDP_INTERFACE` força a escolha. O objetivo é acabar com as respostas duplicadas do teste 7 de [ssdp-verificacao.md](ssdp-verificacao.md), em que a biblioteca respondia por todas as interfaces da máquina.
+- **Como ligar (só Linux nativo):** `COMPOSE_PROFILES=mqtt,linux,ssdp` e `SSDP_ADVERTISE_HOST=<IP da LAN>` no `.env` da raiz. Ver o `README.md`, seção *Descoberta SSDP (só Linux nativo)*. Sem o perfil, nada é anunciado.
+- **Medido em 04/10, no WSL2:** 1 resposta por M-SEARCH, de um cliente no Windows, contra 32 respostas a cerca de 5 buscas no teste 7. O NOTIFY saiu só pela `eth0` da VM. Processo morto, porta UDP 1900 ocupada e interface inexistente derrubaram só o `tv3ws-ssdp`, e as APIs seguiram respondendo pela borda. Ver a seção *Medido em 04/10 — opção B* de [ssdp-verificacao.md](ssdp-verificacao.md).
+- **Ainda não medido:** a descoberta por outro aparelho com o `tv3ws-ssdp` em Linux nativo (camada 3).
 
 ## C. Outros pontos
 
@@ -72,7 +86,7 @@ Nenhuma opção funciona em Windows com WSL2 em NAT. Isso foi medido em 04/10: c
 | C5 | **URL SSH do bcast no `.gitmodules`** (L8) | Quem não tem chave SSH no GitHub não clona o submódulo. Trocar por HTTPS? |
 | C6 | **Lista de identificadores da norma para os nomes** (R-1) | Aguardando a lista. Os repositórios AOP, BcastService e Infra mantêm os nomes antigos |
 | C7 | **Detalhamento do Privacy Manager** | Aguardando o material prometido em 15/09 |
-| C8 | **Sem rede, o SSDP derruba o tv3ws inteiro** (regra morre-inteiro) | Num notebook offline, as APIs HTTP caem junto. Aceitar ou abrir exceção |
+| C8 | **Sem rede, o SSDP derrubava o tv3ws inteiro** (regra morre-inteiro) — **RESOLVIDO pela opção B no deploy em container** | Num notebook offline, as APIs HTTP caíam junto. Com o anúncio no `tv3ws-ssdp` (B1), uma falha do SSDP derruba só esse container, que o Docker reinicia (`restart: unless-stopped`); as APIs do tv3ws ficam de pé. O isolamento foi medido em 04/10 com processo morto, UDP 1900 ocupada e interface inexistente (testes 19 a 21 de [ssdp-verificacao.md](ssdp-verificacao.md)); a máquina sem rede não foi reproduzida. **Continua no cenário dev-host:** o tv3ws rodando sozinho no host anuncia por padrão (`SSDP_ENABLED` ligado), e uma falha do SSDP ainda derruba as APIs junto. Nesse cenário, `SSDP_ENABLED=false` desliga o anúncio |
 
 ## D. Negociação de versão de API
 
