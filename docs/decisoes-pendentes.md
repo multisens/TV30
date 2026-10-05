@@ -11,7 +11,12 @@ Lista única dos pontos que dependem do orientador. Os que seguem em aberto est�
 
 **Decidido em 04/10 (informado pelo Luís):** B1, a L6, pela opção B (anunciante SSDP num container próprio, em modo host). Com ela, o C8 ficou resolvido no deploy em container. A B2 (host padrão do anúncio) continua aberta.
 
-**Esperam confirmação do Luís** (feitas na implementação e na integração, fora do texto das decisões, e já enviadas no tv3ws `cc0d1a9`): o 101 para `clientid` bloqueado, que antes dava 102, e a correção do `kex`. As duas estão descritas abaixo. Da integração da opção B (04/10), ainda não enviados: o `SSDP_ADVERTISE_HOST` lido por `env_file` (`tv3ws/.env` e depois o `.env` da raiz) e não pela seção `environment` do compose, com os efeitos colaterais descritos em [ssdp-verificacao.md](ssdp-verificacao.md) (valor só exportado no shell não chega aos containers, e as outras chaves do `.env` da raiz entram nos dois); e se o compose ou o `preflight` devem tratar o `tv3ws-ssdp` que fica de pé quando o perfil `ssdp` sai (`KNOWN-ISSUES.md`). Hoje esse caso só está documentado.
+**Esperam confirmação do Luís** (feitas na implementação e na integração, fora do texto das decisões, e já enviadas no tv3ws `cc0d1a9`): o 101 para `clientid` bloqueado, que antes dava 102, e a correção do `kex`. As duas estão descritas abaixo.
+
+**Aprovados pelo Luís em 04/10** (escolhas da implementação da opção B):
+1. O `SSDP_ADVERTISE_HOST` é lido por `env_file` (`tv3ws/.env` e depois o `.env` da raiz), e não pela seção `environment` do compose. Os efeitos colaterais estão em [ssdp-verificacao.md](ssdp-verificacao.md): um valor só exportado no shell não chega aos containers, e as outras chaves do `.env` da raiz entram nos dois.
+2. O `tv3ws-ssdp` que fica de pé quando o perfil `ssdp` sai passou a ser avisado pelo `scripts/preflight.sh`, que também mostra o comando para removê-lo.
+3. No cenário 1 do dev-host, o `tv3ws-ssdp` é parado enquanto o tv3ws do host anuncia, e é religado no fim.
 
 - [Avaliação do item 9](avaliacao-item9-credenciais.md): credenciais e lacunas L1–L7.
 - [Verificação SSDP](ssdp-verificacao.md): descoberta, L6 e testes de rede.

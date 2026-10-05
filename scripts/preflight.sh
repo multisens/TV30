@@ -89,6 +89,17 @@ case ",${PROFILES}," in
         WARN=1
       fi
     fi ;;
+  *)
+    # Perfil "ssdp" fora do COMPOSE_PROFILES, mas anunciante de pe: o compose
+    # nao derruba servico de perfil desligado, e o tv3ws-ssdp segue anunciando
+    # o host antigo enquanto o tv3ws recriado responde outro no /manifest.
+    if ps -o args 2>/dev/null | grep -qE '[n]ode dist/ssdp-announcer\.js'; then
+      echo "[preflight] AVISO: o tv3ws-ssdp esta de pe, mas o perfil 'ssdp' nao esta no COMPOSE_PROFILES."
+      echo "[preflight]        Ele continua anunciando a configuracao antiga. Para remover:"
+      echo "[preflight]        docker compose --profile ssdp rm -sf tv3ws-ssdp"
+      echo "[preflight]        (ignore se o perfil foi ligado so por --profile na linha de comando)"
+      WARN=1
+    fi ;;
 esac
 
 if [ "$WARN" -eq 1 ]; then

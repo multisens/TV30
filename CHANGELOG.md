@@ -19,6 +19,12 @@ host chain is unchanged (`SSDP_ADVERTISE_HOST` > `SERVER_URL` > local IP), and
 so is the loopback warning at boot. Where the advertiser runs is a decision of
 this testbed, not of the norm (C.3.4 does not say).
 
+Approved by Luis (2026-10-04): `env_file` for `SSDP_ADVERTISE_HOST`, the
+dev-host scenario 1 stopping `tv3ws-ssdp`, and a preflight warning for
+`tv3ws-ssdp` left running after the `ssdp` profile is removed
+(`scripts/preflight.sh`; verified: warns without the profile, silent with it
+and after `docker compose --profile ssdp rm -sf tv3ws-ssdp`).
+
 #### Added
 
 - Root compose: service `tv3ws-ssdp` (profile `ssdp`, `network_mode: host`,
