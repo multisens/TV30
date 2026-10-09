@@ -193,9 +193,27 @@ O que isso mostra:
 - **As duplicatas do teste 7 acabaram,** pelo menos entre a VM do WSL e o Windows: 1 resposta por M-SEARCH, e o NOTIFY só na `eth0`.
 - **O morre-inteiro ficou isolado no deploy em container.** Processo morto, porta ocupada e interface errada derrubam só o `tv3ws-ssdp`, e a borda e o tv3ws seguem respondendo.
 - **No compose, o `LOCATION` e o `Server-BaseURL` saíram do mesmo host** (teste 16).
-- **Ainda não medido:** a descoberta por um segundo aparelho numa LAN, com Linux nativo (camada 3).
+- **Ainda não medido nesta rodada:** a descoberta por um segundo aparelho numa LAN, com Linux nativo (camada 3). Ela foi medida em 09/10 (seção seguinte).
 
 O que foi enviado à rede: os M-SEARCH de teste saíram com TTL 1, presos à `vEthernet (WSL)`. O NOTIFY do `tv3ws-ssdp` sai com TTL 4 pela `eth0` da VM, que só alcança o Windows; o Windows não roteia multicast entre interfaces (teste 13). Os containers e processos de teste foram removidos depois.
+
+## Medido em 09/10 — teste positivo em Linux nativo (camada 3)
+
+Ambiente:
+- **Receptor:** máquina Linux nativa (Ubuntu 26.04.1, Docker Engine 29.1.3, contexto `default`), no Wi-Fi doméstico pela `wlp2s0`, IP 192.168.2.7. `ufw` ativo, sem regra nova.
+- **Configuração:** stack com as imagens `labmultisens/*:latest` (a `tv30-tv3ws` já com `dist/ssdp-announcer.js`). No `.env` da raiz, `COMPOSE_PROFILES=mqtt,linux,ssdp` e `SSDP_ADVERTISE_HOST=192.168.2.7`.
+
+| # | Teste | Como | Resultado |
+|---|---|---|---|
+| 28 | Subida com o perfil `ssdp` | `docker compose up -d`; logs | o `tv3ws-ssdp` registra `anunciando ... pela interface wlp2s0 (192.168.2.7, via host-ip); LOCATION http://192.168.2.7:44642/manifest`. O tv3ws registra `anuncio desligado (SSDP_ENABLED=false)` |
+| 29 | `/manifest` pela borda, no próprio Linux | `curl http://192.168.2.7:44642/manifest` | 200, `Server-BaseURL: 192.168.2.7:44642`, o mesmo host do `LOCATION` |
+| 30 | **Segundo aparelho: notebook** no mesmo Wi-Fi (192.168.2.5) | 3 M-SEARCH pelo Wi-Fi, TTL 1; depois GET no `LOCATION` | **3 respostas de 192.168.2.7, uma por busca**; GET com 200 e os seis cabeçalhos (`Server-BaseURL`, `Server-SecureBaseURL`, `Server-PairingMethods`, `Device-BrandName`, `Device-Model`, `Device-FriendlyName`) |
+| 31 | Celular Android, com VPN ligada e sem ter confirmado o Wi-Fi | M-SEARCH pelo Termux | 0 respostas. **Não vale como teste:** o celular falava com o Linux por um endereço 100.x (túnel VPN), não pela rede local |
+| 32 | **Celular Android no Wi-Fi doméstico**, VPN desligada | o mesmo M-SEARCH | **resposta de `('192.168.2.7', 1900)`** |
+
+**O que isso mostra:** em Linux nativo, com o anunciante isolado em modo host (opção B), a descoberta da C.3.4 funciona de ponta a ponta. Um aparelho da rede doméstica encontra o receptor, lê o `LOCATION` e obtém pelo `/manifest` o `Server-BaseURL` da borda (44642). Cuidado com o celular: VPN e dados móveis tiram o M-SEARCH da rede local (teste 31).
+
+Uma captura no Linux durante o teste 32 não registrou o M-SEARCH, provavelmente por erro no filtro. Isso não muda o resultado: o receptor respondeu ao celular.
 
 ## L6: as opções avaliadas antes da decisão (decisão do projeto, não da norma)
 
@@ -287,8 +305,8 @@ setTimeout(() => {
 
 - **Plataforma, decidida pelo Joel (informado pelo Luís em 04/10):** a descoberta SSDP só precisa funcionar em **Linux nativo** com Docker Engine. Windows com WSL2 e Docker Desktop ficam fora, como limitação documentada (testes 10 e 13).
 - **L6, decidida (informado pelo Luís em 04/10): opção B,** o container `tv3ws-ssdp` em rede do host. O arranjo está na seção [Arranjo decidido](#arranjo-decidido-o-container-tv3ws-ssdp); a avaliação anterior à decisão ficou como registro.
-- **Camada 3:** medida em 03/10 a partir do WSL2, com resultado negativo (teste 10), como esperado. Falta o teste positivo em Linux nativo com o `tv3ws-ssdp`.
-- **Duplicatas do teste 7:** resolvidas entre a VM do WSL e o Windows (teste 18, 1 resposta por M-SEARCH). O `tv3ws-ssdp` anuncia por uma interface só, e a escolha da interface tem testes de unidade. Numa LAN com Linux nativo, ainda não foi medido.
+- **Camada 3:** negativa no WSL2 (testes 10 e 13) e **positiva em Linux nativo em 09/10** (testes 30 e 32: notebook e celular no Wi-Fi doméstico encontram o receptor).
+- **Duplicatas do teste 7:** resolvidas. Entre a VM do WSL e o Windows, 1 resposta por M-SEARCH (teste 18); numa LAN com Linux nativo, 3 respostas a 3 buscas (teste 30).
 - **Imagem publicada:** até o push do tv3ws e a publicação pelo CI, a `tv30-tv3ws` do Docker Hub não tem `dist/ssdp-announcer.js`. As medições de 04/10 usaram a imagem construída localmente.
 - **`CACHE-CONTROL` da resposta ao M-SEARCH:** a resposta sai com `max-age=4`, e o NOTIFY com `max-age=1800` (testes 17 e 18). É anterior à opção B, e não foi mexido.
 - **Segunda barreira (Windows):** medida em 04/10 (teste 13). Com o anunciante em modo host no WSL2, o celular continua sem receber nada.

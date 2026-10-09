@@ -78,7 +78,7 @@ Onde o anunciante roda é decisão de implementação deste testbed. A C.3.4 ped
 - **Uma interface só.** O anunciante usa a interface IPv4 que tem o IP do host anunciado. Quando o host não é um IP da máquina (um nome, por exemplo), usa a interface da rota padrão e avisa no log. `SSDP_INTERFACE` força a escolha. O objetivo é acabar com as respostas duplicadas do teste 7 de [ssdp-verificacao.md](ssdp-verificacao.md), em que a biblioteca respondia por todas as interfaces da máquina.
 - **Como ligar (só Linux nativo):** `COMPOSE_PROFILES=mqtt,linux,ssdp` e `SSDP_ADVERTISE_HOST=<IP da LAN>` no `.env` da raiz. Ver o `README.md`, seção *Descoberta SSDP (só Linux nativo)*. Sem o perfil, nada é anunciado.
 - **Medido em 04/10, no WSL2:** 1 resposta por M-SEARCH, de um cliente no Windows, contra 32 respostas a cerca de 5 buscas no teste 7. O NOTIFY saiu só pela `eth0` da VM. Processo morto, porta UDP 1900 ocupada e interface inexistente derrubaram só o `tv3ws-ssdp`, e as APIs seguiram respondendo pela borda. Ver a seção *Medido em 04/10 — opção B* de [ssdp-verificacao.md](ssdp-verificacao.md).
-- **Ainda não medido:** a descoberta por outro aparelho com o `tv3ws-ssdp` em Linux nativo (camada 3).
+- **Medido em 09/10, em Linux nativo (camada 3): funciona.** Num Ubuntu com Docker Engine no Wi-Fi doméstico, um notebook recebeu 3 respostas a 3 buscas e leu o `/manifest` com os seis cabeçalhos; um celular Android no mesmo Wi-Fi encontrou o receptor (`192.168.2.7:1900`). Ver a seção *Medido em 09/10* de [ssdp-verificacao.md](ssdp-verificacao.md).
 
 ## C. Outros pontos
 
