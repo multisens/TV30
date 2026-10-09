@@ -65,7 +65,7 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 
 > **Importante — não rode `docker compose` em `infra/`.** O `infra/` é submodule e seu compose é incluído automaticamente via `include:` no `docker-compose.yml` da raiz. **Toda a stack sobe de uma vez pela raiz.** Subir `compose` dentro de `infra/` não vê os serviços `aop`,  `tv3ws` e `bcast` (que ficam no compose raiz) e gera confusão de rede.
 
-> **Importante — sem `.env` na raiz, os serviços principais ficam fora silenciosamente.** Os containers `aop`, `tv3ws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: [linux]` ou `[mqtt]` no compose (e o `tv3ws-ssdp`, opcional, tem `[ssdp]`). Sem `COMPOSE_PROFILES=mqtt,linux` (que vem no `.env.example`), só sobe a infra (redis, edgegateway) e nada funciona end-to-end. Sempre comece com `cp .env.example .env`.
+> **Importante — sem `.env` na raiz, os serviços principais ficam fora silenciosamente.** Os containers `aop`, `tv3ws`, `bcast`, `mosquitto` e `sysctl-init` têm `profiles: [linux]` ou `[mqtt]` no compose. Sem `COMPOSE_PROFILES=mqtt,linux` (que vem no `.env.example`), só sobe a infra (redis, edgegateway) e nada funciona end-to-end. Sempre comece com `cp .env.example .env`.
 
 > **Importante — Windows + Hyper-V:** o serviço Hyper-V costuma ocupar as portas 9001/9002 no host. Como o Mosquitto WebSocket precisa expor a porta no host (o browser do AoP conecta direto no `localhost:MQTT_WS_PORT`), edite o `.env` **antes do `up -d`** e troque para `MQTT_WS_PORT=9003`. Sintoma quando esquece: o console do navegador mostra erro de conexão WebSocket no MQTT.
 
@@ -75,15 +75,16 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 
 | Variável | Default | Descrição |
 |----------|---------|-----------|
-| `COMPOSE_PROFILES` | `mqtt,linux` | Profiles ativos. Sem isto, `aop`/`tv3ws`/`bcast`/`mosquitto`/`sysctl-init` não sobem. Acrescente `ssdp` para subir o anunciante SSDP (só Linux nativo, ver [seção própria](#descoberta-ssdp-só-linux-nativo)). |
+| `COMPOSE_PROFILES` | `mqtt,linux` | Profiles ativos. Sem isto, `aop`/`tv3ws`/`bcast`/`mosquitto`/`sysctl-init` não sobem. O perfil `ssdp` deixou de existir em 09/10. |
+| `COMPOSE_FILE` | comentada (só o `docker-compose.yml`) | `docker-compose.yml:docker-compose.ssdp.yml` liga a descoberta SSDP: a borda vai para a rede do host e anuncia (só Linux nativo, ver [seção própria](#descoberta-ssdp-só-linux-nativo)). |
 | `DOCKERHUB_NS` | `labmultisens` | Namespace do Docker Hub de onde puxar as imagens. |
 | `IMAGE_TAG` | `latest` | Tag das imagens. `latest` puxa o build mais recente da main de cada submodule. |
 | `MQTT_WS_PORT` | `9001` | Porta WebSocket do Mosquitto exposta no host. **Em Windows com Hyper-V, trocar para `9003`.** |
 | `BCAST_PORT` | `8081` | Porta do bcast exposta no host. Sobrescrever se 8081 estiver ocupada. |
-| `EDGE_VARIANT` | `linux` | Para onde a borda encaminha: `linux` = tv3ws em container; `windows` = tv3ws rodando no host (desenvolvimento, ver [`docs/dev-local.md`](./docs/dev-local.md)). |
+| `EDGE_VARIANT` | `linux` | Para onde a borda encaminha: `linux` = tv3ws em container; `windows` = tv3ws rodando no host (desenvolvimento, ver [`docs/dev-local.md`](./docs/dev-local.md)); `host` = borda em rede do host, que o `docker-compose.ssdp.yml` define sozinho (não defina à mão). |
 | `SERVER_URL` | `localhost` | Host que dispositivos externos usam para abrir os WebSockets de remote-device. Também é o host anunciado por SSDP quando `SSDP_ADVERTISE_HOST` está vazia. |
-| `SSDP_ADVERTISE_HOST` | vazia | Host do `LOCATION` do anúncio SSDP e do `/manifest` (`Server-BaseURL`). Para a descoberta na rede, o IP da máquina na LAN. O `tv3ws` e o `tv3ws-ssdp` a leem do `.env` da raiz ou do `tv3ws/.env` (o da raiz prevalece); valor só exportado no shell não chega a eles. |
-| `SSDP_INTERFACE` | vazia | Nome da interface de rede por onde o `tv3ws-ssdp` anuncia. Vazia = a que tem o IP anunciado, senão a da rota padrão. |
+| `SSDP_ADVERTISE_HOST` | vazia | Host do `LOCATION` do anúncio SSDP e do `/manifest` (`Server-BaseURL`). Para a descoberta na rede, o IP da máquina na LAN. O `tv3ws` (`/manifest`) e a borda (anúncio, com o `docker-compose.ssdp.yml`) a leem do `.env` da raiz ou do `tv3ws/.env` (o da raiz prevalece); valor só exportado no shell não chega a eles. |
+| `SSDP_INTERFACE` | vazia | Nome da interface de rede por onde a borda anuncia. Vazia = a que tem o IP anunciado, senão a da rota padrão. Interface inexistente derruba a borda (morre-inteiro). |
 | `JWT_SECRET` / `JWT_ISSUER` | default de desenvolvimento / `GenericIssuer` | Segredo e emissor do accessToken. O **mesmo** valor vai para o tv3ws (que assina) e para a borda (que valida). |
 | `AUTH_ENFORCE` | `warn` | Validação de credenciais na borda: `warn` só registra (log `[tv30-auth] WARN` + cabeçalho `X-TV30-Auth-Warn`); `enforce` rejeita com 404 + corpo C.3.2. |
 | `REDIS_COMMANDER_USER` / `REDIS_COMMANDER_PASSWORD` | `admin` / `tv30-redis-admin` | Login da interface administrativa do Redis (ver [seção própria](#interface-administrativa-do-redis)). Não muda a conexão com o banco (6379), que segue sem senha. |
@@ -140,9 +141,9 @@ Depois `docker compose up -d` (ou `docker compose restart tv3ws` se a stack já 
 | Serviço | Porta(s) host | URL / observação |
 |---------|---------------|------------------|
 | AoP (UI do receptor) | 8080 | http://localhost:8080 |
-| tv3ws (TV 3.0 WebServices) | — (44652/44653 só na rede do Docker) | Não publicado no host: clientes entram pela borda (44642/44643). HTTPS interno somente com `HTTPS_CERT`/`HTTPS_KEY` no `tv3ws/.env` |
+| tv3ws (TV 3.0 WebServices) | — (44652/44653 só na rede do Docker) | Não publicado no host: clientes entram pela borda (44642/44643). Com o `docker-compose.ssdp.yml`, a 44652/44653 é publicada só em `127.0.0.1`, para a borda. HTTPS interno somente com `HTTPS_CERT`/`HTTPS_KEY` no `tv3ws/.env` |
 | tv3ws — WebSockets de remote-device | 45000–45199 | Portas dinâmicas devolvidas no registro (`ws://SERVER_URL:<porta>`) |
-| tv3ws-ssdp — anúncio SSDP (perfil `ssdp`) | UDP 1900, na rede do host | Só anuncia; não abre porta TCP. O `LOCATION` aponta para a borda (`http://<host>:44642/manifest`) |
+| edgegateway — anúncio SSDP (só com o `docker-compose.ssdp.yml`) | UDP 1900, na rede do host | Processo `ssdp-announcer` da borda. O `LOCATION` aponta para a própria borda (`http://<host>:44642/manifest`) |
 | edgegateway — superfície externa | 44643 | rotas para clientes não-locais (tabela única M4) |
 | edgegateway — superfície interna | 44642 | porta FIXA da norma (C.3.4); rotas de clientes locais |
 | bcast (broadcaster) | `${BCAST_PORT:-8081}` | http://localhost:8081 — apps de serviço (webmedia, uff, etc.) |
@@ -150,7 +151,7 @@ Depois `docker compose up -d` (ou `docker compose restart tv3ws` se a stack já 
 | Mosquitto WS | `${MQTT_WS_PORT:-9001}` | WebSocket — em Windows usar **9003** |
 | Redis | 6379 | Estado de sessão + perfis (acesso TCP, ex.: `redis-cli`), sem senha |
 | Redis Commander (embutido no redis) | dinâmica | `docker port redis 18081` mostra a porta; exige login (ver abaixo) |
-| edgegateway — docs | dinâmica | Swagger UI + 2 specs: `docker port edgegateway 8085` |
+| edgegateway — docs | dinâmica (8085 fixa com o `docker-compose.ssdp.yml`) | Swagger UI + 2 specs: `docker port edgegateway 8085`; com a borda em rede do host, `http://localhost:8085` |
 
 ---
 
@@ -172,20 +173,23 @@ O login é configurado pelo entrypoint da imagem `tv30-redis`. Uma imagem constr
 
 ## Descoberta SSDP (só Linux nativo)
 
-O receptor se anuncia por SSDP (ABNT NBR 25608, C.3.4) para que outro aparelho da rede o encontre. Quem anuncia é o container opcional `tv3ws-ssdp`: a mesma imagem do tv3ws, em rede do host, só com o anúncio. O resto da stack continua na `ginga_net`, e o `/manifest` continua no tv3ws, atrás da borda. A descoberta só é suportada em **Linux nativo com Docker Engine** (decisão do Joel, informada pelo Luís em 04/10); nesse ambiente, o teste com um segundo aparelho ainda não foi feito. No Windows com WSL2, o anúncio em rede do host não sai da máquina (medido em 03 e 04/10, com um anunciante descartável no mesmo arranjo). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte.
+O receptor se anuncia por SSDP (ABNT NBR 25608, C.3.4) para que outro aparelho da rede o encontre. Quem anuncia é a borda (L6, opção A, decidido pelo Luís em 09/10): o override `docker-compose.ssdp.yml` põe o `edgegateway` em rede do host e liga o anunciante dele, um processo em Go (`infra/edgegateway/ssdp/`). O `/manifest` continua no tv3ws, atrás da borda, e o resto da stack continua na `ginga_net`. A descoberta só é suportada em **Linux nativo com Docker Engine** (decisão do Joel, informada pelo Luís em 04/10). Nesse ambiente, um segundo aparelho encontrou o receptor em 09/10 com a opção B, anterior (o container `tv3ws-ssdp`); com a opção A, o teste ainda não foi refeito. No Windows com WSL2, o anúncio em rede do host não sai da máquina (medido em 03 e 04/10, com um anunciante descartável em modo host). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte.
 
-No `.env` da raiz:
+No `.env` da raiz (o `COMPOSE_PROFILES` fica como está):
 
 ```env
-COMPOSE_PROFILES=mqtt,linux,ssdp
+COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml
 SSDP_ADVERTISE_HOST=192.168.0.12   # IP desta máquina na rede local
 ```
 
-Depois, `docker compose up -d` e `docker logs tv3ws-ssdp`. Libere a UDP 1900 e a TCP 44642 no firewall do host.
+Depois, `docker compose up -d` e `docker logs edgegateway`. Libere a UDP 1900 e a TCP 44642 no firewall do host.
 
+- Com o override, a borda sai da `ginga_net`: ocupa a 44642, a 44643 e a 8085 direto no host e fala com o tv3ws por `127.0.0.1` (o tv3ws publica a 44652/44653 só nesse endereço).
+- **Morre-inteiro (decisão do Luís em 09/10):** se o anúncio falhar (UDP 1900 ocupada, interface inexistente em `SSDP_INTERFACE`, rede caindo), a borda inteira cai, com todas as APIs, e o `restart` a traz de volta.
 - Sem `SSDP_ADVERTISE_HOST`, o anúncio usa `SERVER_URL`, que por padrão é `localhost`, e outro aparelho não alcança o endereço. O anunciante avisa no log (`[ssdp] AVISO`).
-- Sem o perfil `ssdp`, nada é anunciado. O cliente ainda chega ao receptor pelo IP: `http://<IP>:44642/manifest`.
-- Para desligar, tire o `ssdp` do `COMPOSE_PROFILES` e remova o container: `docker compose --profile ssdp rm -sf tv3ws-ssdp`. Só tirar o perfil e rodar `up -d` ou `down` deixa o anunciante de pé, com a configuração antiga (medido em 04/10).
+- Sem o override, nada é anunciado. O cliente ainda chega ao receptor pelo IP: `http://<IP>:44642/manifest`. Para desligar, comente o `COMPOSE_FILE` e rode `docker compose up -d`.
+- **Quem usava a opção B** (perfil `ssdp`, que deixou de existir): remova o container antigo, `docker rm -f tv3ws-ssdp` (ou `docker compose up -d --remove-orphans`). O `preflight` avisa se ele estiver de pé.
+- Até a imagem nova da borda ser publicada pelo CI, a do Docker Hub não tem o anunciante nem a variante `host`; construa-a localmente (`docker compose build edgegateway`).
 - Medições, arranjo e roteiro de teste com um segundo aparelho: [`docs/ssdp-verificacao.md`](./docs/ssdp-verificacao.md).
 
 ---

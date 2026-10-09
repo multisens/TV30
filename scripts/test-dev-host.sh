@@ -6,8 +6,7 @@
 #
 #   1  tv3ws no host | containers: redis, mosquitto, edgegateway (variante
 #      windows: backends em host.docker.internal:44654/44655), aop, bcast;
-#      o tv3ws-ssdp (perfil ssdp), se estiver de pe, e parado: o tv3ws do
-#      host anuncia sozinho
+#      o tv3ws do host anuncia o SSDP sozinho (a borda, na bridge, nao anuncia)
 #   2  aop no host   | containers: redis, mosquitto, edgegateway (variante
 #      linux), tv3ws, bcast (BCAST_HOSTNAME=localhost, BCAST_PORT=8081)
 #   3  bcast no host | containers: redis, mosquitto, edgegateway (variante
@@ -26,9 +25,13 @@
 #      pelo proxy HTTP; depois de matar o processo do host o proxy falha
 #
 # Ao fim de cada cenario o processo do host morre. No fim de tudo a stack
-# padrao (EDGE_VARIANT=linux) e restaurada se estava de pe antes do teste
-# (com o tv3ws-ssdp, se ele foi parado no cenario 1), ou derrubada (docker
-# compose down) se nao estava.
+# padrao (EDGE_VARIANT=linux) e restaurada se estava de pe antes do teste, ou
+# derrubada (docker compose down) se nao estava.
+#
+# A borda roda SEMPRE na bridge durante o teste (COMPOSE_FILE fixo em
+# docker-compose.yml), mesmo que o .env ligue o docker-compose.ssdp.yml (borda
+# em rede do host, anunciando o SSDP; L6 = opcao A, 09/10). A restauracao
+# volta a configuracao do .env, inclusive esse override.
 #
 # "Host" = processo na rede do host. Duas formas (DEVHOST_MODO):
 #   node    node/npm do PATH, numa copia temporaria do modulo (sem
@@ -140,7 +143,9 @@ LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/tv30-devhost-logs.XXXXXX")
 
 # Toda chamada ao compose ativa os dois profiles: tv3ws/aop/bcast/sysctl-init
 # tem profile "linux" e o mosquitto "mqtt" (sem eles, clone sem .env nao os ve).
-compose() { docker compose --profile mqtt --profile linux "$@"; }
+compose() { COMPOSE_FILE=docker-compose.yml docker compose --profile mqtt --profile linux "$@"; }
+# restauracao: a configuracao do .env (COMPOSE_FILE incluido)
+compose_env() { docker compose --profile mqtt --profile linux "$@"; }
 
 # Infra basica + one-shots que ela precisa (o preflight vem como dependencia
 # do edgegateway; userfiles-seed cria ./user-files para o modulo do host).
@@ -214,20 +219,6 @@ parar() { # parar <servico>: o modulo do host nao pode coexistir com o container
   compose stop "$1" >>"$LOGDIR/compose.log" 2>&1 || true
   if container_rodando "$1"; then falha "container $1 continua rodando"; return 1; fi
   ok "container $1 parado (o modulo roda so no host)"
-}
-
-# No cenario 1 o tv3ws do host anuncia o SSDP sozinho (SSDP_ENABLED ligado por
-# padrao). O tv3ws-ssdp (perfil ssdp), se estiver de pe, seria um segundo
-# anunciante do mesmo UDN na rede do host, com o LOCATION tirado do .env da
-# raiz, que o tv3ws do host nao le. O compose() abaixo nao ativa o perfil
-# ssdp: o container e parado direto e volta na restauracao.
-SSDP_PARADO=""
-parar_anunciante() {
-  container_rodando tv3ws-ssdp || return 0
-  docker stop tv3ws-ssdp >>"$LOGDIR/compose.log" 2>&1 || true
-  if container_rodando tv3ws-ssdp; then falha "container tv3ws-ssdp continua rodando"; return 1; fi
-  SSDP_PARADO=1
-  ok "container tv3ws-ssdp parado (no cenario 1 o tv3ws do host anuncia sozinho)"
 }
 
 # ------------------------------------------------------ processo do host ---
@@ -404,7 +395,6 @@ cenario_1() {
   CEN=1
   titulo "CENARIO 1 — tv3ws no host | containers: infra (borda windows) + aop + bcast"
   parar tv3ws || return
-  parar_anunciante || return
   subir windows $INFRA aop bcast || return
   porta_livre 44654 || { falha "porta 44654 ja ocupada no host"; return; }
   local ud; ud=$(dir_userfiles)
@@ -509,19 +499,16 @@ restaurar() {
   RESTAURADO=1
   host_stop
   CEN="-"
-  # o tv3ws-ssdp parado no cenario 1 volta junto (perfil ssdp so neste caso)
-  local extra=()
-  [ -z "$SSDP_PARADO" ] || extra=(--profile ssdp)
   if [ -n "${ANTES// /}" ]; then
-    titulo "restaurando a stack padrao (EDGE_VARIANT=linux${SSDP_PARADO:+, com o tv3ws-ssdp})"
-    if EDGE_VARIANT=linux compose ${extra[@]+"${extra[@]}"} up -d >>"$LOGDIR/compose.log" 2>&1; then
+    titulo "restaurando a stack padrao (EDGE_VARIANT=linux; COMPOSE_FILE do .env)"
+    if EDGE_VARIANT=linux compose_env up -d >>"$LOGDIR/compose.log" 2>&1; then
       echo "  ok    stack padrao de pe"
     else
       echo "  ERRO  falha ao restaurar (ver $LOGDIR/compose.log)"
     fi
   else
     titulo "a stack nao estava de pe antes do teste: docker compose down"
-    compose down >>"$LOGDIR/compose.log" 2>&1 || echo "  ERRO  falha no down (ver $LOGDIR/compose.log)"
+    compose_env down >>"$LOGDIR/compose.log" 2>&1 || echo "  ERRO  falha no down (ver $LOGDIR/compose.log)"
   fi
 }
 trap 'restaurar' EXIT

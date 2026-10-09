@@ -26,9 +26,10 @@ services:
     network_mode: host
     pid: host
     environment:
-      # Perfis ativos, para as checagens que so valem com um perfil ligado
-      # (ssdp: UDP 1900). Vem do .env da raiz ou do shell; perfil ligado so
-      # por --profile na linha de comando nao aparece aqui.
+      # Perfis ativos (vem do .env da raiz ou do shell; perfil ligado so por
+      # --profile na linha de comando nao aparece aqui). As checagens da borda
+      # em rede do host (UDP 1900, 44642 com o proprio KrakenD) ligam com
+      # SSDP_EDGE, que o docker-compose.ssdp.yml define.
       COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
     volumes:
       - ./scripts/preflight.sh:/preflight.sh:ro
@@ -113,9 +114,10 @@ services:
       # Emissor do accessToken. Mesma fonte (.env da raiz / shell) e mesmo
       # padrao que a borda usa para validar o token (infra/docker-compose.yml).
       JWT_ISSUER: ${JWT_ISSUER:-GenericIssuer}
-      # Descoberta SSDP: no compose quem anuncia e o tv3ws-ssdp (perfil ssdp,
-      # rede do host; L6 = opcao B, informado pelo Luis em 04/10). Daqui, da
-      # bridge, o multicast nao sai para a LAN. O tv3ws so serve o /manifest.
+      # Descoberta SSDP: no compose quem anuncia e a BORDA, em rede do host
+      # (L6 = opcao A, decisao do Luis em 09/10; docker-compose.ssdp.yml, so
+      # Linux nativo). Daqui, da bridge, o multicast nao sai para a LAN. O
+      # tv3ws so serve o /manifest, para onde aponta o LOCATION da borda.
       SSDP_ENABLED: "false"
     env_file:
       # Opcional: HTTPS_KEY/HTTPS_CERT proprios (fora da imagem; nao estao
@@ -124,7 +126,7 @@ services:
       - path: ./tv3ws/.env
         required: false
       # Endereco do anuncio SSDP (SSDP_ADVERTISE_HOST, EDGE_HTTP_PORT,
-      # EDGE_HTTPS_PORT): o /manifest daqui e o LOCATION do tv3ws-ssdp tem de
+      # EDGE_HTTPS_PORT): o /manifest daqui e o LOCATION da borda tem de
       # sair do mesmo valor, entao os dois servicos leem os mesmos arquivos,
       # nesta ordem (o de baixo prevalece): tv3ws/.env e o .env da raiz.
       # Essas variaveis ficam fora da secao environment de proposito: la, ate
@@ -148,52 +150,6 @@ services:
         condition: service_started
       userfiles-seed:
         condition: service_completed_successfully
-    restart: unless-stopped
-
-  # Anunciante SSDP (C.3.4). L6 decidida = opcao B (informado pelo Luis em
-  # 04/10): container so para o anuncio, em rede do host, porque o multicast
-  # da bridge nao sai para a LAN (docs/ssdp-verificacao.md). Mesma imagem do
-  # tv3ws (construida pelo servico tv3ws), outro programa
-  # (dist/ssdp-announcer.js): sem Express, Redis nem MQTT, sem porta TCP. O
-  # LOCATION aponta para o /manifest do tv3ws, atras da borda. Sem volume de
-  # user-files, o entrypoint da imagem so executa o comando.
-  # So funciona em Linux nativo com Docker Engine (decisao do Joel, 04/10):
-  # em Windows/WSL2 o anuncio nao sai da maquina (medido); no Docker Desktop,
-  # que tambem roda numa VM, espera-se o mesmo (nao medido). Liga com o
-  # perfil "ssdp" (ex.: COMPOSE_PROFILES=mqtt,linux,ssdp). Na linha de comando,
-  # --profile substitui o COMPOSE_PROFILES do .env (medido em 04/10): use
-  # --profile mqtt --profile linux --profile ssdp; so --profile ssdp sobe a
-  # infra e o anunciante, sem tv3ws, aop e bcast.
-  # Morre-inteiro: falha do anuncio derruba so este container (exit 1 e
-  # restart), nao as APIs do tv3ws.
-  tv3ws-ssdp:
-    profiles: ["ssdp"]
-    image: ${DOCKERHUB_NS:-tv30}/tv30-tv3ws:${IMAGE_TAG:-dev}
-    container_name: tv3ws-ssdp
-    network_mode: host
-    command: ["node", "dist/ssdp-announcer.js"]
-    environment:
-      # Mesmo valor do tv3ws: sem SSDP_ADVERTISE_HOST, e o host anunciado.
-      SERVER_URL: ${SERVER_URL:-localhost}
-    env_file:
-      # Os mesmos arquivos do tv3ws, na mesma ordem (motivo no servico tv3ws):
-      # SSDP_ADVERTISE_HOST, EDGE_HTTP_PORT/EDGE_HTTPS_PORT e UDN, mais
-      # SSDP_INTERFACE (nome da interface que anuncia; sem ela, a que tem o IP
-      # anunciado ou, com aviso, a da rota padrao).
-      - path: ./tv3ws/.env
-        required: false
-      - path: ./.env
-        required: false
-    depends_on:
-      # O LOCATION aponta para a borda: nao anunciar antes de ela existir.
-      # Nao depende do tv3ws (perfil linux), que no cenario dev-host 1 roda
-      # fora do compose e anuncia sozinho (SSDP_ENABLED ligado). Com este
-      # container de pe ficariam dois anunciantes, e o LOCATION daqui pode
-      # nao casar com o /manifest do tv3ws do host, que nao le o .env da
-      # raiz: scripts/test-dev-host.sh para este container no cenario 1
-      # (docs/dev-local.md).
-      edgegateway:
-        condition: service_started
     restart: unless-stopped
 
   aop:
