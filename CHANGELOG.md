@@ -7,6 +7,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-09 (09/10)
+
+L6 (where the SSDP advertiser runs) was re-decided by Luis on 2026-10-09:
+option A, the edge (`edgegateway`) announces, on the host network. It replaces
+option B (the `tv3ws-ssdp` container), decided on 2026-10-04 and validated on
+native Linux on 2026-10-09 (tests 28 to 32 of `docs/ssdp-verificacao.md`)
+before the switch. Also decided by Luis on 2026-10-09: the announcer follows
+the edge die-whole rule, so an announcement failure takes the whole edge down
+(all APIs) until the compose restart brings it back. This reopens the effect
+of C8, which option B had solved, now on the edge. Unchanged: discovery is
+supported only on native Linux with Docker Engine (Joel, 2026-10-04), and B2
+(default advertised host) is still open. Where the advertiser runs is a
+decision of this testbed, not of the norm (C.3.4 does not say).
+
+#### Added
+
+- infra `edgegateway/ssdp/`: SSDP announcer in Go, standard library only
+  (`main.go`, `config.go`, `iface.go`, `ssdp.go`, `ssdp_test.go`). Built in a
+  new `ssdp` stage of `edgegateway/Dockerfile` (`go vet` and `go test` run in
+  the build, `CGO_ENABLED=0`) and installed as `/usr/local/bin/ssdp-announcer`.
+  Same messages as the previous announcer: two NOTIFY every 10 s (`NT` = URN
+  and `NT` = UDN), multicast TTL 4, USN `<UDN>::<URN>`,
+  `LOCATION http://<host>:44642/manifest`, `ssdp:byebye` on SIGTERM. Same host
+  chain (`SSDP_ADVERTISE_HOST` > `SERVER_URL` > local IP) and interface order
+  (`SSDP_INTERFACE` > interface holding the advertised IP > default route);
+  no usable interface is now an error (die-whole) instead of announcing on
+  all interfaces.
+- infra `edgegateway/routes.json`: backend variant `host`
+  (`http://127.0.0.1:44652`, `https://127.0.0.1:44653`). `generate.js` builds
+  `krakend-{internal,external}.host.json` with no code change.
+- Root `docker-compose.ssdp.yml` override: the edge goes to
+  `network_mode: host` (no `networks`, `ports` or `extra_hosts`) with
+  `EDGE_VARIANT=host`, `REDIS_HOST=127.0.0.1`, `SSDP_ENABLED=true` and
+  `SERVER_URL`, and reads `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE`,
+  `EDGE_HTTP_PORT`/`EDGE_HTTPS_PORT` and `UDN` from `./tv3ws/.env` then
+  `./.env` (same order as tv3ws). tv3ws publishes 44652/44653 on `127.0.0.1`
+  only (not reachable from the LAN). The preflight gets `SSDP_EDGE=true`. The
+  edge ports (44642, 44643 and docs 8085) bind directly on the host; 8085 is
+  not dynamic in this mode. Enable it on native Linux with
+  `COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml` and
+  `SSDP_ADVERTISE_HOST=<LAN IP>` in the root `.env`.
+
+#### Changed
+
+- infra `edgegateway/entrypoint.sh`: starts the announcer only with
+  `SSDP_ENABLED=true` (default off) and watches it with the two KrakenD and
+  the docs httpd (die-whole). On shutdown it stops the announcer first, so the
+  byebye goes out. The boot line shows `ssdp=ligado` or `ssdp=desligado`.
+- M-SEARCH response: `CACHE-CONTROL: max-age=1800`, as in the NOTIFY (was
+  `max-age=4`, the node-ssdp `ttl`). `SERVER` is now
+  `Linux UPnP/1.1 tv30-ssdp/1.0`. tv3ws alone on the host (dev-host) still
+  answers with `max-age=4`.
+- `scripts/preflight.sh`: with `SSDP_EDGE=true`, 44642 held by the edge's own
+  KrakenD (re-up) is a warning instead of a block, and UDP 1900 held by
+  another owner is a warning. A warning also shows when the old `tv3ws-ssdp`
+  container is still running, with `docker rm -f tv3ws-ssdp`. The checks
+  based on the `ssdp` profile were removed.
+- `scripts/test-dev-host.sh`: always runs with the edge on the bridge
+  (`COMPOSE_FILE=docker-compose.yml`); the restore goes back to the `.env`
+  config, override included. In scenario 1, tv3ws on the host is the only
+  advertiser.
+- tv3ws: comments point to the edge as the advertiser; `src/ssdp-server.ts`
+  stays for tv3ws alone on the host. `npm test`: 61 PASS, 0 FAIL.
+- `.env.example`: the `COMPOSE_FILE` example replaces the `ssdp` profile
+  example. `tv3ws/.env.example`: comments point to the edge as the advertiser.
+- Docs: `docs/ssdp-verificacao.md` (decided arrangement, how to enable it on
+  native Linux and pending items rewritten for option A; tests 1 to 32 kept as
+  a record, 14 to 32 marked as option B), `docs/decisoes-pendentes.md` (B1,
+  B2, C8 reopened, items 2 and 3 approved on 2026-10-04 marked as superseded),
+  `docs/avaliacao-item9-credenciais.md` (L6 row), `ARCHITECTURE.md` and
+  `docs/arquitetura.md` (back to six continuous containers; the edge has one
+  more process with the override), `docs/dev-local.md` (`host` variant,
+  `COMPOSE_FILE` prefix for manual runs), `docs/instalacao.md`,
+  `docs/index.md`, `README.md` (section *Descoberta SSDP (so Linux nativo)*,
+  `.env` table, port map), `KNOWN-ISSUES.md` (die-whole on the edge; removing
+  the old container), `infra/docs/05-autenticacao.md`,
+  `infra/docs/04-pipeline-http.md`, `infra/README.md` and
+  `infra/edgegateway/plugin/README.md`.
+
+#### Removed
+
+- Root compose: service `tv3ws-ssdp` and profile `ssdp`. The bridged tv3ws
+  keeps `SSDP_ENABLED: "false"` and only serves `/manifest`.
+- tv3ws: `src/ssdp-announcer.ts` and `test/ssdp-announcer.test.ts`.
+
+#### Upgrading
+
+- With option B running: `docker rm -f tv3ws-ssdp` (or
+  `docker compose up -d --remove-orphans`). Otherwise it keeps announcing its
+  old config, next to the edge, with the same UDN.
+- Until infra is pushed and CI publishes the image, `tv30-edgegateway` on
+  Docker Hub has neither the announcer nor the `host` configs; build it
+  locally (`docker compose build edgegateway`).
+
+#### Not measured yet (option A)
+
+- No option A run is recorded in `docs/ssdp-verificacao.md`: startup and
+  logs, NOTIFY capture, the failures that take the edge down, and discovery by
+  a second device on native Linux (the 2026-10-09 validation used option B).
+  The test will be redone. The Go tests run in the image build; no build is
+  recorded here.
+
 ### 2026-10-04 (04/10)
 
 L6 (where the SSDP advertiser runs) was decided, as reported by Luis on

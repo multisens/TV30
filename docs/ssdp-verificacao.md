@@ -7,9 +7,11 @@ nav_order: 13
 
 Medição de 02/10/2026, com a stack completa de pé e a imagem do tv3ws reconstruída nesta semana. Ela cobre as camadas 1 e 2 do plano de teste: se o anúncio sai do container e se passa da rede do Docker. A camada 3, que é a descoberta por outro dispositivo da LAN, não pôde ser medida nesta máquina e está descrita no fim, com o roteiro e o script de cliente.
 
-**Arranjo decidido em 04/10 (L6, opção B, informado pelo Luís):** o anúncio sai de um container próprio, o `tv3ws-ssdp`, em rede do host. A borda, o tv3ws e o resto continuam na bridge `ginga_net`. As medições de 02/10 foram feitas com o arranjo anterior, em que o tv3ws anunciava de dentro da bridge. As de 03 e 04/10 em modo host (testes 6, 7, 11 e 12) usaram um anunciante descartável com a mesma biblioteca, no arranjo que a opção B adota. O arranjo novo e como ligá-lo estão na seção [Arranjo decidido](#arranjo-decidido-o-container-tv3ws-ssdp).
+**Arranjo atual, decidido pelo Luís em 09/10 (L6, opção A):** quem anuncia é a borda (`edgegateway`), posta em rede do host pelo override `docker-compose.ssdp.yml`, só em Linux nativo. A opção A substituiu a opção B, decidida em 04/10 (informado pelo Luís), em que o anúncio saía de um container próprio, o `tv3ws-ssdp`, em rede do host, com a borda, o tv3ws e o resto na bridge `ginga_net`.
 
-> **Norma × implementação.** A norma pede o anúncio SSDP e o GET no LOCATION, sem dizer onde o anunciante roda. Quem anuncia (desde 04/10, o container `tv3ws-ssdp`, em rede do host; antes, o tv3ws, num container da bridge `ginga_net`) e o caminho `/manifest` são decisões deste testbed. Onde fica o anunciante era a lacuna **L6**, decidida em 04/10 pela opção B.
+Registro das medições: as de 02/10 foram feitas com o arranjo anterior às duas opções, em que o tv3ws anunciava de dentro da bridge. As de 03 e 04/10 em modo host (testes 6, 7, 11 e 12) usaram um anunciante descartável com a mesma biblioteca do tv3ws. **Os testes 14 a 32 foram feitos com a opção B.** Nenhuma medição da opção A está registrada ainda; a descoberta por outro aparelho em Linux nativo vai ser refeita com ela. O arranjo atual e como ligá-lo estão na seção [Arranjo decidido](#arranjo-decidido-a-borda-anuncia-em-rede-do-host).
+
+> **Norma × implementação.** A norma pede o anúncio SSDP e o GET no LOCATION, sem dizer onde o anunciante roda. Quem anuncia (desde 09/10, a borda, em rede do host; de 04 a 09/10, o container `tv3ws-ssdp`, em rede do host; antes, o tv3ws, num container da bridge `ginga_net`) e o caminho `/manifest` são decisões deste testbed. Onde fica o anunciante era a lacuna **L6**, decidida em 04/10 pela opção B e re-decidida pelo Luís em 09/10 pela opção A.
 
 ## O que a norma pede
 
@@ -21,19 +23,21 @@ ABNT NBR 25608, C.3.4, p. 197–198 (p. 215–216 do PDF):
 
 ## O que o código faz hoje
 
-Estado desde 04/10 (opção B). O arranjo das medições de 02/10 está descrito na seção seguinte.
+Estado desde 09/10 (opção A). O arranjo das medições de 02/10 está descrito na seção seguinte, e o da opção B, na seção *Medido em 04/10 — opção B*.
 
-- **Quem anuncia:** o container `tv3ws-ssdp`, do perfil `ssdp` do compose da raiz. Ele usa a mesma imagem do tv3ws (`tv30-tv3ws`) com outro comando, `node dist/ssdp-announcer.js` (`tv3ws/src/ssdp-announcer.ts`), e roda em `network_mode: host`. O processo só anuncia: não sobe Express, não conecta no Redis nem no MQTT e não abre porta TCP. A biblioteca é a `@lvcabral/node-ssdp`. Ele manda dois NOTIFY a cada 10 s: um com `NT` igual ao URN do serviço e outro com o UDN puro. O UDN é fixo (`uuid:TV30-1234-5678-9012-345678901234`).
-- **O tv3ws da bridge não anuncia.** O compose põe `SSDP_ENABLED: "false"` nele, e o boot registra `[ssdp] anuncio desligado (SSDP_ENABLED=false)`. Fora do compose, `SSDP_ENABLED` vale ligado por padrão: o tv3ws rodando sozinho no host anuncia por conta própria, como antes.
-- **Interface:** o anúncio sai só pela interface IPv4 que tem o IP do host anunciado. Se o host não for um IP da máquina (um nome, ou um IP que não está em nenhuma interface), sai pela interface da rota padrão (`/proc/net/route`), com aviso no log. `SSDP_INTERFACE` (nome da interface) força a escolha.
-- **LOCATION:** `http://<host>:44642/manifest`. O `<host>` é `SSDP_ADVERTISE_HOST`, senão `SERVER_URL`, senão o IP local (`tv3ws/src/ssdp-config.ts`). As portas são as da **borda**, 44642 e 44643, configuráveis por `EDGE_HTTP_PORT` e `EDGE_HTTPS_PORT`.
-- **`/manifest`:** servido pelo tv3ws, na bridge, e declarado na tabela única da borda (`infra/edgegateway/routes.json`, `auth: none`, nas duas superfícies). O cliente chega ao tv3ws pela borda (D10), e não pelas portas 44652/44653, que não são publicadas. O `/manifest` usa o mesmo `ssdp-config.ts` que o anunciante. No compose, os dois containers recebem a mesma configuração (item *Compose*, abaixo), e por isso o `Server-BaseURL` e o `LOCATION` saem do mesmo host. Com o tv3ws rodando no host e o `tv3ws-ssdp` de pé, isso não é garantido: o tv3ws do host não lê o `.env` da raiz ([dev-local.md](dev-local.md#limites)).
-- **Morre-inteiro (D9):** falha ao iniciar o anúncio encerra o processo que anuncia, com o log `[ssdp] FALHA ...`. No compose, esse processo é o `tv3ws-ssdp`: só ele cai, e o Docker o reinicia (`restart: unless-stopped`). As APIs do tv3ws ficam de pé. No tv3ws rodando sozinho com `SSDP_ENABLED` ligado, o processo inteiro cai, APIs inclusive. No SIGTERM sai `ssdp:byebye`, e depois dele nenhum `ssdp:alive` até o processo encerrar (testes 25 e 26).
-- **Compose:** o `SERVER_URL` vem da seção `environment` dos dois serviços (`${SERVER_URL:-localhost}`, do `.env` da raiz ou do shell). `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE`, `EDGE_HTTP_PORT` e `EDGE_HTTPS_PORT` ficam fora da seção `environment`: o tv3ws e o `tv3ws-ssdp` leem os mesmos arquivos de ambiente, primeiro o `tv3ws/.env` e depois o `.env` da raiz, que prevalece. Um valor só exportado no shell não chega a eles. Motivo (conferido com `docker compose config`, compose v5.4.0, em 04/10): na seção `environment`, até o valor vazio (`${SSDP_ADVERTISE_HOST:-}`) apagaria o do `tv3ws/.env`. Efeito colateral: as outras chaves do `.env` da raiz também entram no ambiente dos dois containers. Sem configuração, o anúncio diz `localhost`. Sem o perfil `ssdp`, nada é anunciado.
+- **Quem anuncia:** a borda (`edgegateway`). O anunciante é um processo a mais no container dela, o binário `/usr/local/bin/ssdp-announcer`, escrito em Go só com a biblioteca padrão (`infra/edgegateway/ssdp/`). Ele é compilado no estágio `ssdp` do `infra/edgegateway/Dockerfile`, depois de `go vet` e `go test`: teste falhando, a imagem não sai. O `entrypoint.sh` da borda só o sobe com `SSDP_ENABLED=true` (ou `1`); o padrão é desligado, e o boot registra `ssdp=desligado`. Quem liga é o override `docker-compose.ssdp.yml` da raiz, junto com a rede do host (seção [Arranjo decidido](#arranjo-decidido-a-borda-anuncia-em-rede-do-host)). O anunciante manda dois NOTIFY a cada 10 s, com TTL 4: um com `NT` igual ao URN do serviço e outro com o UDN puro. O UDN é fixo (`uuid:TV30-1234-5678-9012-345678901234`), e a variável `UDN` o troca.
+- **Formato das mensagens:** o mesmo do anunciante anterior (a biblioteca `@lvcabral/node-ssdp`, no tv3ws): `USN` igual a `<UDN>::<URN>` e a `<UDN>`, `LOCATION` e `CACHE-CONTROL: max-age=1800` no NOTIFY. Duas diferenças, conferidas no código (`infra/edgegateway/ssdp/ssdp.go`): a resposta ao M-SEARCH sai com `max-age=1800`, e não mais `max-age=4` (testes 17 e 18), e o cabeçalho `SERVER` passou a ser `Linux UPnP/1.1 tv30-ssdp/1.0`, no lugar da assinatura da biblioteca. O primeiro NOTIFY sai logo depois de abrir os sockets; na biblioteca, saía 3 s depois. O M-SEARCH é respondido quando traz `MAN: "ssdp:discover"`, `MX` e um `ST` igual ao URN, ao UDN ou a `ssdp:all`.
+- **O tv3ws da bridge não anuncia.** O compose põe `SSDP_ENABLED: "false"` nele, e o boot registra `[ssdp] anuncio desligado (SSDP_ENABLED=false)`. Fora do compose, `SSDP_ENABLED` vale ligado por padrão: o tv3ws rodando sozinho no host anuncia por conta própria, com a biblioteca node-ssdp (`tv3ws/src/ssdp-server.ts`), como antes.
+- **Interface:** o anúncio sai só pela interface IPv4 que tem o IP do host anunciado, e a busca é respondida por ela. Se o host não for um IP da máquina (um nome, ou um IP que não está em nenhuma interface), sai pela interface da rota padrão (`/proc/net/route`), com aviso no log. `SSDP_INTERFACE` (nome da interface) força a escolha. Na borda, sem nenhuma interface possível, o anunciante não sobe (erro, morre-inteiro, abaixo); no tv3ws, esse caso anuncia por todas as interfaces, com aviso.
+- **LOCATION:** `http://<host>:44642/manifest`. O `<host>` é `SSDP_ADVERTISE_HOST`, senão `SERVER_URL`, senão o IP local. As portas são as da **borda**, 44642 e 44643. `EDGE_HTTP_PORT` e `EDGE_HTTPS_PORT` mudam só as portas anunciadas, e não as portas em que o KrakenD escuta, fixas em `infra/edgegateway/routes.json` (`surfaces.*.port`). A regra está escrita duas vezes, com a mesma ordem e a mesma limpeza do valor (tira esquema, caminho e porta): em Go na borda (`infra/edgegateway/ssdp/config.go`), para o `LOCATION`, e em TypeScript no tv3ws (`tv3ws/src/ssdp-config.ts`), para o `/manifest`. Não há teste cruzado entre as duas.
+- **`/manifest`:** servido pelo tv3ws, na bridge, e declarado na tabela única da borda (`infra/edgegateway/routes.json`, `auth: none`, nas duas superfícies). O cliente chega ao tv3ws pela borda (D10). As portas 44652/44653 do tv3ws não são publicadas na stack padrão; com o override, são publicadas só em `127.0.0.1`, para a borda. No compose, a borda e o tv3ws recebem a mesma configuração (item *Compose*, abaixo), e por isso o `Server-BaseURL` e o `LOCATION` saem do mesmo host. O ramo do IP local não acontece no compose, porque o `SERVER_URL` sempre chega com valor (`localhost` por padrão); se acontecesse, os dois divergiriam, porque cada um calcula o IP local na própria rede. Com o tv3ws rodando no host, fora do compose, a igualdade não é garantida: o tv3ws do host não lê o `.env` da raiz ([dev-local.md](dev-local.md#limites)).
+- **Morre-inteiro (D9; na borda, decidido pelo Luís em 09/10):** uma falha do anúncio encerra o anunciante com saída 1 e o log `[ssdp] FALHA em <etapa>: <erro> — encerrando (morre-inteiro: a borda cai junto)`. O `entrypoint.sh` da borda vigia o anunciante junto com os dois KrakenD e o httpd da documentação: se ele sai, o container inteiro encerra, **todas as APIs caem**, e o `restart: unless-stopped` traz a borda de volta. As etapas que derrubam são: porta inválida em `EDGE_HTTP_PORT`/`EDGE_HTTPS_PORT`; nenhuma interface para anunciar (`SSDP_INTERFACE` inexistente, ou nem interface com o IP anunciado nem rota padrão); a UDP 1900 que não abre (ocupada por um socket sem `SO_REUSEADDR`); o envio de um NOTIFY, a cada 10 s; e a leitura do grupo multicast. A falha ao responder um M-SEARCH só gera `[ssdp] AVISO`. No tv3ws rodando sozinho com `SSDP_ENABLED` ligado, o processo inteiro cai, APIs inclusive, como antes.
+- **Parada:** no SIGTERM, o `entrypoint.sh` para o anunciante primeiro e espera que ele saia, para o `ssdp:byebye` (um por `NT`) sair antes de o container acabar. O anunciante envia o byebye e sai, sem `ssdp:alive` depois dele (o envio periódico e o tratamento do sinal ficam no mesmo laço, em `main.go`). Não medido com a opção A; com a B, os testes 25 e 26.
+- **Compose:** o `SERVER_URL` vem da seção `environment` da borda (no override) e do tv3ws (`${SERVER_URL:-localhost}`, do `.env` da raiz ou do shell). `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE`, `EDGE_HTTP_PORT` e `EDGE_HTTPS_PORT` (e, na borda, `UDN`) ficam fora da seção `environment`: a borda e o tv3ws leem os mesmos arquivos de ambiente, primeiro o `tv3ws/.env` e depois o `.env` da raiz, que prevalece. Um valor só exportado no shell não chega a eles. Motivo (conferido com `docker compose config`, compose v5.4.0, em 04/10, com a opção B): na seção `environment`, até o valor vazio (`${SSDP_ADVERTISE_HOST:-}`) apagaria o do `tv3ws/.env`. Efeito colateral: as outras chaves do `.env` da raiz também entram no ambiente dos dois containers. Na borda, as chaves que a seção `environment` define (`EDGE_VARIANT`, `REDIS_HOST`, `REDIS_PORT`, `SSDP_ENABLED`, `SERVER_URL`, `JWT_SECRET`, `JWT_ISSUER` e `AUTH_ENFORCE`) continuam valendo, porque ela tem precedência sobre o `env_file`. Sem configuração, o anúncio diz `localhost`. Sem o override, nada é anunciado.
 
 ## Medido aqui (Windows 11 + WSL2 em NAT, Docker Engine dentro do WSL)
 
-> **Arranjo desta medição (02/10):** o anterior à opção B. O tv3ws anunciava de dentro da bridge `ginga_net`, e não havia `tv3ws-ssdp`.
+> **Arranjo desta medição (02/10):** o anterior às opções B e A. O tv3ws anunciava de dentro da bridge `ginga_net`, e não havia `tv3ws-ssdp` nem anúncio na borda.
 
 Rede no momento da medição:
 - `eth0` da VM do WSL: 172.27.57.172/20;
@@ -62,9 +66,9 @@ Com o padrão `localhost`, o mesmo cliente recebeu o anúncio, mas o GET no LOCA
 1. **O anúncio sai do container e chega à bridge, mas não sai da VM do WSL.** Nada apareceu na `eth0` da VM, e não há roteamento multicast. Nesta máquina, nenhum dispositivo da LAN recebe o NOTIFY, e um M-SEARCH vindo da LAN não chegaria ao tv3ws.
    - Em Linux nativo com a bridge do Docker, a expectativa é a mesma: o Docker não roteia multicast da bridge para a interface física. Isso **não foi medido** aqui; é inferência.
 2. **Dentro da rede do Docker, o fluxo de duas etapas funciona de ponta a ponta pela borda,** desde que o host anunciado seja alcançável por quem busca (controle positivo acima).
-3. **Com a configuração padrão, o anúncio aponta para `localhost`.** Mesmo que o pacote chegasse a outro dispositivo, o LOCATION e o `Server-BaseURL` não serviriam. Para o teste em rede doméstica, defina `SERVER_URL=<IP da máquina na LAN>` no `.env` da raiz. Esse valor também é o que vai na URL de WebSocket do remote-device. Outra opção, que muda só o anúncio e o `/manifest`, é `SSDP_ADVERTISE_HOST`: desde a opção B, no `.env` da raiz ou no `tv3ws/.env` (o da raiz prevalece), que o tv3ws e o `tv3ws-ssdp` leem como arquivos de ambiente. Em 02/10 ela chegava ao tv3ws só pelo `tv3ws/.env`.
-   - Desde 03/10 o tv3ws registra no boot um `[ssdp] AVISO` quando o host anunciado é de loopback. O padrão não mudou. PENDENTE (Joel): cair no IP local quando `SERVER_URL` for loopback, ou exigir `SSDP_ADVERTISE_HOST`.
-   - **`Server-SecureBaseURL` aponta para porta sem TLS.** O `/manifest` anuncia `<host>:44643`, a superfície externa da borda, que ainda é HTTP puro (lacuna L3). Um cliente não local que siga a C.3.4 e use `https://<Server-SecureBaseURL>/tv3/<API>` falha nessa porta. O tv3ws também registra isso no boot. PENDENTE (Joel): até a decisão da L3, anunciar a borda (como hoje) ou o HTTPS do próprio tv3ws, que não é publicado no host.
+3. **Com a configuração padrão, o anúncio aponta para `localhost`.** Mesmo que o pacote chegasse a outro dispositivo, o LOCATION e o `Server-BaseURL` não serviriam. Para o teste em rede doméstica, defina `SERVER_URL=<IP da máquina na LAN>` no `.env` da raiz. Esse valor também é o que vai na URL de WebSocket do remote-device. Outra opção, que muda só o anúncio e o `/manifest`, é `SSDP_ADVERTISE_HOST`: desde a opção B, no `.env` da raiz ou no `tv3ws/.env` (o da raiz prevalece), que o tv3ws e o anunciante (o `tv3ws-ssdp` na opção B; a borda, desde a opção A) leem como arquivos de ambiente. Em 02/10 ela chegava ao tv3ws só pelo `tv3ws/.env`.
+   - Desde 03/10 o tv3ws registra no boot um `[ssdp] AVISO` quando o host anunciado é de loopback; o anunciante da borda registra o mesmo aviso. O padrão não mudou. PENDENTE (Joel): cair no IP local quando `SERVER_URL` for loopback, ou exigir `SSDP_ADVERTISE_HOST`.
+   - **`Server-SecureBaseURL` aponta para porta sem TLS.** O `/manifest` anuncia `<host>:44643`, a superfície externa da borda, que ainda é HTTP puro (lacuna L3). Um cliente não local que siga a C.3.4 e use `https://<Server-SecureBaseURL>/tv3/<API>` falha nessa porta. O tv3ws e o anunciante da borda também registram isso no boot. PENDENTE (Joel): até a decisão da L3, anunciar a borda (como hoje) ou o HTTPS do próprio tv3ws, que não é publicado no host.
 4. **Observações, sem correção nesta semana:**
    - **Nomes dos cabeçalhos.** A borda (Go) entrega os nomes canonizados: `Server-Baseurl` em vez de `Server-BaseURL`. Nome de cabeçalho HTTP não diferencia maiúsculas (RFC 9110, 5.1), então cliente correto lê os dois. Cliente que compare com distinção de maiúsculas falha.
    - **CORS.** A borda expõe ao navegador só `Content-Length` e `X-TV30-Auth-Warn`. Um script de página que leia `/manifest` por `fetch` não enxerga os cabeçalhos `Server-*` e `Device-*`. Não há decisão sobre expô-los.
@@ -87,7 +91,7 @@ Dois testes novos. O primeiro foi feito com um anunciante **descartável**, sepa
 
 O teste 9 só prova que o celular fala SSDP com o roteador. Não prova a ausência de isolamento entre clientes do Wi-Fi.
 
-As duplicatas do teste 7 levaram o `tv3ws-ssdp` a anunciar por uma interface só (seção [Arranjo decidido](#arranjo-decidido-o-container-tv3ws-ssdp)). Com o `tv3ws-ssdp` da stack, o mesmo cliente do Windows recebeu 1 resposta por M-SEARCH (teste 18, na seção *Medido em 04/10 — opção B*, mais abaixo).
+As duplicatas do teste 7 levaram o anunciante a usar uma interface só, regra que a opção A manteve na borda (seção [Arranjo decidido](#arranjo-decidido-a-borda-anuncia-em-rede-do-host)). Com o `tv3ws-ssdp` da opção B, o mesmo cliente do Windows recebeu 1 resposta por M-SEARCH (teste 18, na seção *Medido em 04/10 — opção B*, mais abaixo). Com a opção A, isso não foi medido.
 
 **Medido em 04/10: modo host no WSL e celular.** Notebook na rede doméstica (Wi-Fi 192.168.0.12/24, VPN corporativa desligada), mesmo roteador do teste 9.
 
@@ -112,51 +116,64 @@ eth0 172.20.0.2 ──▶ br-8db76461e4d3 ─✗─▶ eth0 172.27.57.172 ──
 
 **Consequência:** numa máquina Windows com WSL2 em NAT, nenhuma das opções da L6 leva o anúncio ao celular sozinha. O teste positivo da camada 3 precisa de Linux nativo com Docker Engine (o Docker Desktop também roda o Docker numa VM; espera-se o mesmo problema, não medido).
 
-Com a opção B, o anúncio sai de um container em modo host, sem passar pela bridge, e por isso não encontra a primeira barreira (testes 6, 11 e 17). A segunda barreira é do Windows e continua. Por isso a descoberta só é suportada em Linux nativo (decisão do Joel, informada pelo Luís em 04/10).
+Com as opções B e A, o anúncio sai de um processo em modo host, sem passar pela bridge, e por isso não encontra a primeira barreira (testes 6, 11 e 17, com o anunciante descartável e com a opção B; com a A, não medido). A segunda barreira é do Windows e continua. Por isso a descoberta só é suportada em Linux nativo (decisão do Joel, informada pelo Luís em 04/10).
 
-## Arranjo decidido: o container `tv3ws-ssdp`
+## Arranjo decidido: a borda anuncia em rede do host
 
-**L6 decidida (informado pelo Luís em 04/10): opção B.** Um container só para o anúncio, em rede do host. A borda, o tv3ws e o resto continuam na bridge `ginga_net`. É decisão de implementação deste testbed, não da norma: a C.3.4 não diz onde o anunciante roda.
+**L6 re-decidida pelo Luís em 09/10: opção A.** Quem anuncia é a borda, posta em rede do host. A opção A substituiu a opção B (o container `tv3ws-ssdp`), decidida em 04/10 (informado pelo Luís) e validada em Linux nativo em 09/10 (testes 28 a 32), antes da troca. Na avaliação de 03/10, a A aparece como a direção dita pelo Joel em 28/09 (seção *L6: as opções avaliadas antes da decisão*, mais abaixo). É decisão de implementação deste testbed, não da norma: a C.3.4 não diz onde o anunciante roda.
 
 ```
 outro aparelho (LAN)                    máquina com Linux nativo e Docker Engine
-celular ── M-SEARCH (UDP 1900) ───────▶ tv3ws-ssdp    rede do host; só anuncia, sem porta TCP
+celular ── M-SEARCH (UDP 1900) ───────▶ edgegateway   rede do host; processo ssdp-announcer
         ◀─ resposta: LOCATION http://<IP da LAN>:44642/manifest
-celular ── GET /manifest (TCP 44642) ─▶ edgegateway   porta publicada no host
-                                          └─▶ tv3ws   ginga_net; responde Server-*, Device-*
+celular ── GET /manifest (TCP 44642) ─▶ edgegateway   KrakenD interno, direto no host (variante host)
+                                          └─▶ tv3ws   ginga_net; alcançado por 127.0.0.1:44652,
+                                                      publicada só no loopback; responde Server-*, Device-*
 ```
 
-- **Uma imagem, dois containers.** O `tv3ws-ssdp` é a imagem `tv30-tv3ws`, do mesmo build do tv3ws, com `command: ["node", "dist/ssdp-announcer.js"]`. Não monta `./user-files` e não abre porta TCP.
-- **O `/manifest` fica no tv3ws,** atrás da borda, e responde mesmo sem o perfil `ssdp`. O tv3ws da bridge recebe `SSDP_ENABLED: "false"` e não anuncia.
-- **No compose, o host do `LOCATION` e o do `/manifest` vêm da mesma configuração:** o `ssdp-config.ts`, com o mesmo `SERVER_URL` nos dois containers e o `SSDP_ADVERTISE_HOST` lido dos mesmos arquivos de ambiente (`tv3ws/.env` e `.env` da raiz, que prevalece). O padrão continua `localhost`, com aviso no boot. Qual deve ser o padrão é a B2, ainda aberta.
-- **Interface:** a que tem o IP anunciado; senão, a da rota padrão, com aviso; `SSDP_INTERFACE` força.
-- **Falha do anúncio** derruba só o `tv3ws-ssdp`, e o Docker o reinicia. As APIs do tv3ws não caem (era o ponto C8 de [Decisões pendentes](decisoes-pendentes.md)).
+- **O anunciante é um processo da borda.** `/usr/local/bin/ssdp-announcer`, binário estático em Go, só com a biblioteca padrão (`infra/edgegateway/ssdp/`: `main.go`, `config.go`, `iface.go`, `ssdp.go` e os testes em `ssdp_test.go`). O `entrypoint.sh` da borda só o sobe com `SSDP_ENABLED=true` e o põe na vigia do morre-inteiro. Com o override, o boot registra `[edgegateway] externa=44643 interna=44642 docs=8085 (variant=host, ssdp=ligado)`.
+- **O override `docker-compose.ssdp.yml` (raiz) liga tudo junto.**
+  - Na borda: `network_mode: host`, sem `networks`, `ports` nem `extra_hosts`; `EDGE_VARIANT=host`, `REDIS_HOST=127.0.0.1` e `SSDP_ENABLED=true`; o `SERVER_URL` e os arquivos de ambiente do item *Compose*, acima.
+  - No tv3ws: publica a 44652 e a 44653 só em `127.0.0.1`, para a borda. Da LAN elas não são alcançáveis, e a porta direta fechada no item 8 segue fechada para a rede; um processo da própria máquina, porém, chega ao tv3ws sem passar pela borda.
+  - No `preflight`: `SSDP_EDGE=true`, que liga as checagens da borda em rede do host (*Como ligar*, abaixo).
+- **Variante `host` da borda.** `infra/edgegateway/routes.json` ganhou backends `host`: `http://127.0.0.1:44652` na superfície interna e `https://127.0.0.1:44653` na externa. O `generate.js` gera `krakend-internal.host.json` e `krakend-external.host.json` no build, ao lado das variantes `linux` e `windows`. O Redis é alcançado pela 6379 publicada.
+- **Portas da borda direto no host.** 44642, 44643 e a 8085 da documentação passam a ser abertas pelos processos da borda na rede do host, sem `docker-proxy`. A 8085 deixa de ser dinâmica nesse modo: a documentação fica em `http://localhost:8085`.
+- **O `/manifest` fica no tv3ws,** atrás da borda, e responde com ou sem o override. O tv3ws da bridge recebe `SSDP_ENABLED: "false"` e não anuncia.
+- **No compose, o host do `LOCATION` e o do `/manifest` vêm da mesma configuração:** a mesma regra, em Go na borda e em TypeScript no tv3ws, com o mesmo `SERVER_URL` e o `SSDP_ADVERTISE_HOST` lido dos mesmos arquivos de ambiente (`tv3ws/.env` e `.env` da raiz, que prevalece). O padrão continua `localhost`, com aviso no boot. Qual deve ser o padrão é a B2, ainda aberta.
+- **Interface:** a que tem o IP anunciado; senão, a da rota padrão, com aviso; `SSDP_INTERFACE` força. Sem nenhuma, erro.
+- **Falha do anúncio derruba a borda inteira** (morre-inteiro, decidido pelo Luís em 09/10), e o `restart` a traz de volta. Na opção B, a falha derrubava só o `tv3ws-ssdp`, e as APIs não caíam; a decisão reabre, na borda, o efeito do ponto C8 de [Decisões pendentes](decisoes-pendentes.md). Pelo código, numa máquina sem interface com IPv4 e sem rota padrão, o anunciante falha a cada subida, e a borda fica reiniciando sem servir as APIs enquanto a rede não volta (inferência; não medido).
+- **Só Linux nativo com Docker Engine** (decisão do Joel, informada pelo Luís em 04/10, que continua valendo).
 
 ### Como ligar no Linux nativo
 
-1. No `.env` da raiz:
+1. No `.env` da raiz (o `COMPOSE_PROFILES=mqtt,linux` fica como está; o perfil `ssdp` deixou de existir):
 
    ```bash
-   COMPOSE_PROFILES=mqtt,linux,ssdp
+   COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml
    SSDP_ADVERTISE_HOST=192.168.0.12   # IP desta máquina na rede local
    #SSDP_INTERFACE=wlan0              # só se a escolha automática errar
    ```
 
-2. `docker compose up -d`. O `preflight` avisa, sem bloquear, quando a UDP 1900 já está ocupada no host (`docker logs tv30-preflight`).
-3. Confira os logs:
-   - `docker logs tv3ws-ssdp`: as linhas `[ssdp] AVISO` e a linha `[ssdp] anunciando urn:schemas-sbtvd-org:service:TV3.0WebServices:1 em UDP 1900 pela interface <nome> (<IP>, via host-ip); LOCATION http://<IP da LAN>:44642/manifest (host via SSDP_ADVERTISE_HOST)` saem no nível de log padrão (medido em 04/10, teste 16);
+2. Quem tinha a opção B de pé remove o container antigo: `docker rm -f tv3ws-ssdp`, ou `docker compose up -d --remove-orphans`. O serviço saiu do compose, e sem isso ficariam dois anunciantes.
+3. `docker compose up -d`. O `preflight` (`docker logs tv30-preflight`) avisa, sem bloquear, quando a UDP 1900 já está ocupada por outro processo e quando o `tv3ws-ssdp` antigo está de pé. Num novo `up -d`, a 44642 ocupada pelo KrakenD da própria borda vira aviso, e não erro. As checagens vêm do `SSDP_EDGE=true` do próprio override, e por isso acompanham o arranjo, o que com o perfil `ssdp` dependia de como ele era ligado (teste 24).
+4. Confira os logs:
+   - `docker logs edgegateway`: a linha `[edgegateway] ... (variant=host, ssdp=ligado)`, as linhas `[ssdp] AVISO` e a linha `[ssdp] anunciando urn:schemas-sbtvd-org:service:TV3.0WebServices:1 em UDP 1900 pela interface <nome> (<IP>, via host-ip); LOCATION http://<IP da LAN>:44642/manifest (host via SSDP_ADVERTISE_HOST)`;
    - `docker logs tv3ws`: `[ssdp] anuncio desligado (SSDP_ENABLED=false); o /manifest continua servido por este processo`.
-4. Confira que o anúncio sai: `sudo tcpdump -ni <interface> udp port 1900` mostra dois NOTIFY a cada 10 s, com o `LOCATION` acima.
-5. Libere no firewall do host a UDP 1900 e a TCP 44642 (e a 44643, para o cliente não local).
-6. No segundo aparelho, rode o roteiro da seção *O que exige rede doméstica e um segundo dispositivo*, mais abaixo.
+5. Confira que o anúncio sai: `sudo tcpdump -ni <interface> udp port 1900` mostra dois NOTIFY a cada 10 s, com o `LOCATION` acima.
+6. Libere no firewall do host a UDP 1900 e a TCP 44642 (e a 44643, para o cliente não local).
+7. No segundo aparelho, rode o roteiro da seção *O que exige rede doméstica e um segundo dispositivo*, mais abaixo.
 
-Dois cuidados, medidos em 04/10 (testes 15, 22 e 24):
-- **Na linha de comando, `--profile` substitui o `COMPOSE_PROFILES` do `.env`.** `docker compose --profile ssdp up -d` sobe só a infra e o anunciante, sem tv3ws, aop e bcast. Use `--profile mqtt --profile linux --profile ssdp`, ou `COMPOSE_PROFILES` no `.env`. Com o perfil ligado só por `--profile`, o `preflight` também não vê o `ssdp` e não confere a UDP 1900 (teste 24).
-- **Para desligar, remova o container.** Tirar o `ssdp` do `COMPOSE_PROFILES` e rodar `docker compose up -d` ou `docker compose down` deixa o `tv3ws-ssdp` de pé, anunciando com a configuração antiga. Use `docker compose --profile ssdp rm -sf tv3ws-ssdp`.
+Os textos de log acima são os do código (`infra/edgegateway/entrypoint.sh` e `infra/edgegateway/ssdp/main.go`); com a opção A, ainda não foram conferidos numa subida.
 
-Em Windows com WSL2, o anúncio em modo host chega ao próprio Windows, mas não aos outros aparelhos da rede (testes 12 e 13, com o anunciante descartável no mesmo arranjo). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte, sem medição. Nesses ambientes, o cliente chega pelo IP, sem a etapa de descoberta: `http://<IP>:44642/manifest`.
+Cuidados:
+- **Para desligar,** comente o `COMPOSE_FILE` no `.env` da raiz e rode `docker compose up -d`. A borda e o tv3ws são recriados com a configuração padrão: a borda volta à `ginga_net`, sem anúncio, e as portas 44652/44653 deixam de ser publicadas (não medido com a opção A).
+- **Desenvolvimento com módulo no host:** o `scripts/test-dev-host.sh` roda sempre com a borda na bridge (`COMPOSE_FILE=docker-compose.yml`) e, no fim, restaura a configuração do `.env`, com o override se ele estiver ligado. À mão, use o mesmo prefixo ([dev-local.md](dev-local.md)).
+
+Em Windows com WSL2, o anúncio em modo host chega ao próprio Windows, mas não aos outros aparelhos da rede (testes 12 e 13, com o anunciante descartável em modo host). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte, sem medição. Nesses ambientes, deixe o `COMPOSE_FILE` comentado; o cliente chega pelo IP, sem a etapa de descoberta: `http://<IP>:44642/manifest`.
 
 ## Medido em 04/10 — opção B
+
+> **Arranjo destas medições e das de 09/10 (opção B, substituída pela opção A em 09/10):** o anúncio saía do container `tv3ws-ssdp`, do perfil `ssdp` do compose da raiz, que não existem mais. Era a imagem `tv30-tv3ws` com o comando `node dist/ssdp-announcer.js` (`tv3ws/src/ssdp-announcer.ts`, removido em 09/10), em `network_mode: host`, só com o anúncio, sem porta TCP e com a biblioteca node-ssdp. A borda e o tv3ws ficavam na `ginga_net`, e uma falha do anúncio derrubava só esse container. Os comandos citados nos testes (`--profile ssdp`, `docker compose stop tv3ws-ssdp`, `docker logs tv3ws-ssdp`) não valem para a opção A.
 
 Integração do código da opção B, na mesma máquina (Windows 11 + WSL2 em NAT, Docker Engine no WSL, compose v5.4.0), com a imagem `tv30-tv3ws` reconstruída (`docker compose build tv3ws`, rc 0; `dist/ssdp-announcer.js` presente na imagem). Rede no momento:
 - `eth0` da VM do WSL: 172.27.57.172;
@@ -191,13 +208,15 @@ Testes 24 a 27: mesma máquina e mesmo arranjo, depois da correção do byebye (
 O que isso mostra:
 - **Depois do `ssdp:byebye` não sai mais `ssdp:alive`** (testes 25 e 26). Sem a guarda, um `ssdp:alive` saía depois do byebye quando o sinal caía nos 300 ms anteriores a um anúncio periódico (controle do teste 26).
 - **As duplicatas do teste 7 acabaram,** pelo menos entre a VM do WSL e o Windows: 1 resposta por M-SEARCH, e o NOTIFY só na `eth0`.
-- **O morre-inteiro ficou isolado no deploy em container.** Processo morto, porta ocupada e interface errada derrubam só o `tv3ws-ssdp`, e a borda e o tv3ws seguem respondendo.
+- **O morre-inteiro ficou isolado no deploy em container, com a opção B.** Processo morto, porta ocupada e interface errada derrubavam só o `tv3ws-ssdp`, e a borda e o tv3ws seguiam respondendo. Com a opção A, por decisão do Luís em 09/10, as mesmas falhas derrubam a borda inteira.
 - **No compose, o `LOCATION` e o `Server-BaseURL` saíram do mesmo host** (teste 16).
 - **Ainda não medido nesta rodada:** a descoberta por um segundo aparelho numa LAN, com Linux nativo (camada 3). Ela foi medida em 09/10 (seção seguinte).
 
-O que foi enviado à rede: os M-SEARCH de teste saíram com TTL 1, presos à `vEthernet (WSL)`. O NOTIFY do `tv3ws-ssdp` sai com TTL 4 pela `eth0` da VM, que só alcança o Windows; o Windows não roteia multicast entre interfaces (teste 13). Os containers e processos de teste foram removidos depois.
+O que foi enviado à rede: os M-SEARCH de teste saíram com TTL 1, presos à `vEthernet (WSL)`. O NOTIFY do `tv3ws-ssdp` saía com TTL 4 pela `eth0` da VM, que só alcança o Windows; o Windows não roteia multicast entre interfaces (teste 13). Os containers e processos de teste foram removidos depois.
 
-## Medido em 09/10 — teste positivo em Linux nativo (camada 3)
+## Medido em 09/10 — teste positivo em Linux nativo (camada 3), com a opção B
+
+> Medição feita com a opção B, antes da troca para a opção A no mesmo dia. Com a opção A, este teste ainda não foi refeito.
 
 Ambiente:
 - **Receptor:** máquina Linux nativa (Ubuntu 26.04.1, Docker Engine 29.1.3, contexto `default`), no Wi-Fi doméstico pela `wlp2s0`, IP 192.168.2.7. `ufw` ativo, sem regra nova.
@@ -211,21 +230,21 @@ Ambiente:
 | 31 | Celular Android, com VPN ligada e sem ter confirmado o Wi-Fi | M-SEARCH pelo Termux | 0 respostas. **Não vale como teste:** o celular falava com o Linux por um endereço 100.x (túnel VPN), não pela rede local |
 | 32 | **Celular Android no Wi-Fi doméstico**, VPN desligada | o mesmo M-SEARCH | **resposta de `('192.168.2.7', 1900)`** |
 
-**O que isso mostra:** em Linux nativo, com o anunciante isolado em modo host (opção B), a descoberta da C.3.4 funciona de ponta a ponta. Um aparelho da rede doméstica encontra o receptor, lê o `LOCATION` e obtém pelo `/manifest` o `Server-BaseURL` da borda (44642). Cuidado com o celular: VPN e dados móveis tiram o M-SEARCH da rede local (teste 31).
+**O que isso mostra:** em Linux nativo, com o anunciante isolado em modo host (opção B), a descoberta da C.3.4 funciona de ponta a ponta. Um aparelho da rede doméstica encontra o receptor, lê o `LOCATION` e obtém pelo `/manifest` o `Server-BaseURL` da borda (44642). Cuidado com o celular: VPN e dados móveis tiram o M-SEARCH da rede local (teste 31). O resultado não se transfere sozinho para a opção A: o anúncio também sai em rede do host, mas de outro programa (Go, na borda), e a borda alcança o tv3ws por outro caminho (`127.0.0.1`). Por isso o teste vai ser refeito.
 
 Uma captura no Linux durante o teste 32 não registrou o M-SEARCH, provavelmente por erro no filtro. Isso não muda o resultado: o receptor respondeu ao celular.
 
 ## L6: as opções avaliadas antes da decisão (decisão do projeto, não da norma)
 
-> **Registro da avaliação de 03/10, anterior à decisão.** A opção escolhida foi a B. Os números de linha citados são do código daquela data.
+> **Registro da avaliação de 03/10, anterior às decisões.** A opção escolhida em 04/10 foi a B; em 09/10, o Luís a trocou pela A. Os números de linha citados são do código daquela data. A opção A foi feita como a linha dela previa: anunciante reescrito em Go, variante nova da borda (declarada no `routes.json`; o `generate.js` a gera sem mudança no código dele) e tv3ws publicado em `127.0.0.1`.
 
 A norma não diz onde o anunciante roda (C.3.4). O que segue é decisão de implementação deste testbed. Para o teste em Linux nativo não é preciso mexer em código: dá para colocar o tv3ws em `network_mode: host` só por compose e `.env`, com `MQTT_HOST`/`REDIS_HOST=localhost`, `EDGE_VARIANT=windows` com o tv3ws em 44654/44655 (o arranjo do cenário 1 do dev-host) e `SERVER_URL=<IP da LAN>`.
 
 | Opção | O que muda | Código |
 |---|---|---|
 | tv3ws em modo host (caminho mais curto, fora de A e B) | a borda acha o tv3ws por `host.docker.internal`; o tv3ws acha MQTT e Redis por `localhost` | **pequeno:** o tv3ws escuta em todas as interfaces (`tv3ws/src/server.ts:20`, `listen(httpPort)` sem endereço), então em modo host a API fica exposta na LAN sem passar pela borda, o que reabre a porta direta fechada no item 8. Precisa de um endereço de escuta configurável (`127.0.0.1`). Também é preciso restringir o anúncio à interface certa (`tv3ws/src/ssdp-server.ts`, `new Server` sem `interfaces`), para evitar as duplicatas |
-| **B (escolhida em 04/10):** container só para o anúncio, em modo host | serviço novo no compose; borda e tv3ws continuam na bridge | **médio:** o anúncio está acoplado ao tv3ws. O `ssdp-server.ts` registra `/manifest` no app do tv3ws (linha 42) e é chamado no boot (`server.ts:46`). É preciso um modo "só anunciar". Contraria "a borda num container só" |
-| **A:** a borda anuncia, em modo host (direção dita pelo Joel em 28/09) | a borda sai da `ginga_net` e passa a achar tv3ws e Redis por `localhost` | **grande:** a imagem da borda é KrakenD, sem Node. O anunciante precisa ser reescrito (Go, por exemplo) ou virar um processo Node a mais na borda. O `generate.js` precisa de uma variante nova, e o tv3ws precisa ser publicado em `127.0.0.1` |
+| **B (escolhida em 04/10; substituída pela A em 09/10):** container só para o anúncio, em modo host | serviço novo no compose; borda e tv3ws continuam na bridge | **médio:** o anúncio está acoplado ao tv3ws. O `ssdp-server.ts` registra `/manifest` no app do tv3ws (linha 42) e é chamado no boot (`server.ts:46`). É preciso um modo "só anunciar". Contraria "a borda num container só" |
+| **A (escolhida pelo Luís em 09/10):** a borda anuncia, em modo host (direção dita pelo Joel em 28/09) | a borda sai da `ginga_net` e passa a achar tv3ws e Redis por `localhost` | **grande:** a imagem da borda é KrakenD, sem Node. O anunciante precisa ser reescrito (Go, por exemplo) ou virar um processo Node a mais na borda. O `generate.js` precisa de uma variante nova, e o tv3ws precisa ser publicado em `127.0.0.1` |
 | macvlan | o container ganha IP próprio na LAN | nenhum no código; configuração de rede específica de cada máquina |
 
 Em todas as opções continuam valendo: `SERVER_URL` (ou `SSDP_ADVERTISE_HOST`) com o IP da LAN, UDP 1900 e TCP 44642 liberados no firewall do host, e nenhum isolamento de clientes no Wi-Fi.
@@ -234,16 +253,16 @@ Em todas as opções continuam valendo: `SERVER_URL` (ou `SSDP_ADVERTISE_HOST`) 
 
 A camada 3, a descoberta por outro dispositivo da LAN, precisa de:
 - uma rede doméstica ou o hotspot do celular. Na rede corporativa, isolamento de clientes e firewall podem bloquear o multicast;
-- uma máquina com Linux nativo rodando a stack com o perfil `ssdp`, porque no WSL2 em NAT o multicast não sai da VM (medido acima);
+- uma máquina com Linux nativo rodando a stack com o override `docker-compose.ssdp.yml`, porque no WSL2 em NAT o multicast não sai da VM (medido acima);
 - um segundo dispositivo na mesma rede.
 
 Roteiro:
 
-1. Na máquina da stack, ligue o `tv3ws-ssdp` como na seção [Como ligar no Linux nativo](#como-ligar-no-linux-nativo) e confira os logs e o `tcpdump`.
+1. Na máquina da stack, ligue o anúncio da borda como na seção [Como ligar no Linux nativo](#como-ligar-no-linux-nativo) e confira os logs e o `tcpdump`.
 2. No segundo dispositivo, rode o script abaixo. Ele tem dois resultados possíveis:
    - **positivo:** imprime a resposta ao M-SEARCH ou o NOTIFY, faz o GET no LOCATION e lista os seis cabeçalhos. Em seguida dá para seguir para `http://<Server-BaseURL>/tv3/authorize`;
-   - **negativo:** termina com `nada encontrado`. Nesse caso, o GET direto em `http://<IP da LAN>:44642/manifest` ainda deve funcionar, porque é TCP pela porta publicada. Isso separa a falha de descoberta da falha de acesso. Com o `tv3ws-ssdp` de pé em Linux nativo, as causas a olhar são o firewall do host, o isolamento de clientes no Wi-Fi e a interface escolhida para o anúncio (`SSDP_INTERFACE` força outra). No arranjo anterior, com o tv3ws anunciando de dentro da bridge, esse era o resultado esperado.
-3. **Controle positivo, se o resultado for negativo.** Pare o anunciante da stack (`docker compose stop tv3ws-ssdp`) e confirme que o cliente e a rede funcionam com outro anunciante em modo host: um node-ssdp `Server` rodando direto no Linux, ou num container com `--network host`, anunciando o mesmo ST.
+   - **negativo:** termina com `nada encontrado`. Nesse caso, o GET direto em `http://<IP da LAN>:44642/manifest` ainda deve funcionar, porque é TCP na porta da borda. Isso separa a falha de descoberta da falha de acesso. Com a borda anunciando em Linux nativo, as causas a olhar são o firewall do host, o isolamento de clientes no Wi-Fi e a interface escolhida para o anúncio (`SSDP_INTERFACE` força outra). No arranjo anterior às opções B e A, com o tv3ws anunciando de dentro da bridge, esse era o resultado esperado.
+3. **Controle positivo, se o resultado for negativo.** Desligue o anunciante da stack: comente o `COMPOSE_FILE` no `.env` e rode `docker compose up -d`, porque o anunciante não para sozinho sem derrubar a borda. Depois, confirme que o cliente e a rede funcionam com outro anunciante em modo host: um node-ssdp `Server` rodando direto no Linux, ou num container com `--network host`, anunciando o mesmo ST.
 4. Registre os resultados, com a data e o arranjo usado.
 
 Script de cliente (Node.js, com a mesma biblioteca do anunciante). Testado em 02/10 dentro da `ginga_net`, como controle positivo:
@@ -304,10 +323,12 @@ setTimeout(() => {
 ## Pendências
 
 - **Plataforma, decidida pelo Joel (informado pelo Luís em 04/10):** a descoberta SSDP só precisa funcionar em **Linux nativo** com Docker Engine. Windows com WSL2 e Docker Desktop ficam fora, como limitação documentada (testes 10 e 13).
-- **L6, decidida (informado pelo Luís em 04/10): opção B,** o container `tv3ws-ssdp` em rede do host. O arranjo está na seção [Arranjo decidido](#arranjo-decidido-o-container-tv3ws-ssdp); a avaliação anterior à decisão ficou como registro.
-- **Camada 3:** negativa no WSL2 (testes 10 e 13) e **positiva em Linux nativo em 09/10** (testes 30 e 32: notebook e celular no Wi-Fi doméstico encontram o receptor).
-- **Duplicatas do teste 7:** resolvidas. Entre a VM do WSL e o Windows, 1 resposta por M-SEARCH (teste 18); numa LAN com Linux nativo, 3 respostas a 3 buscas (teste 30).
-- **Imagem publicada:** até o push do tv3ws e a publicação pelo CI, a `tv30-tv3ws` do Docker Hub não tem `dist/ssdp-announcer.js`. As medições de 04/10 usaram a imagem construída localmente.
-- **`CACHE-CONTROL` da resposta ao M-SEARCH:** a resposta sai com `max-age=4`, e o NOTIFY com `max-age=1800` (testes 17 e 18). É anterior à opção B, e não foi mexido.
+- **L6, re-decidida pelo Luís em 09/10: opção A,** a borda anunciando em rede do host, com o override `docker-compose.ssdp.yml`. Substituiu a opção B (o container `tv3ws-ssdp`, decidida em 04/10, informado pelo Luís). O arranjo está na seção [Arranjo decidido](#arranjo-decidido-a-borda-anuncia-em-rede-do-host); a avaliação anterior às decisões ficou como registro.
+- **Medições da opção A: nenhuma registrada.** Falta refazer, com ela, a subida e os logs, a captura do NOTIFY, a camada 3 com outro aparelho em Linux nativo e as falhas que derrubam a borda (UDP 1900 ocupada, interface inexistente, rede caindo).
+- **Camada 3:** negativa no WSL2 (testes 10 e 13) e **positiva em Linux nativo em 09/10, com a opção B** (testes 30 e 32: notebook e celular no Wi-Fi doméstico encontram o receptor). **Com a opção A, ainda não medida**; o teste vai ser refeito.
+- **Morre-inteiro na borda (decidido pelo Luís em 09/10):** com o override, uma falha do anúncio derruba todas as APIs até o `restart` trazer a borda de volta. Reabre o efeito do C8 de [Decisões pendentes](decisoes-pendentes.md), que a opção B tinha resolvido.
+- **Duplicatas do teste 7:** resolvidas com a opção B. Entre a VM do WSL e o Windows, 1 resposta por M-SEARCH (teste 18); numa LAN com Linux nativo, 3 respostas a 3 buscas (teste 30). A opção A também anuncia e responde por uma interface só (`infra/edgegateway/ssdp/iface.go`), sem medição.
+- **Imagem publicada:** até o push do infra e a publicação pelo CI, a `tv30-edgegateway` do Docker Hub não tem o `ssdp-announcer` nem os `krakend-*.host.json`. Pelo código do `entrypoint.sh` (o antigo também monta o nome do arquivo com `EDGE_VARIANT`), o override com essa imagem derruba a borda no boot, porque o KrakenD não acha a configuração `host`. Até lá, construa a imagem localmente (`docker compose build edgegateway`). A `tv30-tv3ws` publicada já tinha `dist/ssdp-announcer.js` em 09/10 (teste 28); com a opção A, ele não é mais usado.
+- **`CACHE-CONTROL` da resposta ao M-SEARCH:** resolvido na opção A. A resposta da borda sai com `max-age=1800`, igual ao NOTIFY (`infra/edgegateway/ssdp/ssdp.go`). Até a opção B, saía `max-age=4` (testes 17 e 18). O tv3ws rodando sozinho no host (dev-host) continua com `max-age=4`, porque segue com a biblioteca node-ssdp e `ttl: 4` (`tv3ws/src/ssdp-server.ts`).
 - **Segunda barreira (Windows):** medida em 04/10 (teste 13). Com o anunciante em modo host no WSL2, o celular continua sem receber nada.
 - **B2, sem decisão:** o host padrão do anúncio. Continua `localhost` (`SERVER_URL`), com o aviso de loopback no boot.

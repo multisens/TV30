@@ -31,13 +31,15 @@ Com o mesmo `clientid`, o resultado é `client:{id}` autorizado com a classe da 
 
 ## SSDP anuncia `localhost` por padrão e um endereço "seguro" sem TLS — ABERTO (aguarda o Joel)
 
-Com o padrão do compose (`SERVER_URL=localhost`), o anúncio SSDP e o `/manifest` divulgam `http://localhost:44642/manifest` e `Server-BaseURL: localhost:44642`. Um cliente em outro equipamento recebe o anúncio e não alcança o endereço (medido pela integração: `ECONNREFUSED`, ver `docs/ssdp-verificacao.md`). O boot avisa (`[ssdp] AVISO`); para anunciar outro host, defina `SSDP_ADVERTISE_HOST` no `.env` da raiz (ou no `tv3ws/.env`; o da raiz prevalece). O tv3ws (`/manifest`) e o `tv3ws-ssdp` (anúncio, desde a opção B da L6, 04/10) leem os dois arquivos. O `Server-SecureBaseURL` anuncia `<host>:44643`, que na borda é HTTP puro (lacuna L3).
+Com o padrão do compose (`SERVER_URL=localhost`), o anúncio SSDP e o `/manifest` divulgam `http://localhost:44642/manifest` e `Server-BaseURL: localhost:44642`. Um cliente em outro equipamento recebe o anúncio e não alcança o endereço (medido pela integração: `ECONNREFUSED`, ver `docs/ssdp-verificacao.md`). O boot do tv3ws e o do anunciante da borda avisam (`[ssdp] AVISO`); para anunciar outro host, defina `SSDP_ADVERTISE_HOST` no `.env` da raiz (ou no `tv3ws/.env`; o da raiz prevalece). O tv3ws (`/manifest`) e a borda (anúncio, com o `docker-compose.ssdp.yml`, desde a opção A da L6, decidida pelo Luís em 09/10) leem os dois arquivos. O `Server-SecureBaseURL` anuncia `<host>:44643`, que na borda é HTTP puro (lacuna L3).
 
-## `tv3ws-ssdp` fica de pé quando o perfil `ssdp` sai — MITIGADO (aviso no preflight, 04/10)
+## Com o `docker-compose.ssdp.yml`, uma falha do SSDP derruba a borda inteira — DECIDIDO pelo Luís em 09/10
 
-Desde 04/10, com aval do Luís, o `scripts/preflight.sh` avisa quando o `tv3ws-ssdp` está de pé e o perfil `ssdp` não está no `COMPOSE_PROFILES`, e mostra o comando de remoção. O compose continua sem parar o serviço sozinho. Se o perfil foi ligado só por `--profile` na linha de comando, o aviso é falso positivo, e o próprio texto do aviso diz isso.
+Com a borda anunciando em rede do host (L6, opção A), o anunciante segue o morre-inteiro da borda (`infra/edgegateway/entrypoint.sh`). Se o anúncio falhar (UDP 1900 ocupada por socket sem `SO_REUSEADDR`, interface inexistente em `SSDP_INTERFACE`, erro de envio ou rede caindo), o anunciante sai com 1, a borda cai com todas as APIs, e o `restart` a traz de volta. Pelo código, sem interface com IPv4 e sem rota padrão, a borda fica reiniciando enquanto a rede não volta (inferência; não medido). Na opção B, a falha derrubava só o `tv3ws-ssdp`. Registrado em `docs/decisoes-pendentes.md` (C8, reaberto) e em `docs/ssdp-verificacao.md`. Sem o override, a borda não anuncia, e nada disso acontece.
 
-Depois de tirar o `ssdp` do `COMPOSE_PROFILES`, nem `docker compose up -d` nem `docker compose down` param o `tv3ws-ssdp`: o compose só mexe nos serviços dos perfis ativos. O anunciante segue no ar com a configuração da subida anterior. Na medição, o `LOCATION` continuou em 172.27.57.172, enquanto o tv3ws recriado já respondia `Server-BaseURL: localhost:44642`. Para desligar: `docker compose --profile ssdp rm -sf tv3ws-ssdp`. Detalhes no teste 22 de `docs/ssdp-verificacao.md`.
+## Container antigo `tv3ws-ssdp` (opção B) de pé depois da troca para a opção A — remover à mão
+
+O serviço `tv3ws-ssdp` e o perfil `ssdp` saíram do compose em 09/10. Um `tv3ws-ssdp` que estava de pé continua anunciando com a configuração antiga (e, com a borda anunciando, ficam dois anunciantes do mesmo UDN). Remova-o com `docker rm -f tv3ws-ssdp` (ou `docker compose up -d --remove-orphans`). O `scripts/preflight.sh` avisa quando ele está de pé.
 
 ## Caminho não declarado resetava a conexão na borda — RESOLVIDO em 02/10/2026
 

@@ -43,11 +43,13 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
   bcast (bcast/)          ← sinalização (BAMT/ESG/BALD) por MQTT; apps de
                             serviço e mídia por HTTP
 
-  tv3ws-ssdp (opcional)   ← anúncio SSDP (C.3.4) em UDP 1900, na rede do
-                            host; LOCATION aponta para a borda (/manifest)
+  Com o override docker-compose.ssdp.yml (opcional, só Linux nativo):
+  edgegateway na rede do  ← + processo ssdp-announcer: anúncio SSDP (C.3.4)
+  host                      em UDP 1900; LOCATION aponta para a própria borda
+                            (/manifest); tv3ws por 127.0.0.1:44652/44653
 ```
 
-**Descoberta SSDP.** O anúncio sai do container `tv3ws-ssdp` (perfil `ssdp`), que usa a mesma imagem do tv3ws com outro comando (`node dist/ssdp-announcer.js`), roda em `network_mode: host` e só anuncia: sem Express, sem Redis, sem MQTT e sem porta TCP. O `/manifest` continua no tv3ws, atrás da borda, e o tv3ws da bridge não anuncia (`SSDP_ENABLED: "false"` no compose). A descoberta só é suportada em Linux nativo com Docker Engine (decisão do Joel, informada pelo Luís em 04/10; decisão do projeto, não da norma). Nesse ambiente, o teste com outro aparelho ainda não foi feito. Ver [`docs/ssdp-verificacao.md`](./docs/ssdp-verificacao.md).
+**Descoberta SSDP.** Quem anuncia é a borda (L6, opção A, decidido pelo Luís em 09/10, no lugar da opção B, o container `tv3ws-ssdp`, decidida em 04/10). O anunciante é um processo a mais no container `edgegateway`: o binário Go `ssdp-announcer` (`infra/edgegateway/ssdp/`), que o `entrypoint.sh` só sobe com `SSDP_ENABLED=true`. Quem liga é o override `docker-compose.ssdp.yml`, que põe a borda em `network_mode: host` (variante `host`, com o tv3ws em `127.0.0.1:44652/44653`). Pelo morre-inteiro, decidido pelo Luís em 09/10, a falha do anúncio derruba a borda inteira. O `/manifest` continua no tv3ws, atrás da borda, e o tv3ws da bridge não anuncia (`SSDP_ENABLED: "false"` no compose). A descoberta só é suportada em Linux nativo com Docker Engine (decisão do Joel, informada pelo Luís em 04/10; decisão do projeto, não da norma). Nesse ambiente, a descoberta por outro aparelho foi validada em 09/10 com a opção B; com a opção A, ainda não foi medida. Ver [`docs/ssdp-verificacao.md`](./docs/ssdp-verificacao.md).
 
 **Canais internos.** A comunicação interna não é só por MQTT, ao contrário do que esta seção dizia antes (o código desmente):
 
@@ -83,21 +85,20 @@ Publicadores e consumidores conferidos nas chamadas `publish`/`subscribe` do có
 docker compose up -d
 ```
 
-Defaults vêm do `.env` (raiz). Em Windows + WSL2 com 9001 ocupada no host, definir `MQTT_WS_PORT=9003` no `.env`. Para desenvolver com um módulo no host (`npm run dev`), ver [`docs/dev-local.md`](./docs/dev-local.md). Para a descoberta SSDP em Linux nativo, acrescente `ssdp` a `COMPOSE_PROFILES` e defina `SSDP_ADVERTISE_HOST` com o IP da máquina na LAN (`README.md`, seção *Descoberta SSDP*).
+Defaults vêm do `.env` (raiz). Em Windows + WSL2 com 9001 ocupada no host, definir `MQTT_WS_PORT=9003` no `.env`. Para desenvolver com um módulo no host (`npm run dev`), ver [`docs/dev-local.md`](./docs/dev-local.md). Para a descoberta SSDP em Linux nativo, defina `COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml` e `SSDP_ADVERTISE_HOST` com o IP da máquina na LAN no `.env` (`README.md`, seção *Descoberta SSDP*).
 
 ### Containers e portas
 
-Seis containers contínuos (os seis primeiros abaixo) e o `tv3ws-ssdp`, opcional, que só sobe com o perfil `ssdp`.
+Seis containers contínuos. Com o override `docker-compose.ssdp.yml`, a borda roda em rede do host e tem um processo a mais, o anunciante SSDP.
 
 | Container | Porta(s) no host | Descrição |
 |-----------|----------|-----------|
 | `redis` | 6379 (sem senha); commander em porta dinâmica, com login | Estado de sessão, usuários e credenciais + redis-commander embutido (debug) |
 | `mqtt-broker` (serviço `mosquitto`) | 1883, `${MQTT_WS_PORT:-9001}` | MQTT broker + plugin C de validação de esquema |
-| `edgegateway` | 44642, 44643; docs (8085) em porta dinâmica | Borda única: KrakenD interno e externo + Swagger UI; plugin `tv30-auth`; morre-inteiro |
-| `tv3ws` | 45000–45199 (WebSockets) | TV 3.0 WebServices. 44652/44653 só na `ginga_net` |
+| `edgegateway` | 44642, 44643; docs (8085) em porta dinâmica. Com o override `docker-compose.ssdp.yml`: rede do host, com 44642, 44643 e 8085 direto no host e UDP 1900 | Borda única: KrakenD interno e externo + Swagger UI; plugin `tv30-auth`; morre-inteiro. Com o override (só Linux nativo), também o anunciante SSDP (`ssdp-announcer`), e a falha dele derruba a borda inteira |
+| `tv3ws` | 45000–45199 (WebSockets) | TV 3.0 WebServices. 44652/44653 só na `ginga_net`; com o override, publicadas também em `127.0.0.1`, para a borda |
 | `aop` | 8080 | Interface do receptor |
 | `bcast` | `${BCAST_PORT:-8081}` | Broadcaster + módulos de apps de serviço |
-| `tv3ws-ssdp` (opcional, perfil `ssdp`) | UDP 1900, na rede do host (`network_mode: host`); nenhuma porta TCP | Anunciante SSDP: mesma imagem do tv3ws, comando `node dist/ssdp-announcer.js`. Só Linux nativo. Morre-inteiro: se o anúncio falha, só ele cai |
 
 ### Apps de serviço (módulos do bcast)
 
@@ -146,7 +147,7 @@ Clone anterior ao renome `ccws` → `tv3ws`: `git submodule sync --recursive && 
 | Estado de usuários em Redis | Consistência entre serviços; `userData.json` é carga inicial e re-sync |
 | Apps de serviço como módulos do bcast | Único container `bcast` serve tudo (sem duplicação MQTT/CORS) |
 | Borda única com duas superfícies | Interna 44642 (fixa C.3.4) e externa 44643; credenciais validadas na borda (decisão de 28/09: o tv3ws só implementaria as APIs). Estado corrente: o tv3ws ainda responde 107 a credencial inválida e 106 ao não local na superfície HTTP, nos dois modos; limpeza pendente |
-| Anunciante SSDP num container próprio, em rede do host (L6, opção B; decidido, informado pelo Luís em 04/10) | O multicast do anúncio não saiu da bridge do Docker para a rede (medido no WSL2 em 02/10). Só o anunciante vai para a rede do host: borda e tv3ws continuam na `ginga_net`, e uma falha do SSDP não derruba as APIs. A C.3.4 não diz onde o anunciante roda; é decisão do projeto |
+| A borda anuncia o SSDP, em rede do host (L6, opção A; decidido pelo Luís em 09/10) | O multicast do anúncio não saiu da bridge do Docker para a rede (medido no WSL2 em 02/10), então quem anuncia tem de estar na rede do host. Com o override `docker-compose.ssdp.yml`, a borda vai para a rede do host e alcança o tv3ws por `127.0.0.1`; uma falha do SSDP derruba a borda inteira (morre-inteiro, decidido pelo Luís em 09/10). Substituiu a opção B (decidida em 04/10, informado pelo Luís): um container próprio para o anúncio, `tv3ws-ssdp`, com a borda e o tv3ws na `ginga_net`, em que a falha do SSDP não derrubava as APIs. A C.3.4 não diz onde o anunciante roda; é decisão do projeto |
 
 ---
 

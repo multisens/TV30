@@ -1,0 +1,54 @@
+# TV30 — descoberta SSDP (C.3.4) pela BORDA, so em Linux nativo.
+#
+# L6 decidida = opcao A (Luis, 09/10): quem anuncia e a borda (edgegateway).
+# O multicast so sai para a LAN se quem anuncia estiver em rede do host
+# (docs/ssdp-verificacao.md), entao este override poe a borda inteira em
+# network_mode: host. So vale em Linux nativo com Docker Engine (decisao do
+# Joel, 04/10): em Windows/WSL2 o anuncio nao sai da maquina (medido); no
+# Docker Desktop, que tambem roda numa VM, espera-se o mesmo (nao medido).
+#
+# Como ligar (no .env da raiz):
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml
+#   SSDP_ADVERTISE_HOST=<IP da maquina na LAN>
+#
+# O que muda em relacao a stack padrao:
+#   - a borda sai da ginga_net: fala com o tv3ws e com o Redis por 127.0.0.1
+#     (variante de backends "host" no infra/edgegateway/routes.json);
+#   - o tv3ws passa a publicar 44652/44653 SO em 127.0.0.1 (a borda precisa
+#     delas; nao ficam alcancaveis pela LAN — a porta direta do item 8 segue
+#     fechada para a rede);
+#   - as portas da borda (44642, 44643 e a 8085 da documentacao) ficam
+#     direto no host; a 8085 deixa de ser dinamica;
+#   - morre-inteiro (decisao do Luis, 09/10): se o anuncio falhar (UDP 1900
+#     ocupada, interface inexistente, rede caindo), a borda inteira cai e o
+#     restart a traz de volta.
+services:
+  edgegateway:
+    network_mode: host
+    networks: !reset []
+    ports: !reset []
+    extra_hosts: !reset []
+    environment:
+      EDGE_VARIANT: host
+      REDIS_HOST: 127.0.0.1
+      SSDP_ENABLED: "true"
+      # O LOCATION daqui e o Server-BaseURL do /manifest (tv3ws) saem do mesmo
+      # host: os dois servicos leem SSDP_ADVERTISE_HOST dos mesmos arquivos.
+      SERVER_URL: ${SERVER_URL:-localhost}
+    env_file:
+      # SSDP_ADVERTISE_HOST, SSDP_INTERFACE, EDGE_HTTP_PORT/EDGE_HTTPS_PORT e
+      # UDN; o de baixo prevalece (mesma ordem do servico tv3ws).
+      - path: ./tv3ws/.env
+        required: false
+      - path: ./.env
+        required: false
+
+  tv3ws:
+    ports:
+      - "127.0.0.1:44652:44652"
+      - "127.0.0.1:44653:44653"
+
+  preflight:
+    environment:
+      # liga no preflight as checagens da borda em rede do host
+      SSDP_EDGE: "true"

@@ -45,6 +45,8 @@ owner_of() {
 #   - ocupada por processo NATIVO  -> ERRO bloqueante (conflito real)
 #   - ocupada por docker-proxy     -> aviso (ou e o proprio stack num re-up,
 #     e o compose reusa o bind, ou e daemon Docker duplo — ver troubleshooting)
+#   - com a borda em rede do host (SSDP_EDGE, docker-compose.ssdp.yml), quem
+#     segura a 44642 num re-up e o krakend da propria borda -> aviso
 if echo "$LISTEN" | grep -qE "[:.]${PORT_BLOCK}$"; then
   OWNER=$(owner_of "$PORT_BLOCK")
   case "$OWNER" in
@@ -53,10 +55,15 @@ if echo "$LISTEN" | grep -qE "[:.]${PORT_BLOCK}$"; then
       echo "[preflight]        stack (ok) ou segundo daemon Docker (ver troubleshooting)."
       WARN=1 ;;
     *)
-      echo "[preflight] ERRO: a porta ${PORT_BLOCK} esta ocupada (${OWNER:-dono desconhecido})."
-      echo "[preflight]       Ela e FIXA pela norma (C.3.4) e precisa estar livre."
-      echo "[preflight]       Libere a porta e rode 'docker compose up -d' de novo."
-      exit 1 ;;
+      if [ "${SSDP_EDGE:-}" = "true" ] && ps -o args 2>/dev/null | grep -qE '[k]rakend run -c /etc/krakend/krakend-internal\.'; then
+        echo "[preflight] AVISO: 44642 em LISTEN pela propria borda em rede do host (re-up, ok)."
+        WARN=1
+      else
+        echo "[preflight] ERRO: a porta ${PORT_BLOCK} esta ocupada (${OWNER:-dono desconhecido})."
+        echo "[preflight]       Ela e FIXA pela norma (C.3.4) e precisa estar livre."
+        echo "[preflight]       Libere a porta e rode 'docker compose up -d' de novo."
+        exit 1
+      fi ;;
   esac
 fi
 
@@ -68,39 +75,34 @@ for p in $PORTS_WARN; do
   fi
 done
 
-# UDP 1900 (SSDP), so com o perfil "ssdp": o tv3ws-ssdp anuncia em rede do
-# host. Aviso, sem bloquear: o anunciante abre a porta com SO_REUSEADDR e
-# convive com outro socket que tambem use a opcao; se o dono atual nao usar,
-# o bind falha e o tv3ws-ssdp sai com [ssdp] FALHA e reinicia em laco.
-# COMPOSE_PROFILES chega pela secao environment do preflight no compose;
-# perfil ligado so por --profile na linha de comando nao e visto aqui.
-PROFILES=$(printf '%s' "${COMPOSE_PROFILES:-}" | tr -d ' ')
-case ",${PROFILES}," in
-  *,ssdp,*|*,\*,*)
-    if netstat -lun 2>/dev/null | awk '{print $4}' | grep -qE '[:.]1900$'; then
-      if ps -o args 2>/dev/null | grep -qE '[n]ode dist/ssdp-announcer\.js'; then
-        echo "[preflight] ok: UDP 1900 em uso pelo tv3ws-ssdp ja em execucao (re-up)."
-      else
-        # dono "-" = sem CAP_SYS_PTRACE para ler o processo (ver owner_of)
-        OWNER=$(netstat -lunp 2>/dev/null | grep -E '[:.]1900 ' | awk '{print $NF}' | grep -v '^-$' | sort -u | tr '\n' ' ' | sed 's/ *$//')
-        echo "[preflight] AVISO: UDP 1900 (SSDP) ja esta em uso no host (${OWNER:-dono desconhecido})."
-        echo "[preflight]        O tv3ws-ssdp convive se o outro socket usar SO_REUSEADDR; senao"
-        echo "[preflight]        sai com '[ssdp] FALHA' e reinicia (docker logs tv3ws-ssdp)."
-        WARN=1
-      fi
-    fi ;;
-  *)
-    # Perfil "ssdp" fora do COMPOSE_PROFILES, mas anunciante de pe: o compose
-    # nao derruba servico de perfil desligado, e o tv3ws-ssdp segue anunciando
-    # o host antigo enquanto o tv3ws recriado responde outro no /manifest.
-    if ps -o args 2>/dev/null | grep -qE '[n]ode dist/ssdp-announcer\.js'; then
-      echo "[preflight] AVISO: o tv3ws-ssdp esta de pe, mas o perfil 'ssdp' nao esta no COMPOSE_PROFILES."
-      echo "[preflight]        Ele continua anunciando a configuracao antiga. Para remover:"
-      echo "[preflight]        docker compose --profile ssdp rm -sf tv3ws-ssdp"
-      echo "[preflight]        (ignore se o perfil foi ligado so por --profile na linha de comando)"
+# UDP 1900 (SSDP): com a borda em rede do host (SSDP_EDGE=true, definido pelo
+# docker-compose.ssdp.yml; L6 = opcao A, 09/10) quem anuncia e a borda. Aviso,
+# sem bloquear: o anunciante abre a porta com SO_REUSEADDR e convive com outro
+# socket que tambem use a opcao; se o dono atual nao usar, o bind falha e,
+# pelo morre-inteiro, a borda inteira cai e reinicia (docker logs edgegateway).
+if [ "${SSDP_EDGE:-}" = "true" ]; then
+  if netstat -lun 2>/dev/null | awk '{print $4}' | grep -qE '[:.]1900$'; then
+    if ps -o args 2>/dev/null | grep -qE '(^|[ /])[s]sdp-announcer( |$)'; then
+      echo "[preflight] ok: UDP 1900 em uso pelo anunciante da propria borda (re-up)."
+    else
+      # dono "-" = sem CAP_SYS_PTRACE para ler o processo (ver owner_of)
+      OWNER=$(netstat -lunp 2>/dev/null | grep -E '[:.]1900 ' | awk '{print $NF}' | grep -v '^-$' | sort -u | tr '\n' ' ' | sed 's/ *$//')
+      echo "[preflight] AVISO: UDP 1900 (SSDP) ja esta em uso no host (${OWNER:-dono desconhecido})."
+      echo "[preflight]        O anunciante da borda convive se o outro socket usar SO_REUSEADDR;"
+      echo "[preflight]        senao a borda inteira cai e reinicia (docker logs edgegateway)."
       WARN=1
-    fi ;;
-esac
+    fi
+  fi
+fi
+
+# Anunciante da opcao B (container tv3ws-ssdp, substituido pela opcao A em
+# 09/10) ainda de pe: seriam dois anunciantes. O servico saiu do compose, entao
+# ele so sai com docker rm (ou docker compose up -d --remove-orphans).
+if ps -o args 2>/dev/null | grep -qE '[n]ode dist/ssdp-announcer\.js'; then
+  echo "[preflight] AVISO: o container antigo tv3ws-ssdp ainda esta de pe (anunciante da opcao B)."
+  echo "[preflight]        Agora quem anuncia e a borda. Para remover: docker rm -f tv3ws-ssdp"
+  WARN=1
+fi
 
 if [ "$WARN" -eq 1 ]; then
   echo "[preflight] ---------------------------------------------------------------"

@@ -25,7 +25,7 @@ Para cada cenário, o script:
 4. faz as verificações;
 5. mata o processo do host.
 
-No fim, restaura a stack padrão (`EDGE_VARIANT=linux`) se ela estava de pé antes, ou a derruba (`docker compose down`) se não estava. O resultado sai como PASS/FAIL por verificação, e o código de saída é diferente de zero se houver alguma falha. Os logs dos módulos ficam num diretório temporário indicado no fim da execução.
+No fim, restaura a stack padrão (`EDGE_VARIANT=linux`) se ela estava de pé antes, ou a derruba (`docker compose down`) se não estava. Durante o teste, a borda roda sempre na bridge (`COMPOSE_FILE=docker-compose.yml`), mesmo que o `.env` da raiz ligue o override `docker-compose.ssdp.yml` (borda em rede do host, anunciando o SSDP); a restauração volta à configuração do `.env`, com o override, se ele estiver ligado. O resultado sai como PASS/FAIL por verificação, e o código de saída é diferente de zero se houver alguma falha. Os logs dos módulos ficam num diretório temporário indicado no fim da execução.
 
 **"Host" tem duas formas** (`DEVHOST_MODO`):
 
@@ -43,7 +43,7 @@ No modo `docker`, o cache do npm fica no volume nomeado `tv30-devhost-npm` (mont
 
 | # | No host | Em container | Verificações |
 |---|---|---|---|
-| 1 | **tv3ws** (HTTP 44654) | redis, mosquitto, edgegateway **windows**, aop, bcast; o `tv3ws-ssdp`, se estiver de pé, é parado e volta no fim | host → Redis (PING); host → MQTT (pub/sub); log `[Redis] Connected` e `Connected to MQTT broker` do tv3ws; borda `44642/health` → tv3ws do host; `GET /tv3/current-service` pela borda com accessToken HS256 assinado com o `JWT_SECRET` compartilhado; depois de matar o tv3ws do host, a borda **para** de responder (prova de que a resposta vinha do host) |
+| 1 | **tv3ws** (HTTP 44654) | redis, mosquitto, edgegateway **windows** (na bridge, sem anúncio SSDP), aop, bcast | host → Redis (PING); host → MQTT (pub/sub); log `[Redis] Connected` e `Connected to MQTT broker` do tv3ws; borda `44642/health` → tv3ws do host; `GET /tv3/current-service` pela borda com accessToken HS256 assinado com o `JWT_SECRET` compartilhado; depois de matar o tv3ws do host, a borda **para** de responder (prova de que a resposta vinha do host) |
 | 2 | **aop** (8080) | redis, mosquitto, edgegateway **linux**, tv3ws, bcast com `BCAST_HOSTNAME=localhost` e `BCAST_PORT=8081` | host → Redis; host → MQTT; log `Loaded N users from Redis` e `Connected to MQTT broker` do aop; o catálogo do aop do host mostra o serviço anunciado pelo bcast (BAMT por MQTT); `/graphicsAppProxy/users-test` do aop do host traz a aplicação do bcast em container (proxy HTTP); borda linux → tv3ws em container |
 | 3 | **bcast** (8081) | redis, mosquitto, edgegateway **linux**, tv3ws, aop | host → Redis; host → MQTT; log `MQTT client connected` do bcast; a BALD retida no broker traz `bcastEntryPackageUrl` em `host.docker.internal:8081`; o aop em container mostra o serviço e alcança o bcast do host pelo proxy HTTP; depois de matar o bcast do host, o proxy falha |
 
@@ -57,6 +57,7 @@ O `edgegateway` encaminha para o tv3ws conforme `EDGE_VARIANT` (`infra/edgegatew
 |---|---|---|---|
 | `linux` (padrão) | `http://tv3ws:44652` | `https://tv3ws:44653` | o tv3ws está **em container** (cenários 2 e 3, deploy) |
 | `windows` | `http://host.docker.internal:44654` | `https://host.docker.internal:44655` | o tv3ws está **no host** (cenário 1). O nome é histórico: vale para Linux também |
+| `host` | `http://127.0.0.1:44652` | `https://127.0.0.1:44653` | a **borda** está em rede do host, com o tv3ws em container (override `docker-compose.ssdp.yml`, que a define sozinho, para o anúncio SSDP em Linux nativo). Não serve para os cenários deste documento |
 
 Com o tv3ws em container e a borda em `windows`, a borda fica sem backend, porque a 44654 não existe no host. Esse era o erro da tabela antiga desta página nas linhas do aop e do bcast.
 
@@ -69,6 +70,8 @@ A superfície externa só tem backend se o tv3ws subir HTTPS (`HTTPS_KEY`/`HTTPS
 ```bash
 P="--profile mqtt --profile linux"
 ```
+
+**Se o `.env` da raiz liga o override do SSDP** (`COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml`), prefixe os comandos de subida abaixo com `COMPOSE_FILE=docker-compose.yml`, como o script faz. O override fixa `EDGE_VARIANT=host` e põe a borda em rede do host, então o `EDGE_VARIANT` do comando não teria efeito na borda.
 
 **tv3ws no host** (cenário 1):
 
@@ -107,7 +110,7 @@ UFF_SID=urn:tv30:service:uff EDUPLAY_SID=urn:tv30:service:eduplay \
 npm run dev
 ```
 
-**Volta à stack padrão:** `EDGE_VARIANT=linux docker compose $P up -d`. O compose recria o bcast com `BCAST_HOSTNAME=bcast` e a borda na variante linux.
+**Volta à stack padrão:** `EDGE_VARIANT=linux docker compose $P up -d`. O compose recria o bcast com `BCAST_HOSTNAME=bcast` e a borda na variante linux. Sem o prefixo `COMPOSE_FILE`, a volta respeita o `.env`: com o override ligado, a borda volta à rede do host, na variante `host`.
 
 Os três módulos chamam `dotenv.config()`. Um `.env` na pasta do módulo também é lido, mas a variável já definida no shell vence. Rodar `npm ci` direto na pasta do clone troca o `node_modules` dela; o script evita isso trabalhando numa cópia.
 
@@ -128,12 +131,12 @@ O tv3ws **assina** o accessToken (HS256, `JWT_SECRET`, emissor `JWT_ISSUER`). A 
 ## Regras do arranjo
 
 1. **Quem está no host fala com containers por `127.0.0.1:<porta publicada>`**: 6379 (Redis), 1883 (MQTT), 44642/44643 (borda), 8080 (aop), 8081 (bcast). O script usa `127.0.0.1` em vez de `localhost` para não depender da resolução IPv6.
-2. **Quem está em container fala com o host por `host.docker.internal`**, que em Linux só resolve com `extra_hosts: host.docker.internal:host-gateway`. Hoje o `edgegateway` e o `aop` têm essa entrada.
+2. **Quem está em container fala com o host por `host.docker.internal`**, que em Linux só resolve com `extra_hosts: host.docker.internal:host-gateway`. Hoje o `edgegateway` e o `aop` têm essa entrada. Com o override `docker-compose.ssdp.yml`, a borda fica em rede do host e o override tira dela essa entrada.
    - **A comunicação interna não é toda por mensageria.** O aop faz **proxy HTTP direto** para o bcast (`/graphicsAppProxy`, `/videoStreamProxy`, `aop/src/server.js:59-101`). O alvo é o `bcastEntryPackageUrl = http://${BCAST_HOSTNAME}:8081` que o bcast publica na BALD (`bcast/src/index.ts:82-85`). O aop e o tv3ws também leem e escrevem o Redis diretamente.
    - Por isso o `BCAST_HOSTNAME` muda por cenário: `bcast` no deploy, `localhost` com o aop no host (cenário 2) e `host.docker.internal` com o bcast no host (cenário 3).
    - A porta embutida na URL é a interna (8081), então com o aop no host a porta publicada do bcast também tem de ser 8081.
 3. **As portas do tv3ws no host (44654/44655) têm de casar com a variante windows** (`infra/edgegateway/routes.json`, `backends.*.windows`).
-4. **Cliente acessa a borda**, não a implementação. As portas 44652/44653 do tv3ws não são publicadas no host.
+4. **Cliente acessa a borda**, não a implementação. As portas 44652/44653 do tv3ws não são publicadas no host; com o override `docker-compose.ssdp.yml`, são publicadas só em `127.0.0.1`, para a borda em rede do host.
 5. **Componente novo em container segue o template** [`templates/componente/`](../templates/componente/README.md): `ginga_net` externa, MQTT/Redis pelo nome do serviço, `extra_hosts`, `restart: unless-stopped`, `init: true` e morre-inteiro. Se um processo interno cair, o container cai inteiro. O modelo com mais de um processo é `infra/edgegateway/entrypoint.sh`.
    - O template sobe como veio: traz um componente de exemplo (`Dockerfile`, `index.js`, `package.json`, só com a biblioteca padrão do Node). O exemplo responde por MQTT com um valor lido do Redis e expõe `/health`.
    - `scripts/test-template.sh` executa o template com a stack de pé. Ele copia a pasta, troca o nome, sobe o exemplo e confere a `ginga_net`, a conversa com `redis` e `mosquitto` pelo nome do serviço, a porta publicada e a regra morre-inteiro: mata o processo, o container cai e o `restart` o traz de volta. No fim, remove tudo o que criou.
@@ -143,8 +146,9 @@ O tv3ws **assina** o accessToken (HS256, `JWT_SECRET`, emissor `JWT_ISSUER`). A 
 
 - **Windows nativo não é coberto.** Com o Docker Engine no WSL, `host-gateway` aponta para a VM do WSL, não para o Windows, e um `npm run` no PowerShell não é alcançado pela borda. Também já se observou a porta 1883 do WSL recusando conexão vinda do Windows. Para desenvolver no Windows, rode o módulo dentro do WSL (o modo `docker` do script faz isso). O script recusa rodar no Git Bash.
 - **Docker Desktop** não foi testado.
-- **O tv3ws do host anuncia SSDP** na rede do host (UDP 1900), porque fora do compose `SSDP_ENABLED` vale ligado por padrão. No compose, quem anuncia é o container `tv3ws-ssdp` (perfil `ssdp`), e o tv3ws da bridge recebe `SSDP_ENABLED: "false"`.
-  - Pela regra morre-inteiro, se o anúncio falhar, o processo do host encerra inteiro, APIs inclusive, e o cenário 1 falha mostrando o log do tv3ws. No deploy em container isso não acontece mais: a falha derruba só o `tv3ws-ssdp`. Para desenvolver sem o anúncio, acrescente `SSDP_ENABLED=false` ao comando do cenário 1.
-  - **Com o `tv3ws-ssdp` de pé, ficam dois anunciantes do mesmo UDN** na rede do host, e o `LOCATION` do `tv3ws-ssdp` pode não casar com o `/manifest` que responde de fato, o do tv3ws do host. O `tv3ws-ssdp` lê o `SSDP_ADVERTISE_HOST` do `.env` da raiz, e o tv3ws do host não lê esse arquivo: o `/manifest` dele responde com o `SERVER_URL`, `localhost` por padrão. Só `SSDP_ENABLED=false` no tv3ws do host tira o segundo anunciante, mas não essa divergência.
-  - Por isso o `scripts/test-dev-host.sh` para o `tv3ws-ssdp` no cenário 1 e o religa no fim (teste 27 de [ssdp-verificacao.md](ssdp-verificacao.md)). À mão, pare o anunciante com `docker compose stop tv3ws-ssdp`, que funciona mesmo sem o perfil `ssdp` ativo (teste 25). Para mantê-lo de pé, rode o tv3ws do host com `SSDP_ENABLED=false` e com os valores de `SSDP_ADVERTISE_HOST`, `SERVER_URL`, `EDGE_HTTP_PORT` e `EDGE_HTTPS_PORT` que o `tv3ws-ssdp` recebe (`docker exec tv3ws-ssdp printenv` mostra os valores).
+- **O tv3ws do host anuncia SSDP** na rede do host (UDP 1900), porque fora do compose `SSDP_ENABLED` vale ligado por padrão. No compose, quem anuncia é a borda, só com o override `docker-compose.ssdp.yml` (rede do host; L6, opção A, decidido pelo Luís em 09/10), e o tv3ws da bridge recebe `SSDP_ENABLED: "false"`.
+  - Pela regra morre-inteiro, se o anúncio falhar, o processo do host encerra inteiro, APIs inclusive, e o cenário 1 falha mostrando o log do tv3ws. No deploy com o override acontece o mesmo na borda: a falha do anúncio a derruba inteira, por decisão do Luís em 09/10. Para desenvolver sem o anúncio, acrescente `SSDP_ENABLED=false` ao comando do cenário 1.
+  - **No cenário 1, o tv3ws do host é o único anunciante.** O `scripts/test-dev-host.sh` sobe a borda com `COMPOSE_FILE=docker-compose.yml`, na bridge e na variante `windows`, e ela não anuncia. À mão, use o mesmo prefixo: com o override ligado, a borda ficaria em rede do host, na variante `host`, sem backend (ela procura o tv3ws em `127.0.0.1:44652`, e o do host está na 44654) e anunciando junto com o tv3ws do host, com o mesmo UDN.
+  - O `LOCATION` e o `/manifest` do tv3ws do host saem do ambiente dele: o tv3ws do host não lê o `.env` da raiz, e responde com o `SERVER_URL` do comando, `localhost` por padrão.
+  - Se o container antigo `tv3ws-ssdp` (opção B, substituída em 09/10) ainda estiver de pé, ele é um segundo anunciante do mesmo UDN, e o script não o para mais. Remova-o com `docker rm -f tv3ws-ssdp`; o `preflight` avisa quando ele está de pé.
 - **A descoberta SSDP por outro aparelho só funciona em Linux nativo** (decisão do Joel, informada pelo Luís em 04/10). No WSL2 o anúncio não sai da máquina (medido). No Docker Desktop, que também roda o Docker numa VM, espera-se o mesmo (não medido). Nesses ambientes, o cliente não local chega pelo IP (`http://<IP>:44642/manifest`). As medições estão em [ssdp-verificacao.md](ssdp-verificacao.md).

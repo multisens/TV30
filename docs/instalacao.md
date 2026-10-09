@@ -27,15 +27,15 @@ Acesse `http://localhost:8080`.
 
 ### Descoberta SSDP (opcional)
 
-Para que outro aparelho da rede encontre o receptor por SSDP (C.3.4), suba o container `tv3ws-ssdp`, que anuncia em rede do host. A descoberta só é suportada em Linux nativo com Docker Engine (decisão do Joel, informada pelo Luís em 04/10); nesse ambiente, o teste com um segundo aparelho ainda não foi feito. No `.env` da raiz:
+Para que outro aparelho da rede encontre o receptor por SSDP (C.3.4), ligue o override `docker-compose.ssdp.yml`: ele põe a borda (`edgegateway`) em rede do host e liga o anunciante dela (L6, opção A, decidido pelo Luís em 09/10). A descoberta só é suportada em Linux nativo com Docker Engine (decisão do Joel, informada pelo Luís em 04/10); nesse ambiente, ela foi validada com um segundo aparelho em 09/10 com a opção B, anterior, e com a opção A ainda não foi medida. No `.env` da raiz:
 
 ```bash
-COMPOSE_PROFILES=mqtt,linux,ssdp
+COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml
 SSDP_ADVERTISE_HOST=192.168.0.12   # IP desta máquina na rede local
 #SSDP_INTERFACE=wlan0              # só se a interface escolhida sozinha estiver errada
 ```
 
-Depois, `docker compose up -d`, e libere a UDP 1900 e a TCP 44642 no firewall. Sem o perfil `ssdp`, nada é anunciado, e o cliente chega pelo IP (`http://<IP>:44642/manifest`). O passo a passo da verificação, com um segundo aparelho, está em [Verificação: descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao).
+Depois, `docker compose up -d`, e libere a UDP 1900 e a TCP 44642 no firewall. Com o override, a borda ocupa a 44642, a 44643 e a 8085 direto no host, e uma falha do anúncio derruba a borda inteira até o `restart` trazê-la de volta (decisão do Luís em 09/10). Sem o override, nada é anunciado, e o cliente chega pelo IP (`http://<IP>:44642/manifest`). Quem usava o perfil `ssdp` (opção B) remove o container antigo com `docker rm -f tv3ws-ssdp`; o perfil deixou de existir. O passo a passo da verificação, com um segundo aparelho, está em [Verificação: descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao).
 
 ---
 
@@ -81,7 +81,7 @@ cp .env.example .env       # ativa profiles "linux" e "mqtt"
 docker compose up -d
 ```
 
-> **Descoberta SSDP no WSL2:** o perfil `ssdp` sobe, mas o anúncio não sai da máquina. Ele chega ao próprio Windows e não chega aos outros aparelhos da rede (medido em 03 e 04/10 com um anunciante descartável no mesmo arranjo, [Verificação: descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao)). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte (não medido). Nesses ambientes, o cliente chega ao receptor pelo IP, sem a etapa de descoberta.
+> **Descoberta SSDP no WSL2:** deixe o `COMPOSE_FILE` do `.env` comentado. Anunciado em rede do host, o anúncio não sai da máquina: chega ao próprio Windows e não chega aos outros aparelhos da rede (medido em 03 e 04/10 com um anunciante descartável em modo host; com a borda anunciando, não medido; [Verificação: descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao)). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte (não medido). Nesses ambientes, o cliente chega ao receptor pelo IP, sem a etapa de descoberta.
 
 ---
 
@@ -94,8 +94,12 @@ O `.env` na raiz controla defaults. Exemplo:
 DOCKERHUB_NS=tv30
 IMAGE_TAG=latest
 
-# Profile padrão (Linux nativo com descoberta SSDP: mqtt,linux,ssdp)
+# Profile padrão
 COMPOSE_PROFILES=mqtt,linux
+
+# Descoberta SSDP, só Linux nativo: borda em rede do host (docker-compose.ssdp.yml)
+#COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml
+#SSDP_ADVERTISE_HOST=192.168.0.12
 
 # Porta WebSocket MQTT no host (default 9001).
 # Em Windows com Hyper-V usando 9001/9002, defina:
