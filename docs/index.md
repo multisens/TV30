@@ -23,10 +23,10 @@ Conjunto de microsserviços que reproduzem o ecossistema TV 3.0. Os componentes 
 **Infraestrutura de implementação (escolha deste projeto, não exigida pela norma):**
 
 - **Mosquitto + plugin C** — broker MQTT; o plugin valida o **esquema** das mensagens publicadas (não faz controle de acesso a tópicos nem consulta o Redis)
-- **KrakenD** (`edgegateway`) — a borda: um container com as superfícies interna (44642) e externa (44643); valida credenciais (accessToken, bind-token, classe de cliente) no plugin Go `tv30-auth`, em modo `warn` por padrão
-- **Redis** — estado de sessão, perfis e credenciais (parte do estado também vive em memória nos serviços e no `userData.json` de carga)
+- **KrakenD** (`edgegateway`) — a borda: um container com as superfícies interna (44642) e externa (44643); valida credenciais (accessToken, bind-token, classe de cliente) no plugin Go `tv30-auth`, em modo `warn` por padrão. Desde a reunião de 05/10 com o Joel, é o único ponto que valida credencial, e o plugin também responde as APIs C.6.8 (`/tv3/bind-context`) e C.6.7.8/C.6.7.9 (`/tv3/api-info`), sem repassá-las ao tv3ws
+- **Redis** — estado de sessão, perfis e credenciais (parte do estado também vive em memória nos serviços; o `userData.json` é só a carga inicial)
 
-> **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices, o modelo de consentimento e os perfis de usuário — **não** o transporte interno. O MQTT entre serviços, a borda KrakenD e o Redis são decisões de arquitetura deste testbed. (A comunicação interna não é só por MQTT: o AoP faz proxy HTTP direto ao bcast e AoP/tv3ws acessam o Redis diretamente.)
+> **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices, o modelo de consentimento e os perfis de usuário — **não** o transporte interno. O MQTT entre serviços, a borda KrakenD e o Redis são decisões de arquitetura deste testbed. (A comunicação interna não é só por MQTT: o AoP faz proxy HTTP direto ao bcast, e o AoP, o tv3ws e a borda acessam o Redis diretamente.)
 
 ---
 

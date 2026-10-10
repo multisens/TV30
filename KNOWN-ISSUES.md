@@ -8,10 +8,11 @@ O Redis publica a 6379 no host (`infra/redis/docker-compose.yml`) e não tem sen
 
 ## Backend mais lento que 2 s ou fora do ar: a borda corta a requisição — ABERTO (formato do erro corrigido em 03/10)
 
-Nas 24 rotas sem `timeout` próprio em `infra/edgegateway/routes.json`, a borda espera o tv3ws por no máximo 2 s, o padrão do KrakenD (`infra/edgegateway/generate.js`). Só o `GET /tv3/authorize` tem limite próprio, de 15 s, por causa do pop-up. Com o backend mais lento que isso, ou fora do ar, quem responde é o próprio KrakenD.
+Das 27 rotas de `infra/edgegateway/routes.json`, 22 são repassadas ao tv3ws; as outras 5 (C.6.8 e C.6.7.8/C.6.7.9) a própria borda responde desde a rodada de 05/10. Nas 21 repassadas sem `timeout` próprio, a borda espera o tv3ws por no máximo 2 s, o padrão do KrakenD (`infra/edgegateway/generate.js`). Só o `GET /tv3/authorize` tem limite próprio, de 15 s, por causa do pop-up. Com o backend mais lento que isso, ou fora do ar, quem responde é o próprio KrakenD.
 - **Até 03/10:** a resposta era 500 com corpo vazio, fora do formato C.3.2.
 - **Desde 03/10:** o plugin `tv30-auth` troca qualquer 5xx que sai do KrakenD por 404 `{"error":200,"description":"Platform resource unavailable: <motivo>"}`, com `Content-Type: application/json`, `Access-Control-Allow-Origin: *` e `API-Version`, nos dois modos.
 - **Continua:** os limites de tempo não mudaram. A rota cujo backend demora mais de 2 s recebe o erro 200, e não a resposta.
+- **Redis fora do ar, desde a rodada de 05/10 (D-0510-6):** o tv3ws desiste de um comando do Redis em 1,5 s (`commandTimeout` em `tv3ws/src/redis-client.ts`) e responde ele mesmo 404 `{"error":200}`, antes dos 2 s da borda. Antes, com o padrão do ioredis, a requisição ficava presa até a borda cortar.
 
 **Verificado na stack em 04/10** (imagem do edgegateway reconstruída): no `scripts/test-auth.sh`, com o tv3ws parado (`docker stop`), as duas superfícies (44642 e 44643) responderam 404 `{"error":200}` vindo da borda, com `API-Version: 2.0`, para um `GET /tv3/current-service` com token válido; com o tv3ws congelado (`docker pause`), caso do backend que não responde, a 44642 respondeu o mesmo 404 `{"error":200}`. Os testes Go do plugin (`krakend/builder:2.7.2`, go1.22.7) passaram: 44 PASS, 0 FAIL.
 
@@ -27,7 +28,7 @@ O 101 no reuso de `clientid` (D-L2) não cobre o reuso **simultâneo**. Em `chec
 
 Por trás disso há um defeito anterior a esta rodada: o tv3ws guarda **um** callback por tópico (`subscribe` em `tv3ws/src/core.ts`, `_topics.set(topic, callback)`). O segundo pop-up toma o lugar do primeiro no tópico de resposta. A resposta do espectador vai só para a segunda chamada. A primeira expira, cai em `wrapup(false)`, tira a inscrição do tópico (o que também derruba a da segunda, se ela ainda esperava) e grava o `clientid` em `clients:blocked`.
 
-Com o mesmo `clientid`, o resultado é `client:{id}` autorizado com a classe da segunda chamada e o mesmo id em `clients:blocked`; a primeira chamada recebe 102. Em `enforce` a borda barra esse id pelo bloqueio (107). O defeito do callback único também mistura autorizações simultâneas de `clientid` **diferentes**. Lido no código em 04/10; não reproduzido na stack. Correção possível, não feita: marcar o `clientid` como pendente antes do pop-up (por exemplo, `SET client-pending:{id} NX EX 15` no Redis) e devolver 101 se a marca existir; e uma fila ou um id por pop-up no `core.ts`.
+Com o mesmo `clientid`, a primeira chamada recebe 102. Até 05/10, o resultado ficava incoerente: `client:{id}` autorizado com a classe da segunda chamada e o mesmo id em `clients:blocked`. Desde a rodada de 05/10 (D-0510-4), o bloqueio tira o id de `clients:authorized` e o põe em `clients:blocked` numa transação, então ele termina só bloqueado: a segunda chamada recebe a resposta de sucesso, mas o `/tv3/token` desse id dá 102, e em `enforce` a borda barra o token dele pelo bloqueio (107). O `client:{id}` fica gravado. O defeito do callback único também mistura autorizações simultâneas de `clientid` **diferentes**. Lido no código em 04/10 e de novo em 10/10; não reproduzido na stack. Correção possível, não feita: marcar o `clientid` como pendente antes do pop-up (por exemplo, `SET client-pending:{id} NX EX 15` no Redis) e devolver 101 se a marca existir; e uma fila ou um id por pop-up no `core.ts`.
 
 ## SSDP anuncia `localhost` por padrão e um endereço "seguro" sem TLS — ABERTO (aguarda o Joel)
 
@@ -40,6 +41,21 @@ Com a borda anunciando em rede do host (L6, opção A), o anunciante segue o mor
 ## Container antigo `tv3ws-ssdp` (opção B) de pé depois da troca para a opção A — remover à mão
 
 O serviço `tv3ws-ssdp` e o perfil `ssdp` saíram do compose em 09/10. Um `tv3ws-ssdp` que estava de pé continua anunciando com a configuração antiga (e, com a borda anunciando, ficam dois anunciantes do mesmo UDN). Remova-o com `docker rm -f tv3ws-ssdp` (ou `docker compose up -d --remove-orphans`). O `scripts/preflight.sh` avisa quando ele está de pé.
+
+## Remote-device: a porta do WebSocket continua escutando depois da remoção — ABERTO (anterior a 05/10)
+
+Achado na rodada de 05/10, lido no código; não medido na stack. Cada `POST /tv3/remote-device` (C.6.15.2) cria um `http.Server` próprio numa porta sorteada da faixa `WS_PORT_MIN`–`WS_PORT_MAX` (45000–45199 no compose) e põe nele um `WebSocketServer` (`tv3ws/src/api/multi-device/service.ts`, `createWebSocket`). O ponto de entrada local que a listagem cria para cada dispositivo (`ensureLocalEntryPoint`, no mesmo arquivo) segue o mesmo padrão.
+- **Porta que não fecha.** Na remoção do dispositivo (`DELETE /tv3/remote-device/{handle}`, C.6.15.3, ou o fechamento do socket), o `RemoteDevice.terminate()` chama só `wss.close()` (`tv3ws/src/modules/remotedevice-manager/remote-device.ts`). No `ws` 8.18.1, instalado no tv3ws, o `close()` de um `WebSocketServer` criado sobre um servidor externo (`{ server }`) não fecha esse servidor: só tira os ouvintes dele. A porta segue em LISTEN até o processo acabar, e cada registro removido deixa uma porta presa da faixa de 200.
+- **`EADDRINUSE` sem tratamento.** O sorteio não confere se a porta está livre, e o `server.listen(port)` não tem tratamento de erro. Pela leitura do código, o erro do `listen` chega ao `WebSocketServer` (que repassa o `error` do servidor), que não tem ouvinte de `error`, e o processo do tv3ws cai (inferência, não reproduzida). Como o `listen` é assíncrono, a API já respondeu 200 com a URL quando isso acontece. As portas presas pelo defeito acima aumentam a chance de colisão.
+
+Correção possível, não feita: fechar o `http.Server` no `terminate()` e tratar o `error` do `listen` (sortear outra porta, ou responder 404 `{"error":200}` antes de devolver a URL).
+
+## Preflight CORS com a lista de cabeçalhos fora de ordem é recusado pela borda — ABERTO (do KrakenD)
+
+Medido pela frente da borda em 09/10, numa borda isolada (imagem local, sem a stack). O módulo CORS do KrakenD 2.7.2, que responde o preflight (`OPTIONS` com `Access-Control-Request-Method`) nas duas superfícies, não concede o pedido quando o `Access-Control-Request-Headers` vem fora de ordem lexicográfica (por exemplo, `content-type,bind-token`), em qualquer rota: a resposta não passa na verificação do teste da borda (status 2xx, `Access-Control-Allow-Origin: *` e `Access-Control-Allow-Methods` com o método pedido). Com a mesma lista em ordem (`bind-token,content-type`), o preflight passa. Os cabeçalhos exatos da resposta recusada não foram registrados.
+- **Quem é afetado.** Os navegadores mandam a lista em minúsculas e em ordem (especificação Fetch), então o efeito esperado é só sobre clientes que montam o preflight à mão, como scripts de teste.
+- **O plugin `tv30-auth` não interfere:** ele deixa o preflight passar ao módulo CORS.
+- **Norma.** A C.4.1.9.3 (p. 207; p. 225 do PDF) manda responder todo `OPTIONS` com `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods` e `Access-Control-Allow-Headers`. Se a resposta recusada não traz os três, a borda não cumpre a C.4.1.9.3 nesse caso.
 
 ## Caminho não declarado resetava a conexão na borda — RESOLVIDO em 02/10/2026
 

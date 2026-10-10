@@ -4,7 +4,9 @@
 // build). Um componente real usa as bibliotecas do projeto (mqtt, ioredis),
 // como o tv3ws; os clientes minimos abaixo so existem para o exemplo rodar.
 //
-// O que ele faz (e o que scripts/test-template.sh confere):
+// O que ele faz (e o que scripts/test-template.sh confere em container; o
+// cenario 5 de scripts/test-dev-host.sh confere o mesmo com ele no host,
+// falando com Redis e broker por 127.0.0.1):
 //   - Redis pelo NOME DO SERVICO (REDIS_HOST/REDIS_PORT): PING na subida e
 //     GET da chave EXEMPLO_CHAVE a cada ping recebido;
 //   - MQTT pelo NOME DO SERVICO (MQTT_HOST/MQTT_PORT): assina

@@ -10,6 +10,8 @@ Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 2560
 
 > **Exceção temporária (04/10/2026):** as imagens com as mudanças de 03 e 04/10 (`tv30-redis` com login no Redis Commander, `tv30-tv3ws` com o 101 no reuso de `clientid` e o `kex` com `key`, `tv30-edgegateway` com o 404 `{"error":200}` no lugar do 500 vazio) ainda só existem em build local. Até serem publicadas, um clone novo puxa do Docker Hub as versões anteriores; para ter as novas, rode `docker compose build redis tv3ws edgegateway` antes do `docker compose up -d`.
 
+> **Imagens da rodada de 05/10 andam juntas.** As decisões da reunião de 05/10 com o Joel mudaram três imagens ao mesmo tempo: `tv30-edgegateway` (a borda passa a responder a C.6.8, `/tv3/bind-context`, e a C.6.7.8/C.6.7.9, `/tv3/api-info`), `tv30-tv3ws` (sem validação de credencial, sem a C.6.8 e sem escrita de perfis) e `tv30-aop` (dono dos perfis, inclusive do `lastAccess`). Pelo código, misturar versões quebra funções: com a borda anterior e o tv3ws novo, a C.6.8 responde 404 `{"error":100}` (a borda antiga repassa a rota a um tv3ws que não a tem mais), e a `/tv3/api-info` também dá 100 (a borda antiga não a declara); com o tv3ws novo e o AoP anterior, ninguém atualiza o `lastAccess` na troca de usuário corrente, e o despejo de perfis passa a contar só a criação do perfil. Use as três da mesma rodada, publicadas ou construídas localmente (`docker compose build edgegateway tv3ws aop`).
+
 ---
 
 ## Pré-requisitos
@@ -173,7 +175,7 @@ O login é configurado pelo entrypoint da imagem `tv30-redis`. Uma imagem constr
 
 ## Descoberta SSDP (só Linux nativo)
 
-O receptor se anuncia por SSDP (ABNT NBR 25608, C.3.4) para que outro aparelho da rede o encontre. Quem anuncia é a borda (L6, opção A, decidido pelo Luís em 09/10): o override `docker-compose.ssdp.yml` põe o `edgegateway` em rede do host e liga o anunciante dele, um processo em Go (`infra/edgegateway/ssdp/`). O `/manifest` continua no tv3ws, atrás da borda, e o resto da stack continua na `ginga_net`. A descoberta só é suportada em **Linux nativo com Docker Engine** (decisão do Joel, informada pelo Luís em 04/10). Nesse ambiente, um segundo aparelho encontrou o receptor em 09/10 com a opção B, anterior (o container `tv3ws-ssdp`); com a opção A, o teste ainda não foi refeito. No Windows com WSL2, o anúncio em rede do host não sai da máquina (medido em 03 e 04/10, com um anunciante descartável em modo host). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte.
+O receptor se anuncia por SSDP (ABNT NBR 25608, C.3.4) para que outro aparelho da rede o encontre. Quem anuncia é a borda (L6, opção A, decidido pelo Luís em 09/10): o override `docker-compose.ssdp.yml` põe o `edgegateway` em rede do host e liga o anunciante dele, um processo em Go (`infra/edgegateway/ssdp/`). O `/manifest` continua no tv3ws, atrás da borda, e o resto da stack continua na `ginga_net`. A descoberta só é suportada em **Linux nativo com Docker Engine** (decisão do Joel, informada pelo Luís em 04/10). Nesse ambiente, um segundo aparelho encontrou o receptor em 09/10, primeiro com a opção B, anterior (o container `tv3ws-ssdp`), e depois com a opção A (um notebook no mesmo Wi-Fi; testes 40 a 43 de [`docs/ssdp-verificacao.md`](./docs/ssdp-verificacao.md)). No Windows com WSL2, o anúncio em rede do host não sai da máquina (medido em 03 e 04/10, com um anunciante descartável em modo host). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte.
 
 No `.env` da raiz (o `COMPOSE_PROFILES` fica como está):
 
