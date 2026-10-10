@@ -29,7 +29,12 @@
 #      104, 106, 108, 100, preflight CORS, a API C.6.8 (POST/GET/DELETE
 #      /tv3/bind-context) com HS256, HS512, RS256 e RS512, isolamento entre
 #      servicos e confusao de algoritmo, e as APIs C.6.7.8/C.6.7.9
-#      (GET /tv3/api-info[/{apiId}]) com a negociacao de versao da borda.
+#      (GET /tv3/api-info[/{apiId}]) com a negociacao de versao da borda
+#      (API-Version 2.1, a mais recente suportada, no erro 100; C.3.6.6).
+#      GET /tv3/current-service (C.6.3.1, Tabela C.8) respondido pelo tv3ws:
+#      404 {error:300} sem servico em uso e 200 com "serviceId" inteiro ou
+#      omitido com servico em uso; erros 100/101 da negociacao de versao do
+#      tv3ws com API-Version (2.1 no 100, 2.0 no 101).
 #      Ainda em enforce: reuso de clientid (101, D-L2), pareamento REAL de
 #      cliente nao local (pm=qrcode e pm=kex), Redis congelado (falha
 #      explicita do tv3ws, 404 {error:200} em menos de 2 s, D-0510-6) e
@@ -81,6 +86,12 @@
 # clientes nao locais e o de reuso usam UUID, formato da C.6.1.4.3). O caso do
 # Redis congelado (docker pause redis) dura poucos segundos e o trap
 # descongela o container se o script cair no meio.
+#
+# Estado tocado no broker: o retido de aop/currentService (o servico em uso do
+# tv3ws, core.app.sid; a plataforma o publica retido e o tv3ws o espelha em
+# session:current-service-id e no hash session:current-service). Os casos da
+# C.6.3.1 publicam no lugar da plataforma; o trap devolve o retido que havia
+# (ou o apaga, se nao havia) e restaura o hash session:current-service.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -132,7 +143,12 @@ EDGE_SECRET=$(env_of edgegateway JWT_SECRET)
 EDGE_ISSUER=$(env_of edgegateway JWT_ISSUER); EDGE_ISSUER=${EDGE_ISSUER:-GenericIssuer}
 [ -n "$EDGE_SECRET" ] || die "JWT_SECRET ausente no edgegateway"
 ORIG_SVC=$(rc GET session:current-service-id)
-echo "== borda: modo=$ORIG_MODE variante=$ORIG_VARIANT; servico corrente='${ORIG_SVC}' =="
+# retido de aop/currentService e hash session:current-service antes do teste
+# (restaurados no trap se os casos da C.6.3.1 os tocarem)
+CS_TOPIC=aop/currentService
+ORIG_CS=$(docker exec mqtt-broker mosquitto_sub -t "$CS_TOPIC" -C 1 -W 2 --retained-only 2>/dev/null)
+ORIG_CS_HASH=$(rc HGETALL session:current-service | base64 -w0)
+echo "== borda: modo=$ORIG_MODE variante=$ORIG_VARIANT; servico corrente='${ORIG_SVC}'; $CS_TOPIC retido='${ORIG_CS}' =="
 
 # recria SO o edgegateway no modo pedido, preservando variante e segredo
 edge_mode() {
@@ -153,6 +169,23 @@ edge_mode() {
 
 TV3WS_TOUCHED=0   # 1 depois que o caso P1 parar/congelar o tv3ws
 REDIS_TOUCHED=0   # 1 depois que o caso D-0510-6 congelar o redis
+CS_TOUCHED=0      # 1 depois que os casos da C.6.3.1 publicarem aop/currentService
+
+# cs_publish <sid>: publica aop/currentService retido no lugar da plataforma
+# (vazio = apaga o retido; o broker entrega o "" aos assinantes, como no
+# unsetCurrentService do aop) e espera o tv3ws espelhar o valor em
+# session:current-service-id (tv3ws/src/api/user/service.ts), sinal de que o
+# servico em uso dele (core.app.sid) ja mudou
+cs_publish() {
+  local i
+  if [ -n "$1" ]; then docker exec mqtt-broker mosquitto_pub -r -q 1 -t "$CS_TOPIC" -m "$1"
+  else docker exec mqtt-broker mosquitto_pub -r -q 1 -t "$CS_TOPIC" -n; fi
+  for i in $(seq 1 40); do
+    [ "$(rc GET session:current-service-id)" = "$1" ] && return 0
+    sleep 0.25
+  done
+  return 1
+}
 
 cleanup() {
   set +e
@@ -166,6 +199,16 @@ cleanup() {
       && docker unpause tv3ws >/dev/null && echo "tv3ws descongelado"
     [ "$(docker inspect -f '{{.State.Running}}' tv3ws 2>/dev/null)" = true ] \
       || { docker start tv3ws >/dev/null && echo "tv3ws religado"; }
+  fi
+  # o retido de aop/currentService antes do Redis: o tv3ws reescreve
+  # session:current-service-id e o hash session:current-service ao recebe-lo
+  if [ "$CS_TOUCHED" = 1 ]; then
+    if cs_publish "$ORIG_CS"; then echo "$CS_TOPIC retido restaurado ('$ORIG_CS')"
+    else echo "ATENCAO: $CS_TOPIC publicado ('$ORIG_CS'), mas o tv3ws nao o espelhou no Redis em 10 s"; fi
+    local k v hs=()
+    while IFS= read -r k && IFS= read -r v; do hs+=("$k" "$v"); done < <(printf '%s' "$ORIG_CS_HASH" | base64 -d)
+    rc DEL session:current-service >/dev/null
+    [ "${#hs[@]}" -gt 0 ] && rc HSET session:current-service "${hs[@]}" >/dev/null
   fi
   if [ -n "$ORIG_SVC" ]; then rc SET session:current-service-id "$ORIG_SVC" >/dev/null
   else rc DEL session:current-service-id >/dev/null; fi
@@ -223,10 +266,13 @@ expect_err() {
   check_err "$name" "$code" "$orig"
 }
 
-# a ultima resposta traz API-Version (C.3.6.6); sem Accept-Version, a 2.0
+# expect_api_version NOME [VERSAO]: a ultima resposta traz API-Version
+# (C.3.6.6) = VERSAO. Padrao 2.0: a de quem nao manda Accept-Version e a do
+# erro 101 (Accept-Version malformado); no erro 100 (versao fora do conjunto)
+# vem a mais recente suportada, 2.1
 expect_api_version() {
-  local v; v=$(hdr API-Version)
-  if [ "$v" = 2.0 ]; then pass "$1 -> API-Version: $v"; else fail "$1 -> esperado API-Version: 2.0, veio '$v'"; fi
+  local want=${2:-2.0} v; v=$(hdr API-Version)
+  if [ "$v" = "$want" ]; then pass "$1 -> API-Version: $v"; else fail "$1 -> esperado API-Version: $want, veio '$v'"; fi
 }
 
 # chegou ao tv3ws (X-Powered-By: Express) sem bloqueio nem aviso da borda
@@ -414,7 +460,8 @@ stop_bg() { kill "$@" 2>/dev/null; wait "$@" 2>/dev/null; }
 #   solve   PM=qrcode: QR = chave do QR code (base64url) -> segredo =
 #           SHA-256(chave)[0:16] (C.4.3.2, C.6.1.2.2 passos 1-2);
 #           PM=kex: CPRIV + SKEY (chave parcial do servidor) -> h =
-#           SHA-256(ECDH), PIN = h mod 10000, segredo = h[0:16] (C.4.3.3).
+#           SHA-256(ECDH), PIN = h mod 10000 com 4 digitos (zeros a
+#           esquerda, "a four-digit number"), segredo = h[0:16] (C.4.3.3).
 #           Depois o challenge-response da Tabela C.4: decodifica o
 #           challenge, decifra, SHA-256, cifra, base64url. Saida SECRET, CR
 #           (e PIN no kex).
@@ -449,7 +496,7 @@ try {
       const ecdh = crypto.createECDH('prime256v1');
       ecdh.setPrivateKey(E.CPRIV, 'hex');
       const h = sha256(ecdh.computeSecret(unb64u(E.SKEY)));
-      out('PIN', (BigInt('0x' + h.toString('hex')) % 10000n).toString());
+      out('PIN', (BigInt('0x' + h.toString('hex')) % 10000n).toString().padStart(4, '0'));
       secret = h.subarray(0, 16);
     }
     const r = aes(false, secret, unb64u(E.CHALLENGE));
@@ -526,10 +573,11 @@ pair() {
     fi
     nl_node MODO=solve PM=kex CPRIV="$NL_CPRIV" SKEY="$skey" CHALLENGE="$ch" \
       || { fail "$S desafio nao resolvido com a chave ECDH derivada: $NL_ERR"; return 1; }
-    if [[ "$pop" =~ ^[0-9]{1,4}$ ]] && [ "$((10#$pop))" = "$NL_PIN" ]; then
-      pass "$S PIN publicado em $POP_PIN ($pop) = PIN que o cliente calculou da chave ECDH"
+    # C.4.3.3: "a four-digit number" — "0042", nao "42"
+    if [[ "$pop" =~ ^[0-9]{4}$ ]] && [ "$pop" = "$NL_PIN" ]; then
+      pass "$S PIN publicado em $POP_PIN ($pop, 4 digitos) = PIN que o cliente calculou da chave ECDH"
     else
-      fail "$S PIN publicado '$pop' != PIN calculado pelo cliente '$NL_PIN'"
+      fail "$S PIN publicado '$pop' (esperado 4 digitos) != PIN calculado pelo cliente '$NL_PIN'"
       return 1
     fi
   else
@@ -704,6 +752,47 @@ for H in "$H_INT" "$H_EXT"; do
   expect_err  "$S token sem prefixo Bearer" 107 borda GET "$H/tv3/current-service" -H "Authorization: $AT"
   ext_skip "$H" "$S token valido" || expect_pass "$S token valido" GET "$H/tv3/current-service" "${TOK[@]}"
 done
+
+echo; echo "-- GET /tv3/current-service (C.6.3.1, Tabela C.8) e API-Version nos 100/101 do tv3ws (C.3.6.6) --"
+# servico em uso do tv3ws = ultimo aop/currentService (core.app.sid), nao a
+# chave session:current-service-id que a borda le (o tv3ws so a escreve, como
+# espelho do mesmo topico). O teste publica o topico no lugar da plataforma;
+# com o servico de teste $SVC_A o espelho fica igual ao que a borda ja ve.
+CS_TOUCHED=1
+if cs_publish ""; then
+  expect_err "[44642] GET /tv3/current-service sem servico em uso" 300 tv3ws GET "$H_INT/tv3/current-service" "${TOK[@]}"
+  expect_api_version "[44642] 300 do tv3ws (sem Accept-Version)"
+else
+  fail "aop/currentService vazio publicado, mas o tv3ws nao o espelhou em session:current-service-id (300 nao testado)"
+fi
+if cs_publish "$SVC_A"; then
+  req GET "$H_INT/tv3/current-service" "${TOK[@]}"
+  why=""
+  [ "$CE" = 0 ] || why="$why curl=$CE"
+  [ "$ST" = 200 ] || why="$why status=$ST"
+  [ "$(origin_of)" = tv3ws ] || why="$why origem=borda"
+  body | grep -q "\"serviceContextId\":\"$SCID_CONST\"" || why="$why sem-serviceContextId"
+  # "serviceId" inteiro (Tabela C.8) ou omitido quando o testbed nao o
+  # conhece (sem SLT; o tv3ws so o teria por aop/services, que ninguem publica)
+  if body | grep -q '"serviceId":'; then
+    body | grep -Eq '"serviceId":[0-9]+[,}]' || why="$why serviceId-nao-inteiro"
+  fi
+  if [ -z "$why" ]; then
+    pass "[44642] GET /tv3/current-service com servico em uso -> 200 do tv3ws, serviceId $(body | grep -q '"serviceId":' && echo inteiro || echo omitido) $(short)"
+  else
+    fail "[44642] GET /tv3/current-service com servico em uso -> esperado 200 do tv3ws com serviceId inteiro ou omitido:$why corpo=$(short)"
+  fi
+else
+  fail "aop/currentService=$SVC_A publicado, mas o tv3ws nao o espelhou em session:current-service-id (200 nao testado)"
+fi
+# a borda nao negocia versao nas rotas que repassa: estes saem do tv3ws
+expect_err "[44642] GET /tv3/current-service com Accept-Version 3.0 (fora do conjunto)" 100 tv3ws GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: 3.0'
+expect_api_version "[44642] 100 do tv3ws: a versao mais recente suportada" 2.1
+expect_err "[44642] GET /tv3/current-service com Accept-Version x (malformado)" 101 tv3ws GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: x'
+expect_api_version "[44642] 101 do tv3ws" 2.0
+expect_pass "[44642] GET /tv3/current-service com Accept-Version 2.1" GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: 2.1'
+expect_api_version "[44642] 200 do tv3ws com Accept-Version 2.1" 2.1
+
 rc SADD clients:blocked "$CLIENT" >/dev/null
 expect_err "[44642] cliente em clients:blocked" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
 rc SREM clients:blocked "$CLIENT" >/dev/null
@@ -875,9 +964,14 @@ expect_err "[44642] GET /tv3/api-info com token adulterado" 107 borda GET "$H_IN
 expect_edge "[44642] GET /tv3/api-info pelo associado (Origin, sem token)" '^\{"receiverApis":\[\{"id":"tv3ws-' GET "$H_INT/tv3/api-info" "${ASSOC_H[@]}"
 # negociacao de versao (C.3.6.5) nas APIs da borda: o mesmo contrato do tv3ws
 expect_edge "[44642] GET /tv3/api-info com Accept-Version 2.1" '^\{"receiverApis":' 2.1 GET "$H_INT/tv3/api-info" "${TOK[@]}" -H 'Accept-Version: 2.1'
+# API-Version (C.3.6.6) desses erros da borda: 2.1 (a mais recente
+# suportada) no 100, 2.0 no 101 — o mesmo do tv3ws
 expect_err "[44642] GET /tv3/api-info com Accept-Version 3.0 (fora do conjunto)" 100 borda GET "$H_INT/tv3/api-info" "${TOK[@]}" -H 'Accept-Version: 3.0'
+expect_api_version "[44642] 100 da borda: a versao mais recente suportada" 2.1
 expect_err "[44642] GET /tv3/api-info com Accept-Version x (malformado)" 101 borda GET "$H_INT/tv3/api-info" "${TOK[@]}" -H 'Accept-Version: x'
+expect_api_version "[44642] 101 da borda" 2.0
 expect_err "[44642] GET /tv3/bind-context com Accept-Version 3.0" 100 borda GET "$H_INT/tv3/bind-context" "${TOK[@]}" -H "bind-token: $BT_HS512" -H 'Accept-Version: 3.0'
+expect_api_version "[44642] 100 da borda em /tv3/bind-context" 2.1
 expect_err "[44642] PUT /tv3/api-info (metodo nao declarado)" 100 borda PUT "$H_INT/tv3/api-info" "${TOK[@]}"
 # CORS das rotas da borda: o preflight passa ao modulo CORS do KrakenD (o
 # endpoint continua gerado); OPTIONS sem preflight o plugin responde

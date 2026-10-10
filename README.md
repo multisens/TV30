@@ -4,7 +4,7 @@
 
 Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 25608). Implementa, em microsserviços, os papéis da plataforma TV 3.0 — receptor (AoP), TV 3.0 WebServices (tv3ws) e broadcaster simulado (bcast) — sobre uma infraestrutura de apoio escolhida por este projeto: borda KrakenD (`edgegateway`, duas superfícies), broker MQTT (Mosquitto com plugin C de validação de schema) e estado em Redis.
 
-> **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices (CCWS), o modelo de consentimento e os perfis de usuário. O transporte interno via **MQTT**, a **borda KrakenD** e o **Redis** são decisões de arquitetura deste testbed — **não fazem parte da norma**.
+> **Norma × implementação:** a ABNT NBR 25608 especifica os TV 3.0 WebServices (Anexo C), o gerenciador de perfis (8.7) e o de privacidade, que trata do consentimento (8.8). A norma não usa o nome "Ginga CC WebServices" nem a sigla CCWS: "Ginga Common Core WebServices" só aparece no título da ABNT NBR 15606-11, uma das referências normativas. O transporte interno via **MQTT**, a **borda KrakenD** e o **Redis** são decisões de arquitetura deste testbed — **não fazem parte da norma**.
 
 É um **monorepo com submodules Git** orquestrado por um único `docker-compose.yml` na raiz. Toda a stack sobe de uma vez só, em qualquer host com Docker, sem build local — as imagens vêm do Docker Hub e são atualizadas automaticamente pelos workflows de cada submodule.
 
@@ -86,7 +86,7 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 | `EDGE_VARIANT` | `linux` | Para onde a borda encaminha: `linux` = tv3ws em container; `windows` = tv3ws rodando no host (desenvolvimento, ver [`docs/dev-local.md`](./docs/dev-local.md)); `host` = borda em rede do host, que o `docker-compose.ssdp.yml` define sozinho (não defina à mão). |
 | `SERVER_URL` | `localhost` | Host que dispositivos externos usam para abrir os WebSockets de remote-device. Também é o host anunciado por SSDP quando `SSDP_ADVERTISE_HOST` está vazia. |
 | `SSDP_ADVERTISE_HOST` | vazia | Host do `LOCATION` do anúncio SSDP e do `/manifest` (`Server-BaseURL`). Para a descoberta na rede, o IP da máquina na LAN. O `tv3ws` (`/manifest`) e a borda (anúncio, com o `docker-compose.ssdp.yml`) a leem do `.env` da raiz ou do `tv3ws/.env` (o da raiz prevalece); valor só exportado no shell não chega a eles. |
-| `SSDP_INTERFACE` | vazia | Nome da interface de rede por onde a borda anuncia. Vazia = a que tem o IP anunciado, senão a da rota padrão. Interface inexistente derruba a borda (morre-inteiro). |
+| `SSDP_INTERFACE` | vazia | Nome da interface de rede por onde a borda anuncia. Vazia = a que tem o IP anunciado, senão a da rota padrão. Nome de interface inexistente derruba a borda (erro de configuração); interface que existe sem IPv4 faz o anunciante esperar a rede, sem derrubar a borda (decisão do Luís em 10/10). |
 | `JWT_SECRET` / `JWT_ISSUER` | default de desenvolvimento / `GenericIssuer` | Segredo e emissor do accessToken. O **mesmo** valor vai para o tv3ws (que assina) e para a borda (que valida). |
 | `AUTH_ENFORCE` | `warn` | Validação de credenciais na borda: `warn` só registra (log `[tv30-auth] WARN` + cabeçalho `X-TV30-Auth-Warn`); `enforce` rejeita com 404 + corpo C.3.2. |
 | `REDIS_COMMANDER_USER` / `REDIS_COMMANDER_PASSWORD` | `admin` / `tv30-redis-admin` | Login da interface administrativa do Redis (ver [seção própria](#interface-administrativa-do-redis)). Não muda a conexão com o banco (6379), que segue sem senha. |
@@ -187,7 +187,7 @@ SSDP_ADVERTISE_HOST=192.168.0.12   # IP desta máquina na rede local
 Depois, `docker compose up -d` e `docker logs edgegateway`. Libere a UDP 1900 e a TCP 44642 no firewall do host.
 
 - Com o override, a borda sai da `ginga_net`: ocupa a 44642, a 44643 e a 8085 direto no host e fala com o tv3ws por `127.0.0.1` (o tv3ws publica a 44652/44653 só nesse endereço).
-- **Morre-inteiro (decisão do Luís em 09/10):** se o anúncio falhar (UDP 1900 ocupada, interface inexistente em `SSDP_INTERFACE`, rede caindo), a borda inteira cai, com todas as APIs, e o `restart` a traz de volta.
+- **Falha do anúncio (morre-inteiro decidido pelo Luís em 09/10, revisto por ele em 10/10):** erro de configuração (UDP 1900 ocupada por outro processo sem `SO_REUSEADDR`, interface inexistente em `SSDP_INTERFACE`, porta inválida em `EDGE_HTTP_PORT`/`EDGE_HTTPS_PORT`) derruba a borda inteira, com todas as APIs, e o `restart` a traz de volta. A falta de rede (nenhuma interface com IPv4, nenhuma rota padrão, erro de envio por rede) não derruba: o anunciante para de anunciar, avisa no log e tenta de novo, e as APIs ficam de pé. Detalhes no C8 de [`docs/decisoes-pendentes.md`](./docs/decisoes-pendentes.md).
 - Sem `SSDP_ADVERTISE_HOST`, o anúncio usa `SERVER_URL`, que por padrão é `localhost`, e outro aparelho não alcança o endereço. O anunciante avisa no log (`[ssdp] AVISO`).
 - Sem o override, nada é anunciado. O cliente ainda chega ao receptor pelo IP: `http://<IP>:44642/manifest`. Para desligar, comente o `COMPOSE_FILE` e rode `docker compose up -d`.
 - **Quem usava a opção B** (perfil `ssdp`, que deixou de existir): remova o container antigo, `docker rm -f tv3ws-ssdp` (ou `docker compose up -d --remove-orphans`). O `preflight` avisa se ele estiver de pé.

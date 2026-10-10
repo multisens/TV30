@@ -5,7 +5,7 @@ nav_order: 5
 
 # APIs do tv3ws
 
-O **tv3ws** é a implementação dos **Ginga CC WebServices** da ABNT NBR 25608 (Anexo C) neste testbed. O roteamento fica em `tv3ws/src/app.ts`.
+O **tv3ws** é a implementação dos **TV 3.0 WebServices** da ABNT NBR 25608 (Anexo C) neste testbed. O roteamento fica em `tv3ws/src/app.ts`.
 
 Desde a reunião de 05/10 com o Joel, dois grupos de APIs declarados na borda **não** chegam ao tv3ws: a borda os responde sozinha, no plugin `tv30-auth`. São a C.6.8 (`/tv3/bind-context`, D-0510-2) e a C.6.7.8 e a C.6.7.9 (`/tv3/api-info`, D-0510-3). Eles aparecem na tabela abaixo, marcados "(borda)", porque o cliente os vê na mesma superfície. Qual processo responde cada API é decisão deste testbed; a norma só define as APIs.
 
@@ -31,7 +31,10 @@ O cliente não fala com o tv3ws diretamente. As portas 44652 e 44653 não são p
   - Sem o cabeçalho, vale a versão 2.0.
   - São aceitas a 2.0 e a 2.1.
   - Valor malformado dá erro 101; versão fora desse conjunto dá erro 100.
-  - Toda resposta sob `/tv3` traz `API-Version`, menos os erros 100 e 101 da própria negociação no tv3ws, que saem sem ele (divergência da C.3.6.6 registrada na seção D de [`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes)).
+  - Toda resposta sob `/tv3` traz `API-Version` (C.3.6.6, p. 201; p. 219 do PDF), inclusive as de erro. Na resposta normal e nos erros das próprias APIs, vai a versão negociada. No erro 100, a mais recente que o servidor suporta, hoje a 2.1, como manda a exceção da C.3.6.6. No erro 101, a 2.0, a mesma de quando falta o cabeçalho: um `Accept-Version` malformado não pede versão nenhuma. Esta última é leitura feita na implementação, em 10/10, e está marcada no código como "A CONFIRMAR (Luis)". A borda segue a mesma regra nas respostas que ela mesma escreve (`apiVersion`, em `infra/edgegateway/plugin/handler.go`).
+  - A negociação roda antes dos leitores de corpo (`tv3ws/src/app.ts`), então o 101 de JSON malformado também leva o cabeçalho.
+  - Até 10/10, os erros 100 e 101 da negociação no tv3ws saíam sem `API-Version`, e o 100 da borda saía com `2.0`.
+  - Fora de `/tv3`, o `/health` e o `/manifest` não levam `API-Version`.
 
 ---
 
@@ -73,8 +76,13 @@ A coluna **bind-token** marca as APIs cujo campo "Security requirements" diz que
 
 - As rotas `/manifest` e `bind-context` entram na tabela de rotas na semana de 28/09; as de `api-info`, na rodada de 05/10.
 - **Rotas "(borda)".** O plugin `tv30-auth` as responde depois da mesma decisão de credencial das demais, sem repasse ao tv3ws. A C.6.8 tem o mesmo contrato que o tv3ws implementava até 05/10, com uma diferença: o `POST` só aceita corpo JSON. A C.6.7.8 e a C.6.7.9 listam as 20 APIs implementadas (o campo `api` do `routes.json`, com o id e a versão da Tabela C.2), todas na versão 2.0. Os detalhes e os comportamentos provisórios estão em `infra/edgegateway/plugin/README.md`, seção *APIs respondidas pela borda*.
+- **`GET /tv3/current-service`** (C.6.3.1, Tabela C.8, p. 222; p. 240 do PDF). O serviço em uso é o último valor de `aop/currentService`, que a plataforma publica ao selecionar um serviço e esvazia ao desfazer a seleção (`core.app.sid`, em `tv3ws/src/core.ts`).
+  - Sem serviço em uso, a resposta é 404 `{"error":300}`, o erro da tabela para "If the DTV function is not in use in the receiver". O 302 (sem recepção do sinal) não é emitido, porque o testbed não tem estado de recepção.
+  - Com serviço em uso, a resposta é 200 com `serviceContextId`, `transportStreamId` e `originalNetworkId`, mais `serviceName` quando é conhecido. O `serviceId` é inteiro, como na Tabela C.8, e fica de fora quando o testbed não o conhece. Hoje ele nunca é conhecido: não há SLT, e o tv3ws só o teria por `aop/services`, que nenhum módulo publica (L2, A6 de [`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes)). O `transportStreamId` e o `originalNetworkId` não estão na Tabela C.8.
+  - Até 10/10, a rota respondia sempre 200, com o `serviceId` em texto (`"-1"` ou `"undefined"`).
 - A antiga `POST /tv3/users` (criação de perfil, fora da norma) **não existe mais**: saiu no commit `8d5949d` da infra. A criação de perfil passou a ser função do gestor de perfis da plataforma, que grava direto no armazenamento (`aop/src/modules/profile-manager/service.js`).
 - Remote-device: os comentários de `tv3ws/src/api/multi-device/index.ts` citam C.6.15.5, C.6.15.6 e C.6.15.7. No PDF consultado (`docs/P_ABNTNBR25608_202X_en-US.pdf`), a seção C.6.15 só vai até a C.6.15.5. O fluxo por *handle* corresponde à versão 2.1, a proposta em discussão no Fórum (`basic.ts`).
+- Remote-device, portas do WebSocket (corrigido em 10/10; `tv3ws/src/modules/remotedevice-manager/entry-point.ts`). Cada registro (C.6.15.2) e cada ponto de entrada local (listagem 2.0 da C.6.15.5, ou ativação por *handle* da 2.1) abre um `http.Server` próprio numa porta sorteada da faixa `WS_PORT_MIN`–`WS_PORT_MAX` (45000–45199 no compose). A porta só é devolvida na URL depois de estar escutando. Porta ocupada (`EADDRINUSE`) leva a outro sorteio, até 10 vezes; esgotadas as tentativas, a API responde 404 `{"error":200}` (Tabela C.74: "If the request exceeds the number of devices that can be registered on the platform"), sem derrubar o processo. Na remoção do dispositivo, o `terminate()` fecha os dois servidores, inclusive o `http.Server`, e a desativação por *handle* fecha o ponto de entrada local. Até 10/10, a porta seguia escutando depois da remoção, e uma porta ocupada derrubava o tv3ws, pela leitura do código.
 - A contagem completa das 27 APIs *shall*, inclusive as ainda não implementadas, está em [`avaliacao-item9-credenciais.md`]({{ site.baseurl }}/avaliacao-item9-credenciais).
 
 ---
@@ -106,7 +114,7 @@ O 102 fica só para a recusa no próprio pop-up ("If the user does not grant acc
 
 **Resposta do não local por método de pareamento** (Tabela C.3, formatos 2 e 3, p. 214; p. 232 do PDF):
 - `pm=qrcode`: `{"challenge"}`. A chave vai no QR code que a TV mostra.
-- `pm=kex`: `{"challenge","key"}`. O `key` é a chave parcial ECDH do servidor (ponto SEC 1 sem compressão, em base64 URL safe, C.4.3.4). O cliente deriva dela o segredo (C.4.3.3) e resolve o `challenge`. Até a integração de 04/10, o tv3ws respondia só `{"challenge"}` no `kex`, e o pareamento por PIN não se completava. A correção é de conformidade (Tabela C.3, formato 3; C.4.3.3, passo 1) e espera o aval do Luís. O PIN continua publicado sem zeros à esquerda (por exemplo, `42`).
+- `pm=kex`: `{"challenge","key"}`. O `key` é a chave parcial ECDH do servidor (ponto SEC 1 sem compressão, em base64 URL safe, C.4.3.4). O cliente deriva dela o segredo (C.4.3.3) e resolve o `challenge`. Até a integração de 04/10, o tv3ws respondia só `{"challenge"}` no `kex`, e o pareamento por PIN não se completava. A correção é de conformidade (Tabela C.3, formato 3; C.4.3.3, passo 1) e espera o aval do Luís. Desde 10/10, o PIN que a TV mostra sai com quatro dígitos, com zeros à esquerda (`0042`), porque a C.4.3.3 diz que ele é "a four-digit number" (p. 211; p. 229 do PDF); até ali saía `42` (`pinFromHash`, em `tv3ws/src/api/client-identification/service.ts`).
 
 **Quem perdeu o refresh token** precisa de `clientid` novo e de nova autorização do espectador, com novo pop-up. É o caso da recarga de página sem armazenamento persistente e do armazenamento apagado. O mesmo vale quando o `/tv3/token` responde 101 porque o refresh token não está associado ao cliente (C.6.1.4.5). Repetir o `clientid` antigo só dá 101.
 

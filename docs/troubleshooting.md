@@ -54,15 +54,13 @@ no preflight com essa mensagem. O container do preflight não tem
 repositório. Se a mensagem continuar, há um processo nativo na 44642:
 confira com `sudo ss -ltnp | grep 44642`.
 
-## `redis-seed` sai com exit 1 e o broker nao sobe
+## Redis não fica saudável e o tv3ws ou a borda não sobem
 
-O job de carga instala a dependencia (`pip install redis`) em tempo de
-partida — sem rede/DNS no container, falha, e o `mosquitto` (que depende
-de `service_completed_successfully`) nao inicia. Ver o motivo real:
-`docker logs redis-seed`. Falha de pip/DNS: rode `docker compose up -d`
-novamente (o pip tenta de novo). Correcao definitiva (imagem
-pre-construida ou carga via `redis-cli --pipe`) esta na lista de
-trabalho.
+O antigo container de carga `redis-seed`, que rodava `pip install redis` na partida e falhava sem rede, não existe mais. Desde a consolidação do armazenamento (fase 3), a carga inicial vem na própria imagem `tv30-redis`: o seed é gerado no build (estágio `seedgen` do `infra/redis/Dockerfile`, em Python só com a biblioteca padrão) e aplicado pelo `infra/redis/entrypoint.sh` com `redis-cli --pipe`. A partida não instala nada nem precisa de rede.
+
+O healthcheck do `redis` só passa depois da carga (chave `seed:done`, testada a cada 2 s, até 30 vezes; `infra/redis/docker-compose.yml`). O `tv3ws` e o `edgegateway` dependem dele com `condition: service_healthy`; o broker não depende do Redis. Para ver em que ponto a carga está: `docker logs redis`, que registra `[redis] aplicando carga inicial (redis-cli --pipe)...` e `[redis] carga concluida`, ou `[redis] carga ja aplicada (seed:done presente) — mantida`.
+
+O seed sai do template `infra/user-files-template/userData.json` no build. Uma mudança no template só entra com a imagem reconstruída e, mesmo assim, só num volume `redis_data` que ainda não tenha `seed:done`: o entrypoint não reaplica a carga num volume já semeado.
 
 ## WSL2 + Docker
 

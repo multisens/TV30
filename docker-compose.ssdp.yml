@@ -19,9 +19,12 @@
 #     fechada para a rede);
 #   - as portas da borda (44642, 44643 e a 8085 da documentacao) ficam
 #     direto no host; a 8085 deixa de ser dinamica;
-#   - morre-inteiro (decisao do Luis, 09/10): se o anuncio falhar (UDP 1900
-#     ocupada, interface inexistente, rede caindo), a borda inteira cai e o
-#     restart a traz de volta.
+#   - falha do anuncio (morre-inteiro decidido pelo Luis em 09/10, revisto
+#     por ele em 10/10): erro de configuracao (UDP 1900 ocupada sem
+#     SO_REUSEADDR, SSDP_INTERFACE inexistente, porta invalida) derruba a
+#     borda inteira e o restart a traz de volta; falta de rede (sem IPv4, sem
+#     rota padrao) nao derruba: o anunciante espera e tenta de novo, com as
+#     APIs de pe (docs/decisoes-pendentes.md, C8).
 services:
   edgegateway:
     network_mode: host

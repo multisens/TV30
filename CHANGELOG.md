@@ -7,6 +7,254 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-10 (10/10, second round)
+
+First batch of the 2026-10-10 round: small items of the work list (24, 25
+and 26), `API-Version` on the version-negotiation errors, the four-digit
+PIN, the remote-device ports, clean-ups, and a decision by Luis on
+2026-10-10 about SSDP announcement failures. None of Joel's open points
+(sections A to E of `docs/decisoes-pendentes.md`) was decided here. Redis,
+MQTT, the KrakenD edge and where the SSDP announcer runs are choices of this
+testbed, not of ABNT NBR 25608.
+
+- Decision by Luis (2026-10-10), revising C8 and the die-whole rule of
+  2026-10-09 for the announcer only: "bring the edge down only on a
+  configuration error and tolerate missing network with retries". Reason:
+  during a network change on native Linux the edge restarted 12 times, with
+  every API down, only because the Wi-Fi had no IPv4 yet (tests 44 and 45 of
+  `docs/ssdp-verificacao.md`). The `LOCATION` keeps coming from the current
+  host chain (B2 stays with Joel). The Node announcer of tv3ws (dev-host
+  only) does not change in this round.
+
+#### Changed
+
+- infra `edgegateway/ssdp/` (the decision above): the announcer exits 1, and
+  the edge goes down whole until the compose restart brings it back, only on
+  a configuration error: an invalid `EDGE_HTTP_PORT`/`EDGE_HTTPS_PORT`; an
+  `SSDP_INTERFACE` that names no interface of the machine, or the loopback
+  one (checked once at start, `checkForced` in `iface.go`); `EADDRINUSE` on
+  the UDP 1900 bind (port held by a socket without `SO_REUSEADDR`); and any
+  error outside the network list. Missing network does not exit: no
+  interface with IPv4, no default route, an `SSDP_INTERFACE` without IPv4,
+  and network errors when opening, sending or reading (`ENETUNREACH`,
+  `EHOSTUNREACH`, `ENETDOWN`, `EHOSTDOWN`, `EADDRNOTAVAIL`, `ENODEV`, or any
+  socket error after the chosen IPv4 left its interface). In that state the
+  announcer closes its sockets and neither announces nor answers searches,
+  logs one `[ssdp] AVISO sem rede ...` when entering it and one
+  `[ssdp] rede de volta ...` when leaving it, and retries after 1, 2, 4, 8,
+  16 and 30 s (then every 30 s), choosing the interface and the source IP
+  again on every try (and the `LOCATION` host, when it comes from the local
+  IP). Warnings repeat only when they change. SIGTERM without network exits
+  0 without `ssdp:byebye`. The network is injectable, and the new tests use
+  a fake one (`main_test.go`). `entrypoint.sh` comments: the die-whole watch
+  still covers the announcer, which now exits only on a configuration error.
+- `API-Version` on the version-negotiation errors (C.3.6.6: every response
+  carries it, and when the server cannot answer in the requested version it
+  is "the latest version supported by the server"). tv3ws
+  `src/middleware/basic.ts`: error 100 carries the latest supported version
+  (`LATEST_VERSION`, 2.1), error 101 (an `Accept-Version` that is not `X.Y`)
+  carries 2.0, as without the header; before, both left without
+  `API-Version`. The 101 reading is marked `A CONFIRMAR (Luis)` in the code.
+  `src/app.ts` mounts the negotiation before the body parsers, so the 101 for
+  malformed JSON also carries the header. infra plugin `handler.go`
+  (`apiVersion`, used by the errors the edge writes and by the non-preflight
+  `OPTIONS`): now uses `negotiateVersion` from `edge.go`, so error 100 carries
+  2.1 (`latestVersion`, the last of `supportedVersions`; was 2.0) and error
+  101 still 2.0. The version list is now written in two places
+  (`basic.ts` and `edge.go`), not three.
+- Item 24, tv3ws `GET /tv3/current-service` (C.6.3.1, Table C.8): 404
+  `{"error":300}` when no DTV service is in use (`core.app.sid` empty: no
+  `aop/currentService`, or an empty one); `serviceId` is an integer, as in
+  Table C.8, and is omitted when unknown, which today is always (no SLT, and
+  nobody publishes `aop/services`; `PENDENTE (Joel)`, L2); an empty
+  `serviceName` is omitted. Before, the route always answered 200, with
+  `serviceId` as text (`"-1"`, `"undefined"`). The 302 (no signal) is not
+  emitted: the testbed has no reception state.
+- tv3ws PIN (C.4.3.3, "a four-digit number"): `pinFromHash` in
+  `src/api/client-identification/service.ts` pads it to four digits
+  (`0042`; was `42`).
+- tv3ws remote-device ports: new `src/modules/remotedevice-manager/
+  entry-point.ts` opens every WebSocket entry point (registration, C.6.15.2,
+  and the local entry point of the 2.0 listing or the 2.1 activation by
+  handle) on its own `http.Server` and hands the URL out only once the port
+  listens. `EADDRINUSE` on the drawn port draws another one, up to 10 times;
+  then, or on another `listen` error, the API answers 404 `{"error":200}`
+  (Table C.74) and the process stays up. `RemoteDevice.terminate()` closes
+  both entry points with their `http.Server`; the 2.1 deactivation closes the
+  local one and forgets its URL; concurrent activations of the same handle
+  share one opening. Before, the port kept listening after deregistration,
+  and by reading the code an `EADDRINUSE` brought tv3ws down.
+- Item 26, bcast: `initialMediaURLs` (use 1 in Table 6) in the eduplay and
+  users-test manifests, pointing to the simulated live stream the bcast
+  already serves (`/live/hls/aquario.m3u8`, the same as UFF);
+  `bam.initialMediaURLs` is no longer optional in `src/types.ts`.
+- Item 25, bcast: the media of `public/media/webmedia/cena.ncl360` use paths
+  relative to the scene (`media/...`), which the bcast serves statically at
+  `/media/webmedia/cena.ncl360`, so the player fetches them from the host and
+  port it got the scene from. Before: absolute URLs with the fixed IP
+  `192.168.68.100`.
+- bcast: the visible label "CCWS" in users-test, webmedia and the companion
+  page is now "TV 3.0 WebServices"; internal names follow (`TV3WS`,
+  `tv3wsBase`, `BroadcastToCompanionViaTV3WS`). The norm never uses
+  "CCWS" or "Ginga CC WebServices".
+- Root `docker-compose.yml`: aop `MQTT_WS_PORT: ${MQTT_WS_PORT:-9001}` (was a
+  fixed 9001, with a comment that said 9003), the same variable and default
+  the broker publishes.
+- tv3ws comments in `remote-device.ts` and `entry-point.ts`: "C.6.15.6" and
+  "C.6.15.7" are marked as the Forum proposal numbering used in
+  `api/multi-device/index.ts`; the norm PDF ends at C.6.15.5 (integration
+  fix, comments only).
+- `scripts/test-dev-host.sh` (scenarios 1 and 4): the edge to host-tv3ws
+  check of `GET /tv3/current-service` now requires the answer to come from
+  the tv3ws Express (`X-Powered-By`) and accepts 200 with
+  `serviceContextId` or 404 `{"error":300}` (no service in use, the case of
+  these scenarios). It does not publish a retained `aop/currentService` to
+  force the 200: the topic belongs to the platform, and the value would stay
+  in the broker.
+- `scripts/test-auth.sh`: the PIN must have exactly four digits; new cases:
+  `GET /tv3/current-service` with no service in use (300 from tv3ws) and
+  with one (200 from tv3ws, `serviceId` an integer or omitted), publishing
+  `aop/currentService` in place of the platform; the 100 and 101 of tv3ws with
+  `API-Version` 2.1 and 2.0, and 2.1 on a 200 asked with `Accept-Version: 2.1`;
+  `API-Version` 2.1 on the edge 100 and 2.0 on the edge 101. The trap
+  restores the retained `aop/currentService` (or deletes it) and the
+  `session:current-service` hash. `expect_api_version` takes the expected
+  version.
+- Docs: `README.md`, `ARCHITECTURE.md`, `docs/arquitetura.md`,
+  `docs/apis-tv3ws.md` and `docs/index.md` no longer attribute the name
+  "Ginga CC WebServices" to the norm (the norm says "TV 3.0 WebServices";
+  "Ginga Common Core WebServices" appears only in the title of ABNT NBR
+  15606-11, a normative reference). `docs/decisoes-pendentes.md` (the
+  decision, C8, section D, PIN, leftovers), `docs/ssdp-verificacao.md` (what
+  exits and what waits; tests 47 to 57), `KNOWN-ISSUES.md`,
+  `docs/apis-tv3ws.md` (C.6.3.1, `API-Version`, PIN, remote-device),
+  `docs/dev-local.md`, `docs/mqtt-topicos.md`, `docs/troubleshooting.md`
+  (current Redis seeding; no `redis-seed`, no pip at start),
+  `docs/instalacao.md`, `docs/avaliacao-item9-credenciais.md`,
+  `docker-compose.ssdp.yml` comments; infra `README.md`,
+  `docs/02-rede-docker.md`, `03-pipeline-mqtt.md` (rewritten),
+  `04-pipeline-http.md`, `05-autenticacao.md`, `08-mqtt-map.md`,
+  `09-schema-validation.md`, `mqtt-broker/README.md` and
+  `edgegateway/plugin/README.md`.
+
+#### Removed
+
+- infra `edgegateway/generate.js`: the dead `extract` and `verify` modes
+  (they read the pre-table KrakenD configs in `gateway-{external,internal}/`,
+  which no longer exist) and what only they used. `build` is unchanged: the
+  generated files are byte-identical to the previous version's.
+- aop `src/core.js`: the `aop/users` subscription (nobody publishes the
+  topic). infra `mqtt-broker/plugin/config/schemas.json`: the `aop/users`
+  schema. No module publishes or subscribes to `aop/users` any more.
+- Root `docker-compose.yml` and `scripts/test-dev-host.sh`: `USER_DATA_FILE`
+  for tv3ws (not read since the 2026-10-05 round).
+- infra: the versioned `mqtt-broker/infra/__pycache__/*.pyc` (and
+  `__pycache__/`, `*.pyc` in `.gitignore`); the comment of
+  `dockerfiles/tv3ws.Dockerfile` that cited `initFromRedis`.
+
+#### Open (no decision yet)
+
+- The `API-Version` of error 101 (2.0) is a reading of the implementation,
+  to be confirmed by Luis.
+- B2: with a fixed `SSDP_ADVERTISE_HOST`, the `LOCATION` still does not follow
+  a network change (test 45).
+- The new announcer rule was measured only in WSL2 (an isolated container,
+  and the real edge on the host network with a test interface); not on
+  native Linux with a real network change, and not with the real edge and no
+  IPv4 interface at all.
+- The infra `schemas.json` does not require `initialMediaURLs` in
+  `tlm/lls/+/bamt`; webmedia's `nodeSrc` still uses `mediaBase`
+  (`http://bcast:8081`), as before; `/manifest` and `/health` carry no
+  `API-Version` (they are outside `/tv3`).
+- Left over: the broker compose passes `REDIS_HOST`/`REDIS_PORT`, which it
+  does not use; the broker Dockerfile installs python, pip and redis-tools;
+  historical infra docs keep old paths.
+- The three videos of `cena.ncl360` (`hub.mp4`, `imperatriz360.mp4`,
+  `granderio360.mp4`) are not in the repository (`public/**/*.mp4` is in
+  `bcast/.gitignore`) nor on this machine: with the relative paths the scene
+  images load from the bcast, the videos answer 404. Before, they existed
+  only on the machine at `192.168.68.100`.
+
+#### Upgrading
+
+- Rebuild `edgegateway`, `tv3ws`, `aop`, `bcast` and `mosquitto`
+  (`docker compose build edgegateway tv3ws aop bcast mosquitto`). The Docker
+  Hub images do not have these changes until the submodules are pushed and
+  CI publishes them.
+
+#### Verified
+
+Integration run on 2026-10-10: Windows 11 + WSL2 (NAT), Docker Engine in WSL,
+compose v5.4.0; the five images rebuilt locally. No code bug showed up; the
+fixes were in the test scripts (above) and in two tv3ws comments.
+
+- `docker compose build edgegateway tv3ws aop bcast mosquitto`: rc 0.
+  `docker compose up -d --remove-orphans`: both surfaces log `registrado ...
+  modo=warn rotas=27 respondidas_pela_borda=5 apis=20`; tv3ws and aop log
+  `[redis] pronto em redis:6379`, aop `Loaded 5 users from Redis`; the aop
+  subscribes to `aop/currentUser`, `aop/currentService` and `tlm/lls/#`
+  only.
+- Go in `krakend/builder:2.7.2` (go1.22.7): plugin `gofmt -l` empty,
+  `go vet` ok, `go test` 64 PASS, 0 FAIL, `go build -buildmode=plugin` ok;
+  SSDP announcer `gofmt -l` empty, `go vet` ok, `go test` 32 PASS (20 test
+  functions and 12 subtests), 0 FAIL, build ok.
+- tv3ws: `npx tsc --noEmit` exit 0; `npm test` 70 PASS, 0 FAIL (also after
+  the comment fix). aop: `npm test` 8 PASS, 0 FAIL. bcast: `npx tsc
+  --noEmit` exit 0 (no test suite). `generate.js build`, old and new
+  versions: identical output.
+- `scripts/test-auth.sh`: 214 PASS, 0 FAIL with the default stack (edge on
+  the bridge, warn, `linux`), and 214 PASS, 0 FAIL with the edge on the host
+  network (`COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml` plus a
+  test override that gives `SSDP_ADVERTISE_HOST` = the VM `eth0` IP to the
+  edge and tv3ws by `env_file`; the root `.env` was left unchanged). With
+  Redis frozen, tv3ws answered 404 `{error:200}` in 1540 ms (bridge) and
+  1527 ms (host).
+- Announcer rule (tests 47 to 57 of `docs/ssdp-verificacao.md`). Isolated
+  container on a test bridge: `docker network disconnect` for 70 s kept the
+  process up with one warning and no NOTIFY, and `connect` brought the
+  announcement back; starting without network waited, then announced;
+  `SSDP_INTERFACE=eth9` and UDP 1900 held without `SO_REUSEADDR` exited 1;
+  `docker stop` sent 2 `ssdp:byebye`. Real edge on the host network, with
+  the announcement on a test veth: removing the interface IPv4 (50 s) and
+  taking the interface down (about 25 s) kept `/health` at 200 with 0
+  restarts and one warning each, and the announcement came back by itself
+  (`rede de volta ... (6 tentativas sem rede)` and `(5 ...)`);
+  `SSDP_INTERFACE=eth9` and UDP 1900 held brought the edge down whole (7
+  restarts in 20 s); once the port was freed the next restart came up
+  announcing; `docker compose stop` sent 2 `ssdp:byebye`.
+- Remote-device on the default stack: a registration opened 45066 and the
+  2.0 listing opened the local entry point on 45102; after `DELETE
+  /tv3/remote-device/{handle}` (204) both refused connections from inside
+  the tv3ws container, the Redis record was gone and the retained
+  `aop/devices/<class>` deleted.
+- bcast on the default stack: the retained BAMT carries `initialMediaURLs`
+  for all four services (eduplay and users-test now
+  `http://bcast:8081/live/hls/aquario.m3u8`, which answers 200); the served
+  `cena.ncl360` has no `192.168.68.100`, and its images load by the relative
+  path (`/media/webmedia/media/botao3.png`).
+- `scripts/test-dev-host.sh` (scenarios 1 to 5, `docker` mode with
+  `node:23-alpine`): 59 PASS, 0 FAIL (scenarios 1 and 4 got 404
+  `{error:300}` from the host tv3ws); the default stack was restored.
+- `scripts/test-template.sh`: 13 PASS, 0 FAIL.
+- `scripts/test-fase0.sh`: invalid payload rejected
+  (`Validation FAILED for topic: sensor/room1/temperature`), valid payload
+  published, AoP `GET /` and `GET /profile/create` 200.
+- `scripts/test-bcast-shutdown.sh`: `docker stop bcast` in 490 ms, exit 0; 9
+  retained topics before, none after, 9 again after the restart.
+- `scripts/test-consolidacao.sh`: the 6 continuous containers; redis healthy,
+  `users:index` 5, commander login (401 without credential, 200 with it,
+  wrong password refused), 6379 answers `PONG` without a password and
+  survives the commander kill; both surfaces `/health`, internal spec and
+  Swagger UI ok; `POST /tv3/current-service/users` reaches tv3ws on both
+  ports (300, no current service, with `X-TV30-Auth-Warn: 107`),
+  `POST /tv3/users` 100; killing a KrakenD brought the edge down and the
+  restart brought it back (`RestartCount` 1).
+- End state: default stack up (edge on the bridge, `AUTH_ENFORCE=warn`,
+  `EDGE_VARIANT=linux`); no test containers, interfaces or files left;
+  `clients:authorized`, `clients:blocked`, `client:*`, `bind-context:*` and
+  `origins:associated` empty and no retained `aop/currentService`, as
+  before the run.
+
 ### 2026-10-10 (10/10)
 
 Decisions of the meeting of 2026-10-05 with Joel, items 3 to 9 of that week's

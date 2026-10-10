@@ -17,7 +17,7 @@ Conjunto de microsserviços que reproduzem o ecossistema TV 3.0. Os componentes 
 **Papéis da plataforma TV 3.0 (ABNT NBR 25608):**
 
 - **AoP** (Application-Oriented Platform) — interface do receptor (Node.js, porta 8080)
-- **tv3ws** — implementação dos Ginga CC WebServices (TV 3.0 WebServices) da ABNT NBR 25608 (TypeScript; acessada pela borda nas portas 44642/44643)
+- **tv3ws** — implementação dos TV 3.0 WebServices da ABNT NBR 25608, Anexo C (TypeScript; acessada pela borda nas portas 44642/44643)
 - **bcast** — simulação do broadcaster, hospeda apps de serviço (webmedia, users-test, etc.)
 
 **Infraestrutura de implementação (escolha deste projeto, não exigida pela norma):**
@@ -26,7 +26,7 @@ Conjunto de microsserviços que reproduzem o ecossistema TV 3.0. Os componentes 
 - **KrakenD** (`edgegateway`) — a borda: um container com as superfícies interna (44642) e externa (44643); valida credenciais (accessToken, bind-token, classe de cliente) no plugin Go `tv30-auth`, em modo `warn` por padrão. Desde a reunião de 05/10 com o Joel, é o único ponto que valida credencial, e o plugin também responde as APIs C.6.8 (`/tv3/bind-context`) e C.6.7.8/C.6.7.9 (`/tv3/api-info`), sem repassá-las ao tv3ws
 - **Redis** — estado de sessão, perfis e credenciais (parte do estado também vive em memória nos serviços; o `userData.json` é só a carga inicial)
 
-> **Norma × implementação:** a ABNT NBR 25608 especifica os Ginga CC WebServices, o modelo de consentimento e os perfis de usuário — **não** o transporte interno. O MQTT entre serviços, a borda KrakenD e o Redis são decisões de arquitetura deste testbed. (A comunicação interna não é só por MQTT: o AoP faz proxy HTTP direto ao bcast, e o AoP, o tv3ws e a borda acessam o Redis diretamente.)
+> **Norma × implementação:** a ABNT NBR 25608 especifica os TV 3.0 WebServices (Anexo C), o modelo de consentimento e os perfis de usuário — **não** o transporte interno. O MQTT entre serviços, a borda KrakenD e o Redis são decisões de arquitetura deste testbed. (A comunicação interna não é só por MQTT: o AoP faz proxy HTTP direto ao bcast, e o AoP, o tv3ws e a borda acessam o Redis diretamente.)
 
 ---
 
