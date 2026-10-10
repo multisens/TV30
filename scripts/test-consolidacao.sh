@@ -59,9 +59,11 @@ docker run --rm --network ginga_net alpine:3 sh -c '
   wget -q -O /dev/null http://edgegateway:8085/ && echo "swagger UI OK"'
 
 # A antiga POST /tv3/users (so na interna) saiu da tabela de rotas (infra
-# 8d5949d) e hoje toda rota existe nas duas superficies. Rota existente
-# equivalente (POST com corpo JSON): POST /tv3/current-service/users
-# (C.6.14.1), que tem de chegar ao tv3ws pelas duas portas. Caminho NAO
+# 8d5949d). Desde a P1.9 (Luis, 10/10) a 44643 so expoe as rotas que admitem
+# o cliente nao local (POST e DELETE /tv3/bind-context so existem na 44642;
+# scripts/test-auth.sh cobre). Rota existente equivalente nas duas (POST com
+# corpo JSON): POST /tv3/current-service/users (C.6.14.1), que tem de chegar
+# ao tv3ws pelas duas portas. Caminho NAO
 # declarado tem de voltar 404 com corpo C.3.2 {"error":100,...} (C.3.2.1),
 # nao resetar a conexao (000).
 echo; echo "== edgegateway: rota declarada x caminho nao declarado =="

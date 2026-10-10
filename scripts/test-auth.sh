@@ -35,6 +35,12 @@
 #      404 {error:300} sem servico em uso e 200 com "serviceId" inteiro ou
 #      omitido com servico em uso; erros 100/101 da negociacao de versao do
 #      tv3ws com API-Version (2.1 no 100, 2.0 no 101).
+#      Superficies (P1.9, Luis 10/10): POST e DELETE /tv3/bind-context (so
+#      do associado) dao 100 na 44643, e a lista da C.6.7.9 de la so traz
+#      as APIs que ela oferece. Associado de verdade (P1.3, Luis 10/10): o
+#      users-test aberto pelo AoP grava a origem propria
+#      (<rotulo>.apps.localhost:8080) em origins:associated, passa sem
+#      credencial com esse Origin e volta a dar 107 depois do ESC.
 #      Ainda em enforce: reuso de clientid (101, D-L2), pareamento REAL de
 #      cliente nao local (pm=qrcode e pm=kex), Redis congelado (falha
 #      explicita do tv3ws, 404 {error:200} em menos de 2 s, D-0510-6) e
@@ -851,7 +857,10 @@ expect_err "POST bind-context RS256 com chave que nao e RSA" 101 borda POST "$H_
 expect_err "POST bind-context com Content-Type text/plain" 101 borda POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: text/plain' -d "$BODY_HS512"
 expect_edge "POST bind-context com Accept-Version 2.1 (repetido)" '^\{"serviceContextId":"'"$SCID_CONST"'"\}$' 2.1 \
   POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Accept-Version: 2.1' -H 'Content-Type: application/json' -d "$BODY_HS512"
-expect_edge "[44643] POST bind-context repetido pela superficie externa" '^\{"serviceContextId":"'"$SCID_CONST"'"\}$' \
+# P1.9 (decisao do Luis em 10/10): a 44643 so expoe as rotas que admitem o
+# cliente nao local; o POST (classes: local-associated) existe so na 44642 e
+# la fora e rota nao declarada (100)
+expect_err "[44643] POST bind-context (so na superficie interna, P1.9)" 100 borda \
   POST "$H_EXT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application/json' -d "$BODY_HS512"
 # sem servico corrente nao ha a que ligar a chave: 300 ("No DTV service currently in use")
 rc DEL session:current-service-id >/dev/null
@@ -893,6 +902,49 @@ expect_err  "associado em /tv3/authorize (L4, so em enforce)" 106 borda GET "$H_
 expect_err  "associado em /tv3/authorize com Authorization qualquer (nao escapa do 106)" 106 borda GET "$H_INT/tv3/authorize?clientid=x&display-name=y" "${ASSOC_H[@]}" -H 'Authorization: x'
 expect_err  "associado em /tv3/token com Authorization qualquer (nao escapa do 106)" 106 borda GET "$H_INT/tv3/token?clientid=x&refresh-token=y" "${ASSOC_H[@]}" -H 'Authorization: x'
 
+echo; echo "-- associado de verdade: app do bcast aberta pelo AoP na origem propria (P1.3) --"
+# P1.3 (decisao do Luis em 10/10): o AoP abre cada app de emissora em
+# http://<rotulo>.apps.localhost:8080 e grava essa origem em
+# origins:associated ao lancar (remove ao encerrar). E o Origin que o
+# navegador manda nas chamadas da app (conferido no Firefox do receptor
+# Linux e no Chrome em 10/10). Aqui o script faz o papel do navegador: abre o
+# users-test pelo fluxo do AoP (catalogo + tela cheia), le a origem gravada e
+# chama a borda com ela. Selecionar o servico no AoP republica
+# aop/currentService (o trap devolve o retido de antes) e o tv3ws o espelha
+# em session:current-service-id, que o script devolve a SVC_A logo depois.
+AOP=${AOP_URL:-http://localhost:8080}
+SID_USERS_TEST=${USERS_TEST_SID:-urn:tv30:service:users-test}
+if curl -s -m 5 -o /dev/null "$AOP/appcat"; then
+  curl -s -m 5 -o /dev/null "$AOP/appcat/select?id=$SID_USERS_TEST"
+  sleep 2
+  curl -s -m 5 -o /dev/null "$AOP/btpapp/fullscr"
+  APP_ORIGIN=""
+  for _ in $(seq 1 10); do
+    APP_ORIGIN=$(rc --raw HKEYS origins:associated | tr -d '\r' | grep -m1 -E '^http://[a-z0-9-]+\.apps\.localhost:[0-9]+$')
+    [ -n "$APP_ORIGIN" ] && break
+    sleep 1
+  done
+  if [ -n "$APP_ORIGIN" ]; then
+    pass "AoP gravou a origem propria da app em origins:associated: $APP_ORIGIN"
+    expect_pass "app aberta pelo AoP (Origin $APP_ORIGIN) em $CU sem credencial" GET "$H_INT$CU" -H "Origin: $APP_ORIGIN"
+    expect_err "Origin do proprio AoP ($AOP), sem credencial" 107 borda GET "$H_INT$CU" -H "Origin: $AOP"
+    curl -s -m 5 -o /dev/null "$AOP/keydown/27"   # ESC: encerra a camada grafica
+    if [ -z "$(rc HEXISTS origins:associated "$APP_ORIGIN" | tr -d '\r' | grep -x 1)" ]; then
+      pass "ESC no AoP removeu $APP_ORIGIN de origins:associated"
+    else
+      fail "ESC no AoP nao removeu $APP_ORIGIN de origins:associated"
+    fi
+    expect_err "a mesma origem depois de a app fechar, sem credencial" 107 borda GET "$H_INT$CU" -H "Origin: $APP_ORIGIN"
+  else
+    fail "AoP nao gravou origem <rotulo>.apps.localhost em origins:associated depois de abrir $SID_USERS_TEST: $(rc --raw HKEYS origins:associated | tr '\n' ' ')"
+    curl -s -m 5 -o /dev/null "$AOP/keydown/27"
+  fi
+  curl -s -m 5 -o /dev/null "$AOP/btpapp/appcat"
+  rc SET session:current-service-id "$SVC_A" >/dev/null
+else
+  info "AoP fora do ar em $AOP: casos da app de verdade (P1.3) pulados"
+fi
+
 echo; echo "-- GET /tv3/bind-context --"
 req GET "$H_INT/tv3/bind-context" "${TOK[@]}" -H "bind-token: $BT_HS256"
 if [ "$ST" = 200 ] && body | grep -q "\"boundServices\":\[{\"serviceContextId\":\"$SCID_CONST\""; then
@@ -927,6 +979,9 @@ req DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: tv30-test-inexiste
 [ "$ST" = 200 ] && pass "DELETE de chave inexistente -> 200" || fail "DELETE inexistente -> status=$ST corpo=$(short)"
 expect_err "DELETE sem cabecalho key" 105 borda DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}"
 expect_err "DELETE por nao associado" 106 borda DELETE "$H_INT/tv3/bind-context" -H "key: $HS512_KEY"
+# P1.9: o DELETE (classes: local-associated) tambem so existe na 44642
+expect_err "[44643] DELETE bind-context (so na superficie interna, P1.9)" 100 borda DELETE "$H_EXT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: $HS512_KEY"
+expect_pass "a HS512 continua registrada depois do DELETE recusado na 44643" GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS512"
 rc DEL session:current-service-id >/dev/null
 expect_edge "DELETE sem servico corrente -> {} (nada a remover)" '^\{\}$' DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: $HS512_KEY"
 rc SET session:current-service-id "$SVC_A" >/dev/null
@@ -950,6 +1005,26 @@ req GET "$H_INT/tv3/api-info?subsystem=tv3ws" "${TOK[@]}"
 [ "$ST" = 200 ] && [ "$(body)" = "$LIST_ALL" ] && pass "[44642] GET /tv3/api-info?subsystem=tv3ws -> a mesma lista" \
   || fail "[44642] ?subsystem=tv3ws -> status=$ST corpo diferente da lista sem subsystem: $(short)"
 expect_edge "[44643] GET /tv3/api-info?subsystem=tv3ws" '^\{"receiverApis":\[\{"id":"tv3ws-application-authorization"' GET "$H_EXT/tv3/api-info?subsystem=tv3ws" "${TOK[@]}"
+# P1.9: a lista da 44643 so traz as APIs que ela oferece (alguma rota que
+# admite o nao local; classes ausente = todas). Conta feita aqui, direto do
+# routes.json, sem passar pelo generate.js
+API_EXT_N=$(docker run --rm -i "$NODE_IMG" node -e '
+let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+  const ids = new Set();
+  for (const r of JSON.parse(s).routes)
+    if (r.api && (!r.classes || r.classes.includes("non-local"))) ids.add(r.api.id);
+  console.log(ids.size);
+});' <infra/edgegateway/routes.json)
+req GET "$H_EXT/tv3/api-info" "${TOK[@]}"
+N=$(body | grep -o '"id":' | wc -l)
+if [ "$ST" = 200 ] && [ "$(origin_of)" = borda ] && [ -n "$API_EXT_N" ] && [ "$N" = "$API_EXT_N" ] && [ "$N" -lt "$API_N" ] \
+   && ! body | grep -q 'tv3ws-bind-context-register\|tv3ws-bind-context-remove'; then
+  pass "[44643] GET /tv3/api-info -> $N APIs (as que admitem o nao local; 44642: $API_N), sem register/remove da C.6.8 (P1.9)"
+else
+  fail "[44643] GET /tv3/api-info -> status=$ST origem=$(origin_of) ids=$N (esperado ${API_EXT_N:-?} < $API_N) corpo=$(short)"
+fi
+expect_err "[44643] GET /tv3/api-info/tv3ws-bind-context-register (API so da 44642, P1.9)" 101 borda GET "$H_EXT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
+expect_edge "[44642] GET /tv3/api-info/tv3ws-bind-context-register" '^\{"receiverApi":\{"id":"tv3ws-bind-context-register","version":"2.0"\}\}$' GET "$H_INT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=ncl (subsistema conhecido, sem API)" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=ncl" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=nclua" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=nclua" "${TOK[@]}"
 expect_err "[44642] GET /tv3/api-info?subsystem=x (desconhecido)" 101 borda GET "$H_INT/tv3/api-info?subsystem=x" "${TOK[@]}"

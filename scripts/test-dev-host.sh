@@ -27,7 +27,9 @@
 #      Express do tv3ws: 200, ou 404 {error:300} sem servico em uso); depois
 #      de matar o processo do host a borda deixa de responder (prova negativa)
 #   2  aop no host servindo 8080, recebendo o BAMT do bcast por MQTT e
-#      alcancando o bcast em container pelo proxy HTTP (/graphicsAppProxy)
+#      alcancando o bcast em container pelo proxy HTTP: pelo host proprio da
+#      aplicacao (<rotulo>.apps.localhost, P1.3, a origem que o aop grava em
+#      origins:associated) e pelo caminho antigo /graphicsAppProxy
 #   3  bcast no host publicando a sinalizacao (bcastEntryPackageUrl com
 #      host.docker.internal) e o aop em container alcancando o bcast do host
 #      pelo proxy HTTP; depois de matar o processo do host o proxy falha
@@ -205,12 +207,13 @@ checar_http() {
   falha "$desc — resposta: $(recorte "$r")"; return 1
 }
 
-# checar_http_nao <descricao> <url> <padrao> <tentativas>: passa quando o
-# padrao DEIXA de aparecer (prova de que a resposta vinha do processo do host)
+# checar_http_nao <descricao> <url> <padrao> <tentativas> [args do curl...]:
+# passa quando o padrao DEIXA de aparecer (prova de que a resposta vinha do
+# processo do host)
 checar_http_nao() {
-  local desc=$1 url=$2 pad=$3 n=$4 i=0 r=""
+  local desc=$1 url=$2 pad=$3 n=$4 i=0 r=""; shift 4
   while [ "$i" -lt "$n" ]; do
-    r=$(resposta "$url")
+    r=$(resposta "$@" "$url")
     if ! printf '%s' "$r" | grep -q -e "$pad"; then ok "$desc"; return 0; fi
     i=$((i + 1)); sleep 2
   done
@@ -516,15 +519,45 @@ checar_bald() { # checar_bald <host:porta>
 }
 
 # Abre o app users-test do bcast pelo fluxo real do aop: selecao no catalogo
-# (assina a sinalizacao do servico) e tela cheia (startApp -> graphicsAppURL
-# = bcastEntryPackageUrl da BALD). Depois /graphicsAppProxy/... vai ao bcast.
+# (assina a sinalizacao do servico) e tela cheia (startApp -> alvo do proxy =
+# bcastEntryPackageUrl da BALD). Desde o P1.3 (decisao do Luis em 10/10) a
+# camada grafica abre a app no host proprio dela, <rotulo>.apps.localhost:8080
+# (aop/src/app-hosts.js), e o aop grava essa origem em origins:associated; o
+# caminho antigo /graphicsAppProxy/... continua indo ao bcast, sem registrar
+# origem. Fechar = ESC (/keydown/27: encerra a camada grafica e remove a
+# origem) e volta ao catalogo; so o catalogo deixaria a origem no Redis.
 SID_USERS_TEST="urn:tv30:service:users-test"
 abrir_users_test() {
   resposta "http://127.0.0.1:8080/appcat/select?id=$SID_USERS_TEST" >/dev/null
   sleep 2
   resposta "http://127.0.0.1:8080/btpapp/fullscr" >/dev/null
 }
-fechar_users_test() { resposta "http://127.0.0.1:8080/btpapp/appcat" >/dev/null; }
+fechar_users_test() {
+  resposta "http://127.0.0.1:8080/keydown/27" >/dev/null
+  resposta "http://127.0.0.1:8080/btpapp/appcat" >/dev/null
+}
+
+# HOST_APP = host:porta da app aberta, lido da origem que o aop gravou em
+# origins:associated (P1.3); vazio se nenhuma apareceu em 10 s. A requisicao
+# vai a 127.0.0.1:8080 com esse Host, sem depender de o resolvedor do
+# ambiente do teste conhecer *.localhost.
+HOST_APP=""
+checar_origem_app() {
+  local o="" i=0
+  HOST_APP=""
+  while [ "$i" -lt 10 ]; do
+    o=$(docker exec redis redis-cli --raw HKEYS origins:associated 2>/dev/null \
+        | grep -m1 -E '^http://[a-z0-9-]+\.apps\.localhost:8080$')
+    [ -n "$o" ] && break
+    i=$((i + 1)); sleep 1
+  done
+  if [ -z "$o" ]; then
+    falha "aop gravou a origem propria da app em origins:associated (P1.3) — nenhuma <rotulo>.apps.localhost:8080"
+    return 1
+  fi
+  HOST_APP=${o#http://}
+  ok "aop gravou a origem propria da app em origins:associated (P1.3): $o"
+}
 
 # Componente do cenario 5 (exemplo de templates/componente/index.js): nome
 # proprio deste teste, para que um container do template de pe (meu-componente)
@@ -604,7 +637,9 @@ cenario_2() {
   checar_http "aop do host recebeu o BAMT do bcast em container (MQTT)" \
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
   abrir_users_test
-  checar_http "aop do host -> bcast em container (proxy HTTP /graphicsAppProxy)" \
+  checar_origem_app && checar_http "aop do host -> bcast em container (host proprio da app, P1.3)" \
+    http://127.0.0.1:8080/users-test 'Trocar Usu' 10 -H "Host: $HOST_APP"
+  checar_http "aop do host -> bcast em container (caminho antigo /graphicsAppProxy)" \
     http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10
   fechar_users_test
   checar_http "borda (linux) 44642 /health -> tv3ws em container" \
@@ -632,9 +667,13 @@ cenario_3() {
   checar_http "aop em container recebeu o BAMT do bcast no host (MQTT)" \
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
   abrir_users_test
+  checar_origem_app && checar_http "aop em container -> bcast no host (host proprio da app, P1.3)" \
+    http://127.0.0.1:8080/users-test 'Trocar Usu' 10 -H "Host: $HOST_APP"
   checar_http "aop em container -> bcast no host (proxy HTTP via host.docker.internal)" \
     http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10
   host_stop
+  [ -n "$HOST_APP" ] && checar_http_nao "sem o bcast do host o host proprio da app falha (resposta vinha do host)" \
+    http://127.0.0.1:8080/users-test 'Trocar Usu' 5 -H "Host: $HOST_APP"
   checar_http_nao "sem o bcast do host o proxy do aop falha (resposta vinha do host)" \
     http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 5
   fechar_users_test
@@ -699,6 +738,8 @@ cenario_4() {
   checar_http "aop do host recebeu o BAMT do bcast do host (MQTT)" \
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
   abrir_users_test
+  checar_origem_app && checar_http "aop do host -> bcast do host (host proprio da app, P1.3)" \
+    http://127.0.0.1:8080/users-test 'Trocar Usu' 10 -H "Host: $HOST_APP"
   checar_http "aop do host -> bcast do host (proxy HTTP /graphicsAppProxy)" \
     http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10
 

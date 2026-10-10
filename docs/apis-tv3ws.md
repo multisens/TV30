@@ -11,8 +11,8 @@ Desde a reunião de 05/10 com o Joel, dois grupos de APIs declarados na borda **
 
 O cliente não fala com o tv3ws diretamente. As portas 44652 e 44653 não são publicadas no host, e todo acesso passa pela **borda** (`edgegateway`):
 
-- superfície interna: `http://localhost:44642`, porta fixa da C.3.4;
-- superfície externa: `http://localhost:44643`, ainda em HTTP, porque o TLS na borda está pendente.
+- superfície interna: `http://localhost:44642`, porta fixa da C.3.4, com todas as rotas da tabela abaixo;
+- superfície externa: `http://localhost:44643`, ainda em HTTP, porque o TLS na borda está pendente. Desde a P1.9 (decisão do Luís em 10/10), ela só expõe as rotas que admitem o cliente não local: `POST` e `DELETE /tv3/bind-context`, só do local associado, não existem ali e respondem 100.
 
 > Borda, mensageria e Redis são decisões de implementação do testbed, não da norma.
 
@@ -20,7 +20,7 @@ O cliente não fala com o tv3ws diretamente. As portas 44652 e 44653 não são p
 
 ## Acesso, credenciais e versionamento
 
-- **Rotas.** A tabela única `infra/edgegateway/routes.json` declara método, caminho e superfícies de cada rota. A borda não repassa ao tv3ws um caminho que não esteja declarado.
+- **Rotas.** A tabela única `infra/edgegateway/routes.json` declara método, caminho e política de cada rota. Desde a P1.9 (10/10), a superfície não é declarada por rota: o `generate.js` a deriva do campo `classes` (a externa só recebe as rotas que admitem o não local). A borda não repassa ao tv3ws um caminho que não esteja declarado para a superfície.
 - **Credenciais.** Desde a semana de 28/09, quem valida é a borda, com o plugin `tv30-auth` (detalhes em `infra/edgegateway/plugin/README.md`). Ele confere o accessToken, o bind-token e a classe de cliente, conforme a política de cada rota.
   - No modo padrão, `AUTH_ENFORCE=warn`, a borda não bloqueia falha de credencial: registra `[tv30-auth] WARN` e devolve o cabeçalho `X-TV30-Auth-Warn`. Rota não declarada (100) é bloqueada nos dois modos.
   - **O tv3ws não valida credencial** (D-0510-1, reunião de 05/10 com o Joel). Até ali, ele ainda respondia 107 a um `Authorization` presente e inválido (`src/middleware/authorization.ts`, removido) e 106 ao cliente não local que chegava por HTTP (`validateClientProtocol`, removido de `src/middleware/basic.ts`). Sob `/tv3`, o tv3ws só negocia a versão e emite a credencial (`/tv3/authorize`, `/tv3/token`). O 106 por protocolo da C.4.1.6 ficou sem quem o aplique até a borda ter TLS (lacuna L3); só o `/tv3/token` ainda responde 106 à renovação do não local por HTTP.
@@ -49,9 +49,9 @@ A coluna **bind-token** marca as APIs cujo campo "Security requirements" diz que
 | GET | `/tv3/authorize` | C.6.1.2 | |
 | GET | `/tv3/token` | C.6.1.3 | |
 | GET | `/tv3/current-service` | C.6.3.1 | |
-| POST | `/tv3/bind-context` | C.6.8.2 (borda) | |
+| POST | `/tv3/bind-context` | C.6.8.2 (borda; só na 44642) | |
 | GET | `/tv3/bind-context` | C.6.8.3 (borda) | o próprio token é o objeto da API |
-| DELETE | `/tv3/bind-context` | C.6.8.4 (borda) | |
+| DELETE | `/tv3/bind-context` | C.6.8.4 (borda; só na 44642) | |
 | GET | `/tv3/api-info/{apiId}` | C.6.7.8 (borda) | |
 | GET | `/tv3/api-info` | C.6.7.9 (borda) | |
 | GET | `/tv3/current-service/apps/{appid}/files` | C.6.4.7 | shall |
@@ -75,7 +75,8 @@ A coluna **bind-token** marca as APIs cujo campo "Security requirements" diz que
 **Notas:**
 
 - As rotas `/manifest` e `bind-context` entram na tabela de rotas na semana de 28/09; as de `api-info`, na rodada de 05/10.
-- **Rotas "(borda)".** O plugin `tv30-auth` as responde depois da mesma decisão de credencial das demais, sem repasse ao tv3ws. A C.6.8 tem o mesmo contrato que o tv3ws implementava até 05/10, com uma diferença: o `POST` só aceita corpo JSON. A C.6.7.8 e a C.6.7.9 listam as 20 APIs implementadas (o campo `api` do `routes.json`, com o id e a versão da Tabela C.2), todas na versão 2.0. Os detalhes e os comportamentos provisórios estão em `infra/edgegateway/plugin/README.md`, seção *APIs respondidas pela borda*.
+- **"Só na 44642"** (P1.9, decisão do Luís em 10/10). A superfície externa só expõe as rotas que admitem o cliente não local. `POST` e `DELETE /tv3/bind-context` admitem só o local associado e, na 44643, respondem 404 `{"error":100}`, como um caminho não declarado. As demais rotas existem nas duas superfícies. A C.4.1.8 pede 106, e não 100, ao não local que chama por HTTPS uma API exclusiva do cliente local; enquanto a 44643 for HTTP, isso não se aplica ao pé da letra, e com TLS a escolha entre 100 e 106 está com o Joel ([`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes), seção F).
+- **Rotas "(borda)".** O plugin `tv30-auth` as responde depois da mesma decisão de credencial das demais, sem repasse ao tv3ws. A C.6.8 tem o mesmo contrato que o tv3ws implementava até 05/10, com uma diferença: o `POST` só aceita corpo JSON. A C.6.7.8 e a C.6.7.9 listam as APIs implementadas na superfície (o campo `api` das rotas dela no `routes.json`, com o id e a versão da Tabela C.2), todas na versão 2.0: 20 na interna e, desde a P1.9, 18 na externa, que não tem `tv3ws-bind-context-register` nem `tv3ws-bind-context-remove` e dá 101 a elas. Os detalhes e os comportamentos provisórios estão em `infra/edgegateway/plugin/README.md`, seção *APIs respondidas pela borda*.
 - **`GET /tv3/current-service`** (C.6.3.1, Tabela C.8, p. 222; p. 240 do PDF). O serviço em uso é o último valor de `aop/currentService`, que a plataforma publica ao selecionar um serviço e esvazia ao desfazer a seleção (`core.app.sid`, em `tv3ws/src/core.ts`).
   - Sem serviço em uso, a resposta é 404 `{"error":300}`, o erro da tabela para "If the DTV function is not in use in the receiver". O 302 (sem recepção do sinal) não é emitido, porque o testbed não tem estado de recepção.
   - Com serviço em uso, a resposta é 200 com `serviceContextId`, `transportStreamId` e `originalNetworkId`, mais `serviceName` quando é conhecido. O `serviceId` é inteiro, como na Tabela C.8, e fica de fora quando o testbed não o conhece. Hoje ele nunca é conhecido: não há SLT, e o tv3ws só o teria por `aop/services`, que nenhum módulo publica (L2, A6 de [`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes)). O `transportStreamId` e o `originalNetworkId` não estão na Tabela C.8.
@@ -130,6 +131,8 @@ Páginas do bcast que chamam a API (users-test e webmedia): o navegador não foi
 - webmedia: a lista deu 200 com 5 perfis, e os detalhes e o `current-user` deram 200, nas duas cargas; o `remote-device` (`Accept-Version: 2.1`) também deu 200.
 
 Nenhuma dessas chamadas usa o `/tv3/authorize`, então o resultado não depende da D-L2. Em `warn`, a chamada da lista levou `X-TV30-Auth-Warn: 107` nas duas páginas e nas duas cargas (o aviso das outras chamadas não foi registrado), porque o `Origin` do AoP não está em `origins:associated`, que tinha só `http://bcast:8081` (P1.3, ver `KNOWN-ISSUES.md`).
+
+**Desde 10/10 (P1.3, decisão do Luís),** a app de emissora não abre mais na origem do AoP: abre em `http://<app>.apps.localhost:8080`, e o AoP grava essa origem em `origins:associated` enquanto a app roda. O `Origin` que o navegador manda nas chamadas dela passa a ser o da app, e a borda a trata como local associada, sem access token nem bind-token nas rotas que admitem o associado (C.4.1.1). A medição de 04/10 acima é anterior a isso. Na stack, quem confere o caminho novo é o `scripts/test-auth.sh`: abre o users-test pelo AoP, chama a borda com a origem gravada e espera 107 de novo depois do ESC, que fecha a app.
 
 **Consumidores neste repositório.** Nenhum app do bcast nem o aop chama o `/tv3/authorize`. Os `clientId` fixos que aparecem neles (`bcast_svc`, `aop-core`, `rp-display`) são identificadores de cliente MQTT. O único consumidor é o `scripts/test-auth.sh`, que gera um `clientid` novo a cada execução.
 

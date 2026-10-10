@@ -8,7 +8,7 @@ O Redis publica a 6379 no host (`infra/redis/docker-compose.yml`) e não tem sen
 
 ## Backend mais lento que 2 s ou fora do ar: a borda corta a requisição — ABERTO (formato do erro corrigido em 03/10)
 
-Das 27 rotas de `infra/edgegateway/routes.json`, 22 são repassadas ao tv3ws; as outras 5 (C.6.8 e C.6.7.8/C.6.7.9) a própria borda responde desde a rodada de 05/10. Nas 21 repassadas sem `timeout` próprio, a borda espera o tv3ws por no máximo 2 s, o padrão do KrakenD (`infra/edgegateway/generate.js`). Só o `GET /tv3/authorize` tem limite próprio, de 15 s, por causa do pop-up. Com o backend mais lento que isso, ou fora do ar, quem responde é o próprio KrakenD.
+Das 27 rotas de `infra/edgegateway/routes.json`, 22 são repassadas ao tv3ws; as outras 5 (C.6.8 e C.6.7.8/C.6.7.9) a própria borda responde desde a rodada de 05/10. Desde a P1.9 (decisão do Luís em 10/10), a superfície externa (44643) tem 25 delas: as mesmas 22 repassadas e 3 da borda, sem `POST` e `DELETE /tv3/bind-context`. Nas 21 repassadas sem `timeout` próprio, a borda espera o tv3ws por no máximo 2 s, o padrão do KrakenD (`infra/edgegateway/generate.js`). Só o `GET /tv3/authorize` tem limite próprio, de 15 s, por causa do pop-up. Com o backend mais lento que isso, ou fora do ar, quem responde é o próprio KrakenD.
 - **Até 03/10:** a resposta era 500 com corpo vazio, fora do formato C.3.2.
 - **Desde 03/10:** o plugin `tv30-auth` troca qualquer 5xx que sai do KrakenD por 404 `{"error":200,"description":"Platform resource unavailable: <motivo>"}`, com `Content-Type: application/json`, `Access-Control-Allow-Origin: *` e `API-Version`, nos dois modos.
 - **Continua:** os limites de tempo não mudaram. A rota cujo backend demora mais de 2 s recebe o erro 200, e não a resposta.
@@ -16,11 +16,29 @@ Das 27 rotas de `infra/edgegateway/routes.json`, 22 são repassadas ao tv3ws; as
 
 **Verificado na stack em 04/10** (imagem do edgegateway reconstruída): no `scripts/test-auth.sh`, com o tv3ws parado (`docker stop`), as duas superfícies (44642 e 44643) responderam 404 `{"error":200}` vindo da borda, com `API-Version: 2.0`, para um `GET /tv3/current-service` com token válido; com o tv3ws congelado (`docker pause`), caso do backend que não responde, a 44642 respondeu o mesmo 404 `{"error":200}`. Os testes Go do plugin (`krakend/builder:2.7.2`, go1.22.7) passaram: 44 PASS, 0 FAIL.
 
-## Apps de emissora servidas pelo proxy do AoP não são reconhecidas como associadas — ABERTO (P1.3, pré-requisito do `enforce`)
+## Apps de emissora servidas pelo proxy do AoP não eram reconhecidas como associadas — RESOLVIDO em 10/10 (P1.3, decisão do Luís)
 
-O associado é reconhecido pelo `Origin` em `origins:associated` (L1; o risco do `Origin` forjado foi aceito pelo Luís em 03/10, D-L4). O AoP grava nessa lista a origem **própria** da app, alvo do proxy (`aop/src/core.js`, `registerAssociatedOrigin`). Mas o navegador abre a app pelo proxy do AoP (`/graphicsAppProxy/...`), e as chamadas dela chegam à borda com o `Origin` do próprio AoP. A origem própria por app (P1.3) não foi feita e **não** foi decidida em 03/10.
+O associado é reconhecido pelo `Origin` em `origins:associated` (L1; o risco do `Origin` forjado foi aceito pelo Luís em 03/10, D-L4).
 
-**Medido na stack em 04/10**, com o serviço sintonizado pelo catálogo do AoP: `origins:associated` tinha só `http://bcast:8081`. A sequência de chamadas das páginas users-test e webmedia, com `Origin: http://localhost:8080`, recebeu `X-TV30-Auth-Warn: 107` na lista de perfis, nas duas páginas e nas duas cargas. Em `warn` a chamada passa. Em `enforce`, pela lógica do plugin, essas apps seriam bloqueadas com 107, como cliente sem access token.
+**Como ficou** (decisão do Luís em 10/10: um nome de host por app, na mesma porta do AoP):
+- o AoP abre cada app de emissora em `http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT><bcastEntryPointUrl>` (padrão `<app>.apps.localhost:8080`) e atende esse nome com um proxy para o `bcastEntryPackageUrl` da app em execução (`aop/src/app-hosts.js`, montado antes de todas as rotas em `aop/src/server.js`). `<app>` é um rótulo DNS tirado do `appId` da BALD;
+- ao lançar a app, o AoP grava essa origem em `origins:associated`, e a apaga ao encerrar ou trocar de app (`aop/src/core.js`). É a origem que o navegador manda no `Origin` das chamadas da app;
+- a camada gráfica entrega teclas e eventos do vídeo à app por `postMessage`, e a ponte `bcast/public/js/aop-bridge.js` os redespacha no documento dela.
+
+**Conferido em 10/10, fora da stack:** `npm test` do aop com 22 testes (14 novos, do roteamento por `Host` e do registro da origem) sem falha; o Firefox 154 do receptor Linux resolveu `*.apps.localhost` para `::1` e mandou o `Origin` do nome; o Chrome 154 headless no Windows mandou o mesmo `Origin` que o AoP grava, e a ponte entregou os eventos. **Na stack, em 10/10 (borda na bridge):** `scripts/test-auth.sh` abriu o users-test pelo AoP, achou a origem `http://urn-tv30-app-<sorteio>.apps.localhost:8080` em `origins:associated`, passou sem credencial com esse `Origin` em `enforce`, recebeu 107 com o `Origin` do próprio AoP e de novo 107 depois do ESC (224 PASS, 0 FAIL no script); `scripts/test-dev-host.sh` conferiu a origem gravada e o acesso pelo host da app nos cenários 2, 3 e 4 (66 PASS, 0 FAIL).
+
+**Continua:**
+- **Tela do AoP aberta de outra máquina:** `*.localhost` resolve para a máquina de quem abre a página, e as apps não carregam. `APPS_DOMAIN` permite usar um domínio resolvível na rede, com `*.<domínio>` apontando para a máquina do AoP.
+- **O nome muda quando o bcast reinicia:** o bcast sorteia o `appId` (`cuid.slug()`) a cada partida, e com ele mudam o nome do host e o `localStorage` da app, que é por origem. A CONFIRMAR (Luís): fixar os `appId`.
+- **App sem a ponte não recebe teclas:** toda app da camada gráfica precisa incluir `aop-bridge.js` (users-test, uff, webmedia e eduplay incluem).
+- **O caminho antigo `/graphicsAppProxy`** continua, na origem do AoP, e não grava origem: a app aberta por ele não é reconhecida como associada. Quando aposentá-lo está a confirmar pelo Luís.
+- **QtWebEngine** não foi testado.
+
+**Era assim** (até 10/10). O AoP gravava nessa lista o alvo do proxy, `http://bcast:8081`, mas o navegador abria a app pelo proxy do AoP (`/graphicsAppProxy/...`), e as chamadas dela chegavam à borda com o `Origin` do próprio AoP. **Medido na stack em 04/10**, com o serviço sintonizado pelo catálogo do AoP: `origins:associated` tinha só `http://bcast:8081`. A sequência de chamadas das páginas users-test e webmedia, com `Origin: http://localhost:8080`, recebeu `X-TV30-Auth-Warn: 107` na lista de perfis, nas duas páginas e nas duas cargas. Em `warn` a chamada passava. Em `enforce`, pela lógica do plugin, essas apps seriam bloqueadas com 107, como cliente sem access token.
+
+## Rotas exclusivas do associado na superfície externa: 100, e não 106 — ABERTO (aguarda o Joel; P1.9, ligado à L3)
+
+Desde a P1.9 (decisão do Luís em 10/10), a superfície externa (44643) só expõe as rotas que admitem o cliente não local. `POST` e `DELETE /tv3/bind-context` (C.6.8.2 e C.6.8.4, só `local-associated`) existem só na 44642; na 44643 respondem 404 `{"error":100}`, como um caminho não declarado (`infra/edgegateway/generate.js`, `SURFACE_RULES`). A C.4.1.8 (p. 206-207; p. 224-225 do PDF) manda responder 106 ao não local que chama por HTTPS uma API de uso exclusivo do cliente local. Enquanto a 44643 for HTTP (L3), ela não se aplica ao pé da letra; com TLS, falta decidir entre 100 e 106. Na mesma superfície, a C.6.7.8 e a C.6.7.9 listam 18 APIs, e não as 20 da interna; se a externa deve listar também as que não oferece também está com o Joel (`docs/decisoes-pendentes.md`, seção F).
 
 ## Duas autorizações ao mesmo tempo se misturam no pop-up sim/não — ABERTO
 
@@ -72,7 +90,7 @@ Medido pela frente da borda em 09/10, numa borda isolada (imagem local, sem a st
 
 **Era assim:** no `edgegateway`, caminhos NÃO declarados que colidem com o miolo das rotas-curinga (`GET /tv3/abc`, `GET /tv3/xyz/abc`, `POST /tv3/users`, `GET /tv3/naoexiste`) disparavam um panic do roteador Gin embutido no KrakenD 2.7.2 ("invalid node type"). O cliente via a conexão fechada sem resposta, e não um 404. O tratamento de rota não encontrada do tv3ws (erro 100, `tv3ws/src/util/error.ts`) não era alcançável, porque esses caminhos nunca chegavam a ele.
 
-**Como ficou:** o plugin `tv30-auth` (`infra/edgegateway/plugin/`, carregado nas duas superfícies) casa método e caminho com a tabela única (`infra/edgegateway/routes.json`) **antes** do roteador.
+**Como ficou:** o plugin `tv30-auth` (`infra/edgegateway/plugin/`, carregado nas duas superfícies) casa método e caminho com as rotas da superfície, tiradas da tabela única (`infra/edgegateway/routes.json`; desde a P1.9, em 10/10, a superfície de cada rota é derivada das `classes`), **antes** do roteador.
 - Fora da tabela, a borda responde 404 com `{"error":100,"description":"API not found: <método> <caminho>"}` (C.3.2.1, C.3.3.2), `Content-Type: application/json` e `Access-Control-Allow-Origin: *`.
 - Isso vale nos dois modos (`AUTH_ENFORCE=warn` e `enforce`) e também para `OPTIONS` sem `Access-Control-Request-Method` em caminho não declarado. Desde 03/10, o `OPTIONS` sem preflight num caminho **declarado** recebe 200 com `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods` e `Access-Control-Allow-Headers` (C.4.1.9.3).
 - O preflight CORS passa ao roteador e responde 204, inclusive em caminho não declarado.
@@ -86,4 +104,4 @@ Medido pela frente da borda em 09/10, numa borda isolada (imagem local, sem a st
 
 **O panic continua no roteador; o plugin só o torna inalcançável.** No mesmo dia, a configuração gerada da superfície interna rodou **sem** o bloco do plugin num KrakenD 2.7.2 avulso. Os mesmos quatro caminhos voltaram a fechar a conexão (curl 52, sem resposta), e o log mostrou `http: panic serving ...: invalid node type`. Se o plugin deixar de carregar, o defeito volta. Por isso o build da imagem falha quando o `.so` não casa com o binário: o `krakend check-plugin` e o `test-plugin` rodam no Dockerfile. Pelo mesmo motivo, configuração inválida do plugin derruba o container.
 
-Contexto que a consolidação revelou: no arranjo anterior, o plugin Go do gateway externo **repassava qualquer caminho** direto ao tv3ws (na época, CCWS), ignorando as rotas declaradas, e toda a API interna era alcançável por fora. O edgegateway fecha esse vazamento: só serve o que a tabela única declara.
+Contexto que a consolidação revelou: no arranjo anterior, o plugin Go do gateway externo **repassava qualquer caminho** direto ao tv3ws (na época, CCWS), ignorando as rotas declaradas, e toda a API interna era alcançável por fora. O edgegateway fecha esse vazamento: cada superfície só serve as rotas que a tabela única lhe atribui.

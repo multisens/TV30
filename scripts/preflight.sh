@@ -8,9 +8,11 @@ set -u
 # Politica de portas (plano de consolidacao, V10):
 #   44642  — FIXA DA NORMA (C.3.4): ocupada = ERRO BLOQUEANTE
 #   demais fixas por contrato local (aviso): 44643, 9001 (WS do browser),
-#   8080 (URL humana), 6379 (convencao), 1883, 44652/44653 (servico)
+#   8080 (URL humana; AOP_PUBLIC_PORT, a porta publicada do AoP e das apps
+#   de emissora em <app>.apps.localhost, P1.3), 6379 (convencao), 1883,
+#   44652/44653 (servico)
 #   dinamicas (docs, commander, bcast) nao entram na checagem
-PORTS_WARN="1883 9001 6379 8080 8081 44643 44652 44653"
+PORTS_WARN="1883 9001 6379 ${AOP_PUBLIC_PORT:-8080} 8081 44643 44652 44653"
 PORT_BLOCK="44642"
 WARN=0
 

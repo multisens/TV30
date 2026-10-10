@@ -20,11 +20,12 @@ Publicadores, consumidores e flag de retenção conferidos nas chamadas `publish
 | `aop/display/layers/rxgui` | AoP | front do AoP | não | Camada GUI ativa |
 | `aop/display/layers/video/url` | AoP | front do AoP | não | URL do stream de vídeo |
 | `aop/display/layers/video/size` | AoP | front do AoP | não | Posição e tamanho do vídeo |
-| `aop/display/layers/graphics` | AoP | front do AoP | não | URL do iframe gráfico (`/graphicsAppProxy/...`) |
+| `aop/display/layers/graphics` | AoP | front do AoP | não | URL do iframe gráfico. Desde o P1.3 (decisão do Luís em 10/10), `http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT><bcastEntryPointUrl>`, o host próprio da app (padrão `<app>.apps.localhost:8080`; `aop/src/app-hosts.js`); vazio encerra a app. Até 10/10, `/graphicsAppProxy<bcastEntryPointUrl>`, na origem do AoP |
 | `aop/display/layers/popup/*` | tv3ws | front do AoP | não | Pop-ups de autorização (sim/não, QR code, PIN) |
 | `aop/:serviceId/currentApp` | — (nenhum publicador nestes módulos) | tv3ws | — | App ativo no serviço |
 | `aop/services` | — (nenhum publicador nestes módulos) | tv3ws | — | Lista de serviços |
 | `aop/devices/<classe>` | tv3ws | — | sim | Dispositivos remotos registrados |
+| `video/event` | bcast (`src/modules/live_stream/index.ts`) | front do AoP (camada gráfica) | não | Eventos do fluxo simulado. O front os repassa à app da camada gráfica como `stream_event`; desde o P1.3, com a app em outra origem, por `postMessage`, e a ponte `bcast/public/js/aop-bridge.js` os redespacha no documento dela |
 | `tlm/lls/<bsid>/bamt` | bcast | AoP | sim | BAMT: aplicações anunciadas |
 | `tlm/sls/<sid>/esg`, `tlm/sls/<sid>/bald` | bcast | AoP (assina o serviço selecionado) | sim | ESG e BALD por serviço; a BALD traz o `bcastEntryPackageUrl` |
 

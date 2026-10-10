@@ -12,6 +12,8 @@ Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 2560
 
 > **Imagens da rodada de 05/10 andam juntas.** As decisões da reunião de 05/10 com o Joel mudaram três imagens ao mesmo tempo: `tv30-edgegateway` (a borda passa a responder a C.6.8, `/tv3/bind-context`, e a C.6.7.8/C.6.7.9, `/tv3/api-info`), `tv30-tv3ws` (sem validação de credencial, sem a C.6.8 e sem escrita de perfis) e `tv30-aop` (dono dos perfis, inclusive do `lastAccess`). Pelo código, misturar versões quebra funções: com a borda anterior e o tv3ws novo, a C.6.8 responde 404 `{"error":100}` (a borda antiga repassa a rota a um tv3ws que não a tem mais), e a `/tv3/api-info` também dá 100 (a borda antiga não a declara); com o tv3ws novo e o AoP anterior, ninguém atualiza o `lastAccess` na troca de usuário corrente, e o despejo de perfis passa a contar só a criação do perfil. Use as três da mesma rodada, publicadas ou construídas localmente (`docker compose build edgegateway tv3ws aop`).
 
+> **`tv30-aop` e `tv30-bcast` de 10/10 também andam juntas** (P1.3, [seção própria](#apps-de-emissora-um-nome-de-host-por-app)). Pelo código, com o AoP novo e o bcast anterior, as apps abrem na origem própria mas não têm a ponte `aop-bridge.js`, e não recebem teclas nem eventos do vídeo. Até as imagens serem publicadas, construa as duas localmente (`docker compose build aop bcast`); a borda da mesma leva (P1.9) também: `docker compose build edgegateway`.
+
 ---
 
 ## Pré-requisitos
@@ -83,6 +85,8 @@ Abra http://localhost:8080 — interface do receptor (AoP).
 | `IMAGE_TAG` | `latest` | Tag das imagens. `latest` puxa o build mais recente da main de cada submodule. |
 | `MQTT_WS_PORT` | `9001` | Porta WebSocket do Mosquitto exposta no host. **Em Windows com Hyper-V, trocar para `9003`.** |
 | `BCAST_PORT` | `8081` | Porta do bcast exposta no host. Sobrescrever se 8081 estiver ocupada. |
+| `AOP_PUBLIC_PORT` | `8080` | Porta do AoP publicada no host. É também a porta da origem de cada app de emissora (`http://<app>.<APPS_DOMAIN>:<porta>`), por isso vai ao container do AoP (ver [seção própria](#apps-de-emissora-um-nome-de-host-por-app)). |
+| `APPS_DOMAIN` | `apps.localhost` | Domínio dos nomes de host das apps de emissora. **`*.localhost` só funciona com a tela do AoP aberta na própria máquina**; para abrir de outra máquina, use um domínio resolvível na rede, com `*.<domínio>` apontando para a máquina do AoP. Valor inválido encerra o AoP no boot. |
 | `EDGE_VARIANT` | `linux` | Para onde a borda encaminha: `linux` = tv3ws em container; `windows` = tv3ws rodando no host (desenvolvimento, ver [`docs/dev-local.md`](./docs/dev-local.md)); `host` = borda em rede do host, que o `docker-compose.ssdp.yml` define sozinho (não defina à mão). |
 | `SERVER_URL` | `localhost` | Host que dispositivos externos usam para abrir os WebSockets de remote-device. Também é o host anunciado por SSDP quando `SSDP_ADVERTISE_HOST` está vazia. |
 | `SSDP_ADVERTISE_HOST` | vazia | Host do `LOCATION` do anúncio SSDP e do `/manifest` (`Server-BaseURL`). Para a descoberta na rede, o IP da máquina na LAN. O `tv3ws` (`/manifest`) e a borda (anúncio, com o `docker-compose.ssdp.yml`) a leem do `.env` da raiz ou do `tv3ws/.env` (o da raiz prevalece); valor só exportado no shell não chega a eles. |
@@ -142,18 +146,34 @@ Depois `docker compose up -d` (ou `docker compose restart tv3ws` se a stack já 
 
 | Serviço | Porta(s) host | URL / observação |
 |---------|---------------|------------------|
-| AoP (UI do receptor) | 8080 | http://localhost:8080 |
+| AoP (UI do receptor) | `${AOP_PUBLIC_PORT:-8080}` | http://localhost:8080 |
+| Apps de emissora (camada gráfica do AoP) | a mesma do AoP | `http://<app>.apps.localhost:8080/<bcastEntryPointUrl>`: o AoP roteia pelo cabeçalho `Host` (P1.3). Só na própria máquina, ver [seção própria](#apps-de-emissora-um-nome-de-host-por-app) |
 | tv3ws (TV 3.0 WebServices) | — (44652/44653 só na rede do Docker) | Não publicado no host: clientes entram pela borda (44642/44643). Com o `docker-compose.ssdp.yml`, a 44652/44653 é publicada só em `127.0.0.1`, para a borda. HTTPS interno somente com `HTTPS_CERT`/`HTTPS_KEY` no `tv3ws/.env` |
 | tv3ws — WebSockets de remote-device | 45000–45199 | Portas dinâmicas devolvidas no registro (`ws://SERVER_URL:<porta>`) |
 | edgegateway — anúncio SSDP (só com o `docker-compose.ssdp.yml`) | UDP 1900, na rede do host | Processo `ssdp-announcer` da borda. O `LOCATION` aponta para a própria borda (`http://<host>:44642/manifest`) |
-| edgegateway — superfície externa | 44643 | rotas para clientes não-locais (tabela única M4) |
-| edgegateway — superfície interna | 44642 | porta FIXA da norma (C.3.4); rotas de clientes locais |
+| edgegateway — superfície externa | 44643 | só as rotas que admitem o cliente não local (P1.9): todas, menos `POST` e `DELETE /tv3/bind-context`, que ali dão 100 (tabela única M4) |
+| edgegateway — superfície interna | 44642 | porta FIXA da norma (C.3.4); todas as rotas da tabela |
 | bcast (broadcaster) | `${BCAST_PORT:-8081}` | http://localhost:8081 — apps de serviço (webmedia, uff, etc.) |
 | Mosquitto MQTT | 1883 | Broker TCP |
 | Mosquitto WS | `${MQTT_WS_PORT:-9001}` | WebSocket — em Windows usar **9003** |
 | Redis | 6379 | Estado de sessão + perfis (acesso TCP, ex.: `redis-cli`), sem senha |
 | Redis Commander (embutido no redis) | dinâmica | `docker port redis 18081` mostra a porta; exige login (ver abaixo) |
 | edgegateway — docs | dinâmica (8085 fixa com o `docker-compose.ssdp.yml`) | Swagger UI + 2 specs: `docker port edgegateway 8085`; com a borda em rede do host, `http://localhost:8085` |
+
+---
+
+## Apps de emissora: um nome de host por app
+
+Decisão do Luís em 10/10 (P1.3): o AoP abre cada app de emissora num nome de host próprio, na mesma porta do AoP, `http://<app>.apps.localhost:8080/<bcastEntryPointUrl>`, e não mais pelo caminho `/graphicsAppProxy`, na origem do próprio AoP. Assim o navegador manda, nas chamadas da app às APIs, o `Origin` dela. O AoP grava essa origem em `origins:associated` ao lançar a app e a apaga ao encerrá-la, e é por ela que a borda reconhece a app como cliente local associado (L1). Nome de host por app, proxy e lista no Redis são escolhas deste testbed: a norma deixa o mecanismo de diferenciação à implementação (C.4.1.7).
+
+- **O nome.** `<app>` é um rótulo DNS tirado do `appId` da BALD: minúsculas, só `[a-z0-9-]`, até 63 caracteres (`urn:tv30:app:<sorteio>` vira `urn-tv30-app-<sorteio>`). O bcast sorteia o `appId` a cada partida, então o nome muda quando o bcast reinicia.
+- **O proxy.** O AoP atende esses nomes com um proxy para o `bcastEntryPackageUrl` da app em execução (`aop/src/app-hosts.js`). Nome sem app em execução responde 404; app fora do ar, 502.
+- **Limite: só na própria máquina.** `*.localhost` resolve para a máquina de quem abre a página. Com a tela do AoP aberta de **outra máquina**, as apps não carregam. Para esse caso, defina `APPS_DOMAIN` com um domínio resolvível na rede, com `*.<domínio>` apontando para a máquina do AoP (DNS curinga). Se a porta do AoP no host não for 8080, defina `AOP_PUBLIC_PORT`: ela muda a porta publicada e a origem das apps juntas.
+- **Navegadores conferidos em 10/10, fora da stack:** Firefox 154 no receptor Linux (`*.apps.localhost` resolve para `::1`, e uma requisição para outra origem saiu com `Origin: http://teste.apps.localhost:8099`) e Chrome 154 headless no Windows (o `Origin` foi o mesmo que o AoP grava). O QtWebEngine não foi testado.
+- **Teclas e eventos do vídeo.** Com a app em outra origem, o AoP os entrega por `postMessage`. Toda app da camada gráfica precisa incluir `bcast/public/js/aop-bridge.js` (ver `bcast/README.md`); sem ela, não recebe teclas.
+- **Caminho antigo.** `/graphicsAppProxy/<caminho>` continua servindo a app em execução na origem do AoP, para scripts de teste e `curl`. Ele não grava origem associada, e a camada gráfica não o usa mais.
+
+Detalhes e o que ficou a confirmar: [`docs/decisoes-pendentes.md`](./docs/decisoes-pendentes.md), seção F.
 
 ---
 

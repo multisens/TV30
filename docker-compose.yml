@@ -31,6 +31,8 @@ services:
       # em rede do host (UDP 1900, 44642 com o proprio KrakenD) ligam com
       # SSDP_EDGE, que o docker-compose.ssdp.yml define.
       COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
+      # porta publicada do AoP (P1.3): a mesma do servico aop abaixo
+      AOP_PUBLIC_PORT: ${AOP_PUBLIC_PORT:-8080}
     volumes:
       - ./scripts/preflight.sh:/preflight.sh:ro
     command: sh /preflight.sh
@@ -163,15 +165,30 @@ services:
     container_name: aop
     networks: [ginga_net]
     extra_hosts:
-      # O aop faz proxy HTTP direto ao bcast (/graphicsAppProxy,
-      # /videoStreamProxy -> bcastEntryPackageUrl). Com o bcast rodando no
-      # HOST (desenvolvimento, BCAST_HOSTNAME=host.docker.internal) o nome
-      # precisa resolver em Linux; inocuo no deploy padrao.
+      # O aop faz proxy HTTP direto ao bcast (host proprio de cada aplicacao,
+      # /graphicsAppProxy e /videoStreamProxy -> bcastEntryPackageUrl). Com o
+      # bcast rodando no HOST (desenvolvimento,
+      # BCAST_HOSTNAME=host.docker.internal) o nome precisa resolver em Linux;
+      # inocuo no deploy padrao.
       - "host.docker.internal:host-gateway"
     ports:
-      - "8080:8080"
+      # Porta publica do AoP no host (AOP_PUBLIC_PORT, padrao 8080). A mesma
+      # variavel vai para o container (environment, abaixo), porque o AoP
+      # monta com ela a origem de cada aplicacao (P1.3); dentro do container a
+      # porta continua 8080.
+      - "${AOP_PUBLIC_PORT:-8080}:8080"
     environment:
       PORT: 8080
+      # P1.3 (decisao do Luis em 10/10): cada aplicacao de emissora abre na
+      # sua propria origem, http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT>, na
+      # mesma porta do AoP; o AoP roteia pelo cabecalho Host e registra essa
+      # origem em origins:associated ao lancar a aplicacao (aop/src/app-hosts.js).
+      # *.localhost resolve para a maquina de quem abre a pagina: com a tela
+      # do AoP aberta de OUTRA maquina, as aplicacoes nao carregam. Nesse
+      # caso, APPS_DOMAIN deve ser um dominio resolvivel na rede, com
+      # *.<dominio> apontando para esta maquina (DNS curinga).
+      APPS_DOMAIN: ${APPS_DOMAIN:-apps.localhost}
+      AOP_PUBLIC_PORT: ${AOP_PUBLIC_PORT:-8080}
       MQTT_HOST: mosquitto
       # O browser do overlay conecta ws://<host da pagina>:${MQTT_WS_PORT}/mqtt
       # (graphic-overlays/view.ejs), entao tem que bater com a porta que o
