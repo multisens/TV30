@@ -7,6 +7,157 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-10 (10/10, second round, second batch)
+
+Second batch of the 2026-10-10 round: decisions by Luis on 2026-10-10 on
+three points of the project's decision list (P1.3 and P1.9 are items 3 and
+9 of P1, client classification; P4 is data validation on write). None of
+Joel's open points (sections A to E of `docs/decisoes-pendentes.md`) was
+decided here; P5 (splitting the Ginga document state between messaging and
+storage) waits for Rodrigo's component. Host names per app, the proxy, the
+two edge surfaces, Redis and Redis Functions are choices of this testbed,
+not of ABNT NBR 25608.
+
+- Decision by Luis (2026-10-10), P1.3: one host name per broadcaster app, on
+  the AoP's port, `http://<app>.apps.localhost:<AoP port>`. Checked on
+  2026-10-10 on the Linux receiver (Firefox 154): the system resolves
+  `*.apps.localhost` to `::1` and the browser sends
+  `Origin: http://teste.apps.localhost:8099` on a cross-origin request.
+- Decision by Luis (2026-10-10), P1.9: the external surface (44643) exposes
+  only the routes that accept a non-local client; the internal one (44642)
+  exposes all of them.
+- Decision by Luis (2026-10-10), P4, "functions + audit": every write from
+  the code (tv3ws, AoP, edge, seed) will go through Redis functions that
+  validate the schema; the connection stays as it is (`default` user, no
+  password, with write access; no admin user); a test will guarantee that no
+  service writes directly; a read-only audit function will point out keys
+  outside the schema. Manual writes through `redis-cli` or the commander
+  stay possible. The earlier suggestion (`default` read-only plus `FCALL`)
+  is not possible: on `redis:7-alpine` (7.4.11) Redis applies the caller's
+  ACL inside the function, and a `default` without `@write` but with
+  `+fcall` gets `ERR ACL failure in script: User default has no permissions
+  to run the 'set' command`. Not implemented in this batch.
+
+#### Added
+
+- aop `src/app-hosts.js` (P1.3): `APPS_DOMAIN` (default `apps.localhost`)
+  and `AOP_PUBLIC_PORT` (default `PORT`, else 8080), validated at boot (an
+  invalid value exits 1). The host label is a DNS label derived from the
+  `appId` of the BALD entry (lower case, `[a-z0-9-]`, no accents, up to 63;
+  above that, or empty, a SHA-256 digest); without `appId`, the current
+  service id. The origin is written as the browser writes it (port 80
+  omitted). `appHostProxy`, mounted before everything else in
+  `src/server.js`: `Host: <label>.<APPS_DOMAIN>` goes to the proxy of the
+  RUNNING app with that label; a label with no running app answers 404, an
+  app that is down 502; an app host never reaches the AoP's pages, static
+  files or body parsers. `test/app-hosts.test.js` (14 tests).
+- bcast `public/js/aop-bridge.js` (P1.3, new contract): accepts only
+  `postMessage` from `window.parent` with type `tv30-aop-event` and
+  re-dispatches `keydown`, `timeupdate` and `stream_event` on `document` in
+  the previous shape. Included in users-test, uff, webmedia and
+  eduplay/quiz-presenter; documented in `bcast/README.md`.
+- infra `edgegateway/generate.test.js` (12 tests, run in the `gen` stage of
+  the Dockerfile before the build) and `edgegateway/plugin/surface_test.go`
+  (4 tests) (P1.9).
+
+#### Changed
+
+- aop `src/core.js` (P1.3): launching an app runs `HSET origins:associated
+  <own origin> <current service>`; closing or switching apps removes it. It
+  no longer records `http://bcast:8081`, which no browser sends. The
+  `aop/display/layers/graphics` topic carries
+  `http://<label>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT><bcastEntryPointUrl>`
+  instead of `/graphicsAppProxy<bcastEntryPointUrl>`; an invalid
+  `bcastEntryPackageUrl` neither opens nor records anything.
+  `src/modules/bootstrap-application/service.js` passes the `appId`.
+- aop `src/modules/graphic-overlays/view.ejs` (P1.3): `graphics_event`
+  sends keydown, timeupdate and stream_event by `postMessage`, only to the
+  app's origin, when the iframe is cross-origin; on the old same-origin path
+  it dispatches directly, as before.
+- aop `/graphicsAppProxy` (old path, on the AoP's origin) kept for
+  `scripts/test-dev-host.sh` and direct `curl`: the graphics layer no
+  longer uses it, and it records no associated origin.
+- Root `docker-compose.yml` (aop): published port
+  `"${AOP_PUBLIC_PORT:-8080}:8080"`; environment `APPS_DOMAIN` and
+  `AOP_PUBLIC_PORT`.
+- infra `edgegateway/generate.js` (P1.9): the surface of each route is
+  derived from `classes` (missing = every class) through `SURFACE_RULES`;
+  `/health`, `/manifest` and routes without `classes` stay on both. The
+  per-route `surfaces` field left `routes.json`, and the build rejects it.
+  Leaving 44643: `POST /tv3/bind-context` (C.6.8.2) and
+  `DELETE /tv3/bind-context` (C.6.8.4), `classes: ["local-associated"]`,
+  which answer 100 there like any undeclared path. External 25 routes,
+  internal 27. The C.6.7.8/C.6.7.9 list per surface: external 18 APIs,
+  internal 20; on 44643 `GET /tv3/api-info/tv3ws-bind-context-register`
+  and `.../tv3ws-bind-context-remove` give 101. OpenAPI: `x-tv30-surfaces`
+  on every operation. `edgegateway/Dockerfile` runs the generator tests.
+- `scripts/test-auth.sh` and `scripts/test-dev-host.sh` (in progress in this
+  batch): the 44643 `POST` and `DELETE /tv3/bind-context` cases expect 100;
+  the 44643 api-info list is checked against `routes.json`; the users-test
+  app opened by the AoP must record its own origin in `origins:associated`,
+  pass without credential with that `Origin` and get 107 again after ESC;
+  dev-host scenarios 2 to 4 reach the app through its own host as well as
+  through `/graphicsAppProxy`.
+- Docs: `README.md` (new section on app host names, ports, variables),
+  `.env.example`, `KNOWN-ISSUES.md`, `ARCHITECTURE.md`,
+  `docs/decisoes-pendentes.md` (new section F), `docs/arquitetura.md`,
+  `docs/apis-tv3ws.md`, `docs/mqtt-topicos.md`, `docs/dev-local.md`,
+  `docs/troubleshooting.md`, `docs/modelo-redis.md` (`origins:associated`
+  only), `docs/avaliacao-item9-credenciais.md`; infra `docs/04-pipeline-http.md`,
+  `05-autenticacao.md`, `06-modelo-redis.md` and `edgegateway/plugin/README.md`.
+
+#### Open (no decision yet)
+
+- `PENDENTE (Joel)`, P1.9: C.4.1.8 asks for 106 (not 100) when a non-local
+  client calls over HTTPS an API meant only for local clients; 44643 is
+  plain HTTP today (L3), so with TLS the choice between 100 and 106 is open.
+  The same section says C.6.1.2 (`/tv3/authorize`) is reached only over
+  HTTP; the rule keeps it on 44643 because it accepts non-local clients.
+- `PENDENTE (Joel)`, P1.9: Table C.46 (C.6.7.9) speaks of "all APIs of a
+  given category" without surfaces: whether the external list should also
+  name the APIs it does not offer.
+- `A CONFIRMAR (Luis)`, P1.3: bcast draws a new `appId` (`cuid.slug()`) on
+  every start, so the app host name (and its `localStorage`) changes when
+  bcast restarts; the `postMessage` bridge contract; when to retire
+  `/graphicsAppProxy`.
+- P1.3 limit: with the AoP screen opened from ANOTHER machine,
+  `*.localhost` resolves to the visitor's machine and the apps do not load;
+  `APPS_DOMAIN` allows a domain resolvable on the network. QtWebEngine not
+  tested.
+- P4 not implemented yet. P5 waits for Rodrigo's component.
+
+#### Upgrading
+
+- Rebuild `aop`, `bcast` and `edgegateway` together
+  (`docker compose build aop bcast edgegateway`): with the new AoP and the
+  old bcast the apps open cross-origin without `aop-bridge.js` and get no
+  keys.
+
+#### Verified
+
+- On the stack (10/10, edge on the bridge): `scripts/test-auth.sh` 224 PASS,
+  0 FAIL (the users-test app opened by the AoP recorded
+  `http://urn-tv30-app-<random>.apps.localhost:8080`, passed without
+  credential in enforce, and got 107 with the AoP's own `Origin` and again
+  after ESC; 100 for `POST`/`DELETE /tv3/bind-context` on 44643; 18 APIs on
+  44643 against 20 on 44642); `scripts/test-dev-host.sh` 66 PASS, 0 FAIL;
+  `test-template.sh` 13/0; `test-consolidacao.sh`, `test-fase0.sh` and
+  `test-bcast-shutdown.sh` ok.
+
+Outside the stack:
+
+- aop `npm test` 22 PASS, 0 FAIL (14 new); a smoke run of `src/server.js`
+  15/15; bcast `npx tsc --noEmit` exit 0.
+- infra: `node --test generate.test.js` 12 PASS; in `krakend/builder:2.7.2`,
+  `go vet`, `go test` (including `surface_test.go`) and the plugin build ok;
+  `krakend check` ok. An isolated edge (local image, no published ports, no
+  stack), both modes: on 44643 `POST` and `DELETE /tv3/bind-context` gave
+  404 `{"error":100}`; on 44642, without `Origin`, 106 in enforce; the plugin
+  logged `surface=external rotas=25 ... apis=18` and
+  `surface=internal rotas=27 ... apis=20`.
+- Chrome 154 headless on Windows sent the same `Origin` the AoP records, and
+  the bridge delivered the events.
+
 ### 2026-10-10 (10/10, second round)
 
 First batch of the 2026-10-10 round: small items of the work list (24, 25

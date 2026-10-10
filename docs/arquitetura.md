@@ -11,7 +11,8 @@ O diagrama descreve o estado atual do código, não o desenho publicado anterior
 
 ```
 Cliente (app de emissora, app local autônomo, dispositivo remoto)
-        ↓ HTTP :44642 (interna, porta fixa da C.3.4) | :44643 (externa)
+        ↓ HTTP :44642 (interna, porta fixa da C.3.4, todas as rotas)
+        | :44643 (externa, só as rotas que admitem o não local; P1.9)
   edgegateway (infra/)    ← borda única: KrakenD interno + externo + docs;
                             plugin Go tv30-auth valida credenciais (warn)
                             e responde ele mesmo a C.6.8 e a C.6.7.8/C.6.7.9
@@ -21,8 +22,11 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
         ↕ MQTT                    ↕ Redis
   Mosquitto + plugin C    ← valida o ESQUEMA das mensagens publicadas
         ↕ MQTT
-  AoP (aop/)              ← UI do receptor; dono dos perfis no Redis
-        ↓ HTTP (proxy /graphicsAppProxy e /videoStreamProxy)
+  AoP (aop/)              ← UI do receptor; dono dos perfis no Redis; atende
+                            o host próprio de cada app (<app>.apps.localhost,
+                            P1.3) e grava a origem dela em origins:associated
+        ↓ HTTP (proxy: host próprio da app; /videoStreamProxy;
+                /graphicsAppProxy, caminho antigo)
   bcast (bcast/)          ← sinalização (BAMT/ESG/BALD) por MQTT; apps de
                             serviço e mídia por HTTP
 
@@ -36,7 +40,7 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
 
 - **Sinalização e eventos** passam pelo MQTT.
 - **Armazenamento:** o AoP e o tv3ws leem e escrevem no Redis diretamente. A borda lê dele o que a decisão de credencial precisa e, desde a reunião de 05/10, escreve as chaves da C.6.8 (`bind-context:*`). Quem escreve cada família de chave está em [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis).
-- **HTTP direto:** o AoP faz proxy HTTP para o bcast, buscando aplicações e vídeo no `bcastEntryPackageUrl` que o bcast anuncia (`aop/src/server.js`).
+- **HTTP direto:** o AoP faz proxy HTTP para o bcast, buscando aplicações e vídeo no `bcastEntryPackageUrl` que o bcast anuncia (`aop/src/server.js`). Desde o P1.3 (decisão do Luís em 10/10), cada aplicação de emissora é servida num nome de host próprio, na porta do AoP (`http://<app>.apps.localhost:8080`; `aop/src/app-hosts.js`), para que o navegador mande o `Origin` dela, que o AoP grava em `origins:associated` enquanto ela roda. A camada gráfica entrega teclas e eventos do vídeo à aplicação por `postMessage` (ponte `bcast/public/js/aop-bridge.js`). O caminho antigo `/graphicsAppProxy`, na origem do AoP, continua para scripts de teste e não grava origem.
 
 A versão anterior desta página dizia que "todos os serviços se comunicam via MQTT". Isso não corresponde ao código. Clientes das APIs entram **só pela borda**: as portas do tv3ws não são publicadas no host (com o override do SSDP, abaixo, são publicadas só em `127.0.0.1`, para a borda).
 
@@ -69,7 +73,7 @@ Seis containers contínuos (`redis` a `bcast`) e três tarefas únicas de subida
 | `mqtt-broker` (serviço `mosquitto`) | 1883, `${MQTT_WS_PORT:-9001}` | Mosquitto + plugin C de validação de esquema |
 | `edgegateway` | 44642, 44643; docs em porta dinâmica (`docker port edgegateway 8085`). Com o override `docker-compose.ssdp.yml`: rede do host, com 44642, 44643 e 8085 (fixa) direto no host e UDP 1900 | Borda única. Contém os dois processos KrakenD (superfícies interna e externa), com o plugin `tv30-auth`, que valida as credenciais e responde a C.6.8 e a C.6.7.8/C.6.7.9, e a documentação Swagger; com o override (só Linux nativo), também o anunciante SSDP (`ssdp-announcer`). Morre-inteiro: se um processo cai, o container cai, inclusive o anunciante (decisão do Luís, 09/10), e o `restart` o traz de volta. Desde 10/10 (decisão do Luís), o anunciante só sai por erro de configuração; sem rede, ele espera e tenta de novo |
 | `tv3ws` | 45000–45199 (WebSockets de remote-device) | TV 3.0 WebServices. As portas 44652/44653 ficam só na `ginga_net`; com o override, são publicadas também em `127.0.0.1`, para a borda |
-| `aop` | 8080 | Interface do receptor |
+| `aop` | `${AOP_PUBLIC_PORT:-8080}` | Interface do receptor; na mesma porta, os hosts próprios das apps de emissora (`<app>.<APPS_DOMAIN>`, padrão `apps.localhost`; P1.3) |
 | `bcast` | `${BCAST_PORT:-8081}` | Broadcaster + módulos de apps de serviço |
 | `tv30-preflight`, `tv30-userfiles-seed`, `tv30-sysctl-init` | — | Tarefas únicas de subida: diagnóstico de DNS e portas, carga de `./user-files` e ajuste de sysctl (Linux) |
 
@@ -99,7 +103,8 @@ Os módulos reaproveitam o cliente MQTT do bcast e não criam conexão nem conta
 | MQTT para sinalização e eventos entre serviços | Desacoplamento. Não é o único canal interno (ver *Canais internos*) |
 | Estado de usuários em Redis | `userData.json` serve só de carga inicial, no banco vazio. Os perfis têm um dono, a plataforma (AoP): o P5 ("um dono por família de chave") foi aplicado na rodada da reunião de 05/10 com o Joel (D-0510-5), e o tv3ws deixou de re-sincronizar a partir do arquivo |
 | Apps de serviço como módulos do bcast | Um único container serve todas, sem duplicar MQTT e CORS |
-| Borda única com duas superfícies (fase 2) | A interna fica na 44642, fixa pela C.3.4, e a externa na 44643. Credenciais validadas na borda (decisão de 28/09, plugin `tv30-auth`). Na reunião de 05/10, o Joel decidiu que o tv3ws fica "anônimo", sem validar credencial (D-0510-1), e que a borda responde a C.6.8 (D-0510-2) e a C.6.7.8/C.6.7.9 (D-0510-3). As três foram feitas. Sem TLS na borda, o 106 por protocolo ao não local (C.4.1.6) ficou sem quem o aplique (lacuna L3) |
+| Borda única com duas superfícies (fase 2) | A interna fica na 44642, fixa pela C.3.4, e a externa na 44643. Credenciais validadas na borda (decisão de 28/09, plugin `tv30-auth`). Na reunião de 05/10, o Joel decidiu que o tv3ws fica "anônimo", sem validar credencial (D-0510-1), e que a borda responde a C.6.8 (D-0510-2) e a C.6.7.8/C.6.7.9 (D-0510-3). As três foram feitas. Sem TLS na borda, o 106 por protocolo ao não local (C.4.1.6) ficou sem quem o aplique (lacuna L3). Desde a P1.9 (decisão do Luís em 10/10), a externa só expõe as rotas que admitem o não local, e a interna expõe todas; a superfície de cada rota sai das `classes` no `generate.js`. Saem da externa `POST` e `DELETE /tv3/bind-context`, que dão 100 ali; se dariam 106 com TLS (C.4.1.8) está com o Joel. A norma (C.3.4) só define as duas URLs base, e os conjuntos de rota por superfície são decisão do projeto |
+| Um nome de host por app de emissora (P1.3; decidido pelo Luís em 10/10) | O associado é reconhecido pelo `Origin` em `origins:associated` (L1, risco aceito em 03/10). Servidas pelo proxy na origem do AoP, as apps chegavam à borda com o `Origin` do AoP e não eram reconhecidas. Com um host por app, na porta do AoP, o `Origin` passa a ser o da app, e o AoP grava essa origem ao lançá-la. Limite: `*.localhost` resolve para a máquina de quem abre a página, então a tela do AoP aberta de outra máquina não carrega as apps; `APPS_DOMAIN` aceita um domínio resolvível na rede. A C.4.1.7 deixa o mecanismo de diferenciação à implementação; host por app e proxy são decisão do projeto |
 | A borda anuncia o SSDP, em rede do host (L6, opção A; decidido pelo Luís em 09/10) | O multicast do anúncio não saiu da bridge do Docker para a rede (medido no WSL2 em 02/10), então quem anuncia tem de estar na rede do host. Com o override `docker-compose.ssdp.yml`, a borda vai para a rede do host e alcança o tv3ws por `127.0.0.1`; um erro de configuração do SSDP derruba a borda inteira, e a falta de rede não (morre-inteiro decidido pelo Luís em 09/10, revisto por ele em 10/10). Substituiu a opção B (decidida em 04/10, informado pelo Luís): um container próprio para o anúncio, `tv3ws-ssdp`, com a borda e o tv3ws na `ginga_net`, em que a falha do SSDP não derrubava as APIs. A C.3.4 não diz onde o anunciante roda; é decisão do projeto |
 | Avatares como SVG inline | Dispensa servir arquivos PNG. Ficam no campo `avatar` do hash do usuário |
 
