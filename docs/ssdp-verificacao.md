@@ -259,6 +259,18 @@ Uma captura no Linux durante o teste 32 não registrou o M-SEARCH, provavelmente
 
 **O que isso mostra:** com a opção A, a descoberta da C.3.4 funciona de ponta a ponta em Linux nativo, a partir de outro aparelho da rede, e a porta direta do tv3ws segue fechada para a LAN. O teste com o celular não foi repetido na opção A; o Luís o dispensou em 09/10, porque o notebook já cumpre o papel de segundo aparelho.
 
+### Troca de rede do receptor (10/10)
+
+O mesmo Linux passou de uma rede doméstica (192.168.2.x) para outra (192.168.0.x, IP 192.168.0.23), com `SSDP_ADVERTISE_HOST=192.168.2.7` fixo no `.env`.
+
+| # | O que aconteceu | Evidência |
+|---|---|---|
+| 44 | Enquanto o Wi-Fi ainda não tinha IPv4, o anunciante não achou interface e saiu; pelo morre-inteiro, **a borda inteira reiniciou 12 vezes**, com todas as APIs fora do ar, até a rede voltar | log: `[ssdp] FALHA em escolha da interface do anuncio ... nao ha rota padrao com IPv4`; `RestartCount=12` |
+| 45 | Com a rede de volta, o anúncio saiu pela `wlp2s0` (rota padrão), mas o `LOCATION` continuou em `http://192.168.2.7:44642/manifest`, endereço que não existe na rede nova: **descoberta quebrada** | log: `AVISO host anunciado: o IPv4 192.168.2.7 nao esta em nenhuma interface ...` |
+| 46 | Com `SSDP_ADVERTISE_HOST=192.168.0.23` e as imagens da rodada de 05/10, um notebook na mesma rede (192.168.0.12) recebeu **3 respostas a 3 buscas**, leu o `/manifest` (200, `Server-BaseURL: 192.168.0.23:44642`) e recebeu da borda o 104 da C.6.8; a 44652 do tv3ws segue recusada pela LAN | testes do notebook |
+
+**O que isso mostra:** o IP fixo no `.env` não acompanha a troca de rede (argumento para a B2: cair no IP da interface quando o host configurado não estiver em nenhuma placa da máquina), e o morre-inteiro decidido em 09/10 derruba as APIs da borda durante qualquer janela sem rede.
+
 ## L6: as opções avaliadas antes da decisão (decisão do projeto, não da norma)
 
 > **Registro da avaliação de 03/10, anterior às decisões.** A opção escolhida em 04/10 foi a B; em 09/10, o Luís a trocou pela A. Os números de linha citados são do código daquela data. A opção A foi feita como a linha dela previa: anunciante reescrito em Go, variante nova da borda (declarada no `routes.json`; o `generate.js` a gera sem mudança no código dele) e tv3ws publicado em `127.0.0.1`.
