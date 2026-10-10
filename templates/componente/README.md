@@ -10,6 +10,7 @@ Pedido das reuniões de 21/09 e 28/09: quem cria um componente novo precisa sabe
 |---|---|
 | `docker-compose.yml` | O modelo: rede, nomes de serviço, restart, `init`, healthcheck e portas, com o porquê de cada escolha em comentário. |
 | `Dockerfile`, `index.js`, `package.json` | Componente de **exemplo**, executável como veio. Um processo Node só com a biblioteca padrão (sem `npm install`), que dá `PING` e lê a chave `tv30:<nome>:exemplo` no Redis, assina `tv30/<nome>/exemplo/ping` no broker e responde em `tv30/<nome>/exemplo/pong` com o valor da chave. Expõe `GET /health` na 8090 e sai com erro se perder o Redis ou o broker. Troque pelo código do seu componente; um componente real usa as bibliotecas do projeto (`mqtt`, `ioredis`), como o tv3ws. |
+| `package-lock.json` | Lockfile sem dependências. Existe para que `npm ci` funcione nesta pasta, como funciona num componente real e como o `scripts/test-dev-host.sh` faz no host. Ao trocar o nome do componente, troque aqui também. |
 
 Para conferir o template de ponta a ponta, rode `scripts/test-template.sh` com a stack de pé. O teste copia esta pasta para um diretório temporário, troca o nome do componente, sobe o exemplo e confere:
 
@@ -65,14 +66,21 @@ Enquanto desenvolve, rode o processo direto no host e deixe a infra em container
 ```bash
 # pare o container do componente antes (mesma porta, mesmo clientId MQTT)
 docker compose -f <pasta-do-componente>/docker-compose.yml stop
-cd <pasta-do-componente>
+cd <pasta-do-componente> && npm ci
 MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 PORT=8090 npm run dev
 ```
 
-No exemplo, o `npm run dev` é `node --watch index.js`: o processo reinicia a cada mudança no arquivo.
+No exemplo, o `npm ci` não instala nada (não há dependências) e o `npm run dev` é `node --watch index.js`: o processo reinicia a cada mudança no arquivo. Se o processo sair com erro, o `node --watch` fica esperando a próxima mudança em vez de encerrar.
 
 Se um container precisar chamar o componente no host, configure nele `http://host.docker.internal:8090` e garanta o `extra_hosts` nesse container.
 
-Para automatizar a verificação, use o padrão de `scripts/test-dev-host.sh`: subir só o necessário, parar o container do módulo, rodar o módulo real no host, conferir host → Redis (PING), host → MQTT (pub/sub) e o caminho específico, e no fim restaurar a stack.
+O cenário 5 de `scripts/test-dev-host.sh` automatiza isso com este exemplo (pedido da reunião de 05/10 com o Joel). Ele sobe só o Redis e o broker, para a borda, roda o exemplo no host com `npm ci && npm run dev` e confere:
+
+- o `/health` na 8090;
+- os logs de conexão com `127.0.0.1:6379` e `127.0.0.1:1883`;
+- um ping por MQTT que volta com o valor que o teste acabou de gravar no Redis;
+- que, sem o processo do host, o ping fica sem resposta.
+
+No fim, restaura a stack. Para outro componente, siga o mesmo padrão: subir só o necessário, parar o container do módulo, rodar o módulo real no host, conferir host → Redis (PING), host → MQTT (pub/sub) e o caminho específico, e no fim restaurar a stack. Detalhes em [`docs/dev-local.md`](../../docs/dev-local.md).
 
 **Fora do escopo:** Windows nativo (processo no PowerShell com o Docker no WSL). Nesse arranjo, o `host-gateway` aponta para a VM do WSL, não para o Windows.

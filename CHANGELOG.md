@@ -7,6 +7,220 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-10 (10/10)
+
+Decisions of the meeting of 2026-10-05 with Joel, items 3 to 9 of that week's
+list (D-0510-1 to D-0510-7 below). Where a decision left a point open, the
+code keeps the minimal behaviour and marks it `PENDENTE (Joel)`; those points
+are listed under *Open*. Redis, MQTT and the KrakenD edge are choices of this
+testbed, not of ABNT NBR 25608.
+
+- D-0510-1: all credential validation stays at the edge; tv3ws becomes
+  "anonymous" (it only receives and answers). tv3ws keeps version
+  negotiation (`Accept-Version`, 100/101) and credential issuance
+  (`/tv3/authorize`, `/tv3/token`).
+- D-0510-2: the C.6.8 API (`POST|GET|DELETE /tv3/bind-context`) moves to the
+  edge plugin `tv30-auth`.
+- D-0510-3: the API information APIs (C.6.7.8, Table C.45; C.6.7.9, Table
+  C.46) are answered by the edge from the route table.
+- D-0510-4: authorized clients are also stored (`clients:authorized`), as a
+  base for a future management screen (the viewer blocks and unblocks).
+- D-0510-5: user data had three writers (initial load, tv3ws, platform).
+  Applying P5 (one owner per key family): the platform (AoP) owns `user:{id}`
+  and `users:index`; the initial load only provisions an empty database;
+  tv3ws only reads profiles.
+- D-0510-6: Redis client failures must not be silent (ioredis
+  `maxRetriesPerRequest` and swallowed errors).
+- D-0510-7: dev-host test with combinations: everything on the host with
+  `npm run`, and a new microservice on the host talking directly to the
+  broker and Redis.
+
+#### Added
+
+- infra `edgegateway/plugin/bindcontext.go`: the edge ANSWERS C.6.8, with the
+  contract tv3ws had (same Redis format, `bind-context:{serviceId}` LIST of
+  JSON `{alg,key,registeredAt}`, now written by the edge). `POST` (`{alg,key}`):
+  105 missing field; 101 for a body that is not a JSON object (including a
+  `Content-Type` other than `application/json`), an algorithm outside HS256,
+  HS512, RS256, RS512, or a key that does not fit the algorithm (RSA that does
+  not parse, modulus too small); 300 without a current service; no duplicate;
+  200 `{"serviceContextId": ...}`. `GET` (`bind-token` header): 104 missing;
+  108 not a JWT or out of its time window; 101 when no registered key of any
+  service (`SCAN bind-context:*`) validates the signature; 200
+  `{"boundServices": [...]}` (name and numeric id only for the current
+  service). `DELETE` (`key` header): 105 missing; removes the matching key of
+  the current service; always `{}`. Class (106) and the access token of the
+  `GET` (107) stay in the route policy.
+- infra `edgegateway/plugin/apiinfo.go`: `GET /tv3/api-info/{apiId}`
+  (C.6.7.8) -> `{"receiverApi": {"id", "version"}}`, 101 for an id that is
+  not implemented; `GET /tv3/api-info[?subsystem=ncl|nclua|tv3ws]` (C.6.7.9)
+  -> `{"receiverApis": [...]}` in Table C.2 order, 101 for an unknown or empty
+  subsystem, empty list for `ncl` and `nclua`. Both require the access token
+  (107) like other routes; the associated client passes without it. C.6.7.9
+  has no row of its own in Table C.2, so it is not in the list.
+- infra `edgegateway/plugin/edge.go`: routes with `"edge"` in `routes.json`
+  are answered by the plugin after the usual credential decision (warn only
+  adds `X-TV30-Auth-Warn`), with the same version negotiation as tv3ws (no
+  header = 2.0; not `X.Y` = 101; outside 2.0/2.1 = 100) and C.3.2 errors. A
+  panic in a handler becomes 404 `{error:200}`.
+- infra `edgegateway/routes.json`: field `api` (`{id, section, version}`, the
+  Table C.2 row) on 21 of the 27 routes (20 distinct APIs, all version 2.0)
+  and field `edge` on 5 routes (the three C.6.8 routes, `/tv3/api-info` and
+  `/tv3/api-info/{apiId}`). `generate.js` validates both, passes the API list
+  to the plugin and still generates a KrakenD endpoint for the edge routes:
+  the plugin answers first, and the path stays registered in the router, so
+  the CORS preflight takes the same path as on every other route.
+- infra plugin Redis RESP client: `RPUSH`, `LREM`, `SCAN`, `HGETALL`, with
+  tests.
+- tv3ws `modules/auth-manager`: `clients:authorized` SET. Authorizing is
+  `MULTI` (`HSET client:{id}`, `SREM clients:blocked`, `SADD
+  clients:authorized`); blocking is `MULTI` (`SREM clients:authorized`, `SADD
+  clients:blocked`); a `clientid` is in at most one of the two sets.
+  `clientIdStatus` (`new`/`used`/`blocked`) feeds the 101 on reuse;
+  `listAuthorizedClients` and `listBlockedClients` (no UI). At boot,
+  `backfillAuthorizedClients` (Lua, idempotent) adds every existing
+  `client:{id}` that is not blocked.
+- aop `modules/profile-manager`: `touchLastAccess` (Lua: writes `lastAccess`
+  only when the id is in `users:index`), called when the current user changes
+  here or arrives on `aop/currentUser`. aop `src/http-error.js`: route errors
+  (Redis down included) become 404 `{error:200}`; `src/redis-options.js`.
+- Tests: tv3ws `test/redis-client.test.ts`, `test/user-service.test.ts`,
+  `test/multi-device.test.ts`, `test/helpers/fake-redis.ts`; aop
+  `test/redis.test.js` (first `npm test` in aop).
+- `scripts/test-dev-host.sh`: scenario 4 (tv3ws, aop and bcast on the host at
+  the same time; Redis, Mosquitto and the edge, `windows` variant, in Docker)
+  and scenario 5 (the `templates/componente` example on the host, talking to
+  the broker and Redis over `127.0.0.1`, with the edge stopped).
+  `--cenario 1..5`. `templates/componente/package-lock.json`.
+- `scripts/test-auth.sh`: cases for the edge-answered APIs (C.6.7.8/C.6.7.9
+  list, subsystems, ids, 107, associated client, `Accept-Version` 2.1/3.0/x,
+  preflight and non-preflight `OPTIONS`), C.6.8 (300 without current service,
+  `text/plain` 101, `Accept-Version: 2.1`, expired bind-token 108, both
+  surfaces, `DELETE` without current service), `clients:authorized` and
+  `clients:blocked` after authorize, refusal and pairing, warn with a
+  tampered token reaching tv3ws, and Redis frozen with `docker pause`
+  (404 `{error:200}` from tv3ws in under 2 s; the trap unpauses it).
+
+#### Changed
+
+- tv3ws (D-0510-1): `src/middleware/basic.ts` only negotiates the version.
+  The 106 for a non-local client over HTTP on the APIs
+  (`validateClientProtocol`) is gone and the edge does not apply it either
+  (no TLS at the edge, L3). The 106 on `/tv3/token` renewal over HTTP stays
+  (it is part of issuance).
+- tv3ws (D-0510-5): only reads profiles. `USER_DATA_FILE` is no longer
+  required. The `lastAccess` write moved to the AoP.
+- tv3ws and aop Redis clients (D-0510-6): `maxRetriesPerRequest: 1`,
+  `commandTimeout: 1500`, `connectTimeout: 2000`, offline queue on, retry
+  200 ms to 2 s; connection log `[redis] pronto em <host>:<port>` (was
+  `[Redis] Connected`), plus lost/failed/ended lines. Redis errors that were
+  swallowed (`.catch` that only logged, loose promises, pipeline results read
+  without their error) now reach the error layer: 404 `{error:200}`.
+  `classifyClient` no longer turns a failed `origins:associated` read into
+  "autonomous". The remote-device registry is stored before the WebSocket
+  server listens. Boot tasks that need Redis run on its first `ready`.
+- `scripts/test-auth.sh`: C.6.8 errors now come from the edge (origin
+  `borda`); the ACAO checks for "an error from tv3ws" use
+  `POST /tv3/remote-device` with `{}` (105); the non-local client over HTTP
+  on `/tv3/current-service` now reaches tv3ws (was 106 from tv3ws); the
+  clean-up also removes the test ids from `clients:authorized`.
+- `scripts/test-dev-host.sh`: the tv3ws Redis log check (scenarios 1 and 4)
+  matches `[redis] pronto em 127.0.0.1:6379`.
+- infra `edgegateway/plugin/README.md` and `docs/dev-local.md` (scenario
+  table). The other docs of this round (`docs/`, `ARCHITECTURE.md`,
+  `README.md`, `KNOWN-ISSUES.md`, `infra/README.md`, `infra/docs/`) are
+  updated in a separate pass and are not listed here.
+
+#### Removed
+
+- tv3ws: `src/api/broadcaster-security/` (C.6.8) and its mount in `app.ts`,
+  `src/middleware/authorization.ts` (107), `validateAccessToken`,
+  `decodeAccessToken`, `getRequestClass`, `syncUsersFromFile`,
+  `initFromRedis`, the `aop/users` handler; tests `bind-token.test.ts`,
+  `broadcaster-security.test.ts` and `fixtures/keyformats.json`.
+- aop: `notifyUsersChanged` (no caller).
+- `scripts/test-auth.sh`: the `no_106` checks, which can no longer fail now
+  that tv3ws has no 106 by protocol on the APIs.
+
+#### Open (no decision yet)
+
+- 106 by protocol (C.4.1.6) is applied by nobody until the edge has TLS (L3).
+- C.6.7.8 for an id that is in Table C.2 but not implemented answers 101;
+  every API is listed as 2.0 (whether `remote-device` should show 2.1 is not
+  decided); C.6.7.9 without `subsystem` lists everything.
+- `user:{id}:broadcaster-attrs:{scid}` still has two writers (tv3ws writes,
+  the AoP deletes on eviction).
+- Unblocking and `display-name` for the future screen; whether the edge
+  should require `clients:authorized`.
+- C.6.8 `POST` accepts only JSON (tv3ws accepted form-urlencoded by
+  accident).
+
+#### Known issues found in this round
+
+- KrakenD 2.7.2 CORS rejects an `Access-Control-Request-Headers` list that is
+  not in lexicographic order, on every route (browsers send it in order).
+- tv3ws `RemoteDevice.terminate()` does not close the external `http.Server`
+  (its 450xx port keeps listening); `EADDRINUSE` on the drawn port is not
+  handled.
+- Left over: the root compose and `scripts/test-dev-host.sh` still pass
+  `USER_DATA_FILE` to tv3ws; the AoP still subscribes to `aop/users`; the infra
+  `schemas.json` still declares `aop/users`; the comment in
+  `infra/dockerfiles/tv3ws.Dockerfile` still mentions `initFromRedis`.
+
+#### Upgrading
+
+- Rebuild `edgegateway`, `tv3ws` and `aop` (`docker compose build edgegateway
+  tv3ws aop`). The Docker Hub images do not have these changes until infra,
+  tv3ws and aop are pushed and CI publishes them.
+- Existing `bind-context:*` lists keep their format and stay valid. Existing
+  `client:{id}` records enter `clients:authorized` on the first tv3ws boot.
+
+#### Verified
+
+Integration run on 2026-10-10: Windows 11 + WSL2 (NAT), Docker Engine in WSL,
+compose v5.4.0; images rebuilt locally. No code bug showed up in this run;
+the only fixes were in the test scripts (above).
+
+- `docker compose build edgegateway tv3ws aop`: rc 0 (the edge build runs the
+  plugin `go vet`/`go test`, `krakend check-plugin` and `test-plugin`).
+  `docker compose up -d --remove-orphans`: both surfaces log
+  `registrado ... modo=warn rotas=27 respondidas_pela_borda=5 apis=20`; tv3ws
+  and aop log `[redis] pronto em redis:6379` and aop `Loaded 5 users from
+  Redis`.
+- Go in `krakend/builder:2.7.2` (go1.22.7): plugin `go vet` ok, `gofmt -l`
+  empty, `go test` 63 PASS, 0 FAIL, `go build -buildmode=plugin` ok; SSDP
+  announcer `go vet` ok, `go test` 8 PASS, 0 FAIL.
+- tv3ws: `npx tsc --noEmit` exit 0; `npm test` 55 PASS, 0 FAIL. aop:
+  `npm test` 8 PASS, 0 FAIL.
+- `scripts/test-auth.sh`, default stack (edge on the bridge, warn, `linux`):
+  202 PASS, 0 FAIL. Edge on the host network
+  (`COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml` plus a test
+  override that gives `SSDP_ADVERTISE_HOST` = the VM `eth0` IP to the edge and
+  tv3ws by `env_file`; the root `.env` was left unchanged): 202 PASS, 0 FAIL,
+  the same cases. In that mode the edge logs `variant=host, ssdp=ligado`,
+  announces on `eth0` with `LOCATION http://172.27.57.172:44642/manifest`, and
+  `/manifest` answers `Server-BaseURL: 172.27.57.172:44642`. With Redis
+  frozen, tv3ws answered 404 `{error:200}` in 1528 ms (bridge) and 1529 ms
+  (host).
+- `scripts/test-dev-host.sh` (scenarios 1 to 5, `docker` mode with
+  `node:23-alpine`): 59 PASS, 0 FAIL; the default stack was restored.
+- `scripts/test-template.sh`: 13 PASS, 0 FAIL.
+- `scripts/test-fase0.sh`: invalid payload rejected
+  (`Validation FAILED for topic: sensor/room1/temperature`), valid payload
+  published, AoP `GET /` and `GET /profile/create` 200.
+- `scripts/test-bcast-shutdown.sh`: `docker stop bcast` in 510 ms, exit 0; 9
+  retained topics before, none after, 9 again after the restart.
+- `scripts/test-consolidacao.sh`: the 6 continuous containers; redis healthy,
+  commander login (401 without credential, 200 with it, wrong password
+  refused), 6379 answers `PONG` without a password and survives the commander
+  kill; both surfaces `/health`, internal spec and Swagger UI ok;
+  `POST /tv3/current-service/users` reaches tv3ws on both ports (300, no
+  current service, with `X-TV30-Auth-Warn: 107`), `POST /tv3/users` 100;
+  killing a KrakenD brings the edge down and the restart brings it back.
+- End state: default stack up (edge on the bridge, `AUTH_ENFORCE=warn`,
+  `EDGE_VARIANT=linux`); `clients:authorized`, `clients:blocked`, `client:*`,
+  `bind-context:*` and `origins:associated` empty, as before the run.
+
 ### 2026-10-09 (09/10)
 
 L6 (where the SSDP advertiser runs) was re-decided by Luis on 2026-10-09:
@@ -101,13 +315,18 @@ decision of this testbed, not of the norm (C.3.4 does not say).
   Docker Hub has neither the announcer nor the `host` configs; build it
   locally (`docker compose build edgegateway`).
 
-#### Not measured yet (option A)
+#### Verified (option A, 2026-10-09; tests 33-43 of docs/ssdp-verificacao.md)
 
-- No option A run is recorded in `docs/ssdp-verificacao.md`: startup and
-  logs, NOTIFY capture, the failures that take the edge down, and discovery by
-  a second device on native Linux (the 2026-10-09 validation used option B).
-  The test will be redone. The Go tests run in the image build; no build is
-  recorded here.
+- WSL2: edge on the host network (`variant=host, ssdp=ligado`), NOTIFY out of
+  the VM `eth0` with TTL 4, 3 answers to 3 M-SEARCH from Windows,
+  `max-age=1800`; announcer killed -> whole edge restarted (die-together);
+  stop -> 2 `ssdp:byebye`; preflight accepts the edge's own 44642 on re-up;
+  `test-auth.sh` 148/0 on the bridge and 148/0 on the host network;
+  `test-dev-host.sh` 27/0.
+- Native Linux (Ubuntu, Docker Engine, home Wi-Fi): a notebook on the same
+  Wi-Fi got 3 answers to 3 searches and read `/manifest` (200,
+  `Server-BaseURL` = the announced host); the tv3ws direct port 44652 is
+  refused from the LAN. The phone test was not repeated (waived by Luis).
 
 ### 2026-10-04 (04/10)
 

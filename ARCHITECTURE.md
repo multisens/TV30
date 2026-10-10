@@ -14,8 +14,8 @@ Os serviços trocam sinalização e eventos via **MQTT** (broker Mosquitto), lee
 
 | Pasta | Repositório | Responsabilidade |
 |-------|-------------|------------------|
-| `aop/` | https://github.com/multisens/AOP | **Application-Oriented Platform** — interface do receptor TV 3.0. Renderiza UI, gerencia perfis de usuário (direto no Redis), exibe catálogo de apps e camadas de vídeo/gráficos. Node.js, porta **8080** |
-| `tv3ws/` | https://github.com/multisens/TV3WS | **TV 3.0 WebServices** — implementação dos Ginga CC WebServices (Anexo C). JWT, usuários (Redis), serviços e dispositivos remotos. TypeScript, portas internas **44652** (HTTP) e **44653** (HTTPS opcional), acesso pela borda |
+| `aop/` | https://github.com/multisens/AOP | **Application-Oriented Platform** — interface do receptor TV 3.0. Renderiza UI, gerencia perfis de usuário (direto no Redis; dono das chaves de perfil desde a rodada de 05/10), exibe catálogo de apps e camadas de vídeo/gráficos. Node.js, porta **8080** |
+| `tv3ws/` | https://github.com/multisens/TV3WS | **TV 3.0 WebServices** — implementação dos Ginga CC WebServices (Anexo C), menos a C.6.8 e a C.6.7.8/C.6.7.9, que a borda responde. Emissão do JWT, usuários (Redis, só leitura dos perfis), serviços e dispositivos remotos; não valida credencial. TypeScript, portas internas **44652** (HTTP) e **44653** (HTTPS opcional), acesso pela borda |
 | `infra/` | https://github.com/multisens/Infra | **Infraestrutura Docker** — Redis, borda KrakenD (`edgegateway`, com o plugin Go `tv30-auth`), Mosquitto com plugin C de validação de esquema, dockerfiles |
 | `bcast/` | https://github.com/multisens/BcastService | **Broadcaster** — simula transmissão de sinal TV 3.0. Streaming via FFmpeg, sinalização via MQTT. Hospeda módulos de apps de serviço (webmedia, uff, etc.) seguindo padrão `src/modules/<nome>/` |
 
@@ -32,13 +32,14 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
         ↓ HTTP :44642 (interna, porta fixa da C.3.4) | :44643 (externa)
   edgegateway (infra/)    ← borda única: KrakenD interno + externo + docs;
                             plugin Go tv30-auth valida credenciais (warn)
+                            e responde ele mesmo a C.6.8 e a C.6.7.8/C.6.7.9
         ↓ HTTP na ginga_net
-  tv3ws (tv3ws/)          ← Ginga CC WebServices (Anexo C); assina o
-                            accessToken; estado no Redis
+  tv3ws (tv3ws/)          ← Ginga CC WebServices (Anexo C); emite o
+                            accessToken e não valida credencial; estado no Redis
         ↕ MQTT                    ↕ Redis
   Mosquitto + plugin C    ← valida o ESQUEMA das mensagens publicadas
         ↕ MQTT
-  AoP (aop/)              ← UI do receptor; perfis lidos/escritos direto no Redis
+  AoP (aop/)              ← UI do receptor; dono dos perfis no Redis
         ↓ HTTP (proxy /graphicsAppProxy e /videoStreamProxy)
   bcast (bcast/)          ← sinalização (BAMT/ESG/BALD) por MQTT; apps de
                             serviço e mídia por HTTP
@@ -49,15 +50,15 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
                             (/manifest); tv3ws por 127.0.0.1:44652/44653
 ```
 
-**Descoberta SSDP.** Quem anuncia é a borda (L6, opção A, decidido pelo Luís em 09/10, no lugar da opção B, o container `tv3ws-ssdp`, decidida em 04/10). O anunciante é um processo a mais no container `edgegateway`: o binário Go `ssdp-announcer` (`infra/edgegateway/ssdp/`), que o `entrypoint.sh` só sobe com `SSDP_ENABLED=true`. Quem liga é o override `docker-compose.ssdp.yml`, que põe a borda em `network_mode: host` (variante `host`, com o tv3ws em `127.0.0.1:44652/44653`). Pelo morre-inteiro, decidido pelo Luís em 09/10, a falha do anúncio derruba a borda inteira. O `/manifest` continua no tv3ws, atrás da borda, e o tv3ws da bridge não anuncia (`SSDP_ENABLED: "false"` no compose). A descoberta só é suportada em Linux nativo com Docker Engine (decisão do Joel, informada pelo Luís em 04/10; decisão do projeto, não da norma). Nesse ambiente, a descoberta por outro aparelho foi validada em 09/10 com a opção B; com a opção A, ainda não foi medida. Ver [`docs/ssdp-verificacao.md`](./docs/ssdp-verificacao.md).
+**Descoberta SSDP.** Quem anuncia é a borda (L6, opção A, decidido pelo Luís em 09/10, no lugar da opção B, o container `tv3ws-ssdp`, decidida em 04/10). O anunciante é um processo a mais no container `edgegateway`: o binário Go `ssdp-announcer` (`infra/edgegateway/ssdp/`), que o `entrypoint.sh` só sobe com `SSDP_ENABLED=true`. Quem liga é o override `docker-compose.ssdp.yml`, que põe a borda em `network_mode: host` (variante `host`, com o tv3ws em `127.0.0.1:44652/44653`). Pelo morre-inteiro, decidido pelo Luís em 09/10, a falha do anúncio derruba a borda inteira. O `/manifest` continua no tv3ws, atrás da borda, e o tv3ws da bridge não anuncia (`SSDP_ENABLED: "false"` no compose). A descoberta só é suportada em Linux nativo com Docker Engine (decisão do Joel, informada pelo Luís em 04/10; decisão do projeto, não da norma). Nesse ambiente, a descoberta por outro aparelho foi validada em 09/10, primeiro com a opção B e depois com a opção A (um notebook no mesmo Wi-Fi, testes 40 a 43). Ver [`docs/ssdp-verificacao.md`](./docs/ssdp-verificacao.md).
 
 **Canais internos.** A comunicação interna não é só por MQTT, ao contrário do que esta seção dizia antes (o código desmente):
 
 - sinalização e eventos passam pelo MQTT;
-- o AoP e o tv3ws acessam o Redis diretamente;
+- o AoP e o tv3ws acessam o Redis diretamente, e a borda também: lê o que a decisão de credencial precisa e, desde a reunião de 05/10, escreve as chaves da C.6.8 (`bind-context:*`). Quem escreve cada família está em [`docs/modelo-redis.md`](./docs/modelo-redis.md);
 - o AoP busca as aplicações e o vídeo do bcast por proxy HTTP, no `bcastEntryPackageUrl` anunciado (`aop/src/server.js`).
 
-Os gateways não validam consentimento, e o plugin C do broker não faz controle de acesso a tópicos. A validação de credenciais é feita na borda (decisão de 28/09), pelo plugin `tv30-auth`.
+Os gateways não validam consentimento, e o plugin C do broker não faz controle de acesso a tópicos. A validação de credenciais é feita só na borda (decisão de 28/09), pelo plugin `tv30-auth`. Na reunião de 05/10, o Joel decidiu tirar do tv3ws a validação que ainda restava nele (D-0510-1) e pôr na borda a C.6.8 (D-0510-2) e a C.6.7.8/C.6.7.9 (D-0510-3); o plugin responde essas APIs sem repassá-las ao tv3ws. São decisões de desenho do testbed: a norma define as APIs, não qual processo as responde.
 
 ---
 
@@ -69,7 +70,7 @@ Publicadores e consumidores conferidos nas chamadas `publish`/`subscribe` do có
 |--------|--------------|---------------|-------------|
 | `aop/currentUser` | AoP; tv3ws (C.6.14.4) | AoP, tv3ws | Usuário corrente |
 | `aop/currentService` | AoP | tv3ws, AoP | Serviço DTV selecionado |
-| `aop/users` | AoP | tv3ws, AoP | Gatilho de re-sync `userData.json` → Redis |
+| `aop/users` | — (nenhum publicador no código) | AoP (assinatura que sobrou) | Era o gatilho de re-sync `userData.json` → Redis no tv3ws, que saiu na rodada de 05/10 (D-0510-5) |
 | `aop/display/layers/*` | AoP; tv3ws (popups de autorização) | front do AoP | Camadas de renderização (vídeo, GUI, gráficos, popup) |
 | `aop/:serviceId/currentApp` | — (nenhum publicador no código destes módulos) | tv3ws | App ativo no serviço |
 | `aop/services` | — (nenhum publicador no código destes módulos) | tv3ws | Lista de serviços |
@@ -95,7 +96,7 @@ Seis containers contínuos. Com o override `docker-compose.ssdp.yml`, a borda ro
 |-----------|----------|-----------|
 | `redis` | 6379 (sem senha); commander em porta dinâmica, com login | Estado de sessão, usuários e credenciais + redis-commander embutido (debug) |
 | `mqtt-broker` (serviço `mosquitto`) | 1883, `${MQTT_WS_PORT:-9001}` | MQTT broker + plugin C de validação de esquema |
-| `edgegateway` | 44642, 44643; docs (8085) em porta dinâmica. Com o override `docker-compose.ssdp.yml`: rede do host, com 44642, 44643 e 8085 direto no host e UDP 1900 | Borda única: KrakenD interno e externo + Swagger UI; plugin `tv30-auth`; morre-inteiro. Com o override (só Linux nativo), também o anunciante SSDP (`ssdp-announcer`), e a falha dele derruba a borda inteira |
+| `edgegateway` | 44642, 44643; docs (8085) em porta dinâmica. Com o override `docker-compose.ssdp.yml`: rede do host, com 44642, 44643 e 8085 direto no host e UDP 1900 | Borda única: KrakenD interno e externo + Swagger UI; plugin `tv30-auth`, que valida as credenciais e responde a C.6.8 e a C.6.7.8/C.6.7.9; morre-inteiro. Com o override (só Linux nativo), também o anunciante SSDP (`ssdp-announcer`), e a falha dele derruba a borda inteira |
 | `tv3ws` | 45000–45199 (WebSockets) | TV 3.0 WebServices. 44652/44653 só na `ginga_net`; com o override, publicadas também em `127.0.0.1`, para a borda |
 | `aop` | 8080 | Interface do receptor |
 | `bcast` | `${BCAST_PORT:-8081}` | Broadcaster + módulos de apps de serviço |
@@ -111,11 +112,11 @@ Seguindo o padrão `webmedia` em `bcast/src/modules/<nome>/`: `index.ts` (implem
 | Tecnologia | Uso |
 |------------|-----|
 | Docker + Compose | Orquestração full-container |
-| Redis (ioredis) | Estado de sessão, usuários e credenciais (tv3ws, AoP) |
+| Redis (ioredis) | Estado de sessão, usuários e credenciais (tv3ws, AoP; a borda usa um cliente RESP próprio, em Go) |
 | Node.js 23+ | AoP, tv3ws, bcast |
 | TypeScript | tv3ws, bcast |
 | MQTT (Mosquitto) | Sinalização e eventos entre serviços |
-| KrakenD + plugin Go | Borda única (`edgegateway`) com validação de credenciais (`tv30-auth`) |
+| KrakenD + plugin Go | Borda única (`edgegateway`) com validação de credenciais (`tv30-auth`), que também responde a C.6.8 e a C.6.7.8/C.6.7.9 |
 | Mosquitto plugin C | Validação de esquema das mensagens publicadas |
 | FFmpeg | Streaming de vídeo no broadcaster |
 
@@ -144,9 +145,9 @@ Clone anterior ao renome `ccws` → `tv3ws`: `git submodule sync --recursive && 
 | Modo único = Linux + Docker full-container | Simplificação — um único caminho de deploy (desenvolvimento: infra em containers + módulo no host) |
 | Monorepo com submodules | Cada componente tem ciclo de vida independente |
 | MQTT para sinalização e eventos | Desacoplamento — não é o único canal interno (ver *Canais internos*) |
-| Estado de usuários em Redis | Consistência entre serviços; `userData.json` é carga inicial e re-sync |
+| Estado de usuários em Redis | Consistência entre serviços; `userData.json` é só a carga inicial, no banco vazio. Desde a rodada da reunião de 05/10 (D-0510-5, aplicando o P5), a plataforma (AoP) é a única dona dos perfis, e o tv3ws só os lê |
 | Apps de serviço como módulos do bcast | Único container `bcast` serve tudo (sem duplicação MQTT/CORS) |
-| Borda única com duas superfícies | Interna 44642 (fixa C.3.4) e externa 44643; credenciais validadas na borda (decisão de 28/09: o tv3ws só implementaria as APIs). Estado corrente: o tv3ws ainda responde 107 a credencial inválida e 106 ao não local na superfície HTTP, nos dois modos; limpeza pendente |
+| Borda única com duas superfícies | Interna 44642 (fixa C.3.4) e externa 44643; credenciais validadas na borda (decisão de 28/09). Na reunião de 05/10, o Joel decidiu que o tv3ws fica "anônimo", sem validar credencial (D-0510-1), e que a borda responde a C.6.8 (D-0510-2) e a C.6.7.8/C.6.7.9 (D-0510-3); as três foram feitas. Sem TLS na borda, o 106 por protocolo ao não local (C.4.1.6) ficou sem quem o aplique (lacuna L3) |
 | A borda anuncia o SSDP, em rede do host (L6, opção A; decidido pelo Luís em 09/10) | O multicast do anúncio não saiu da bridge do Docker para a rede (medido no WSL2 em 02/10), então quem anuncia tem de estar na rede do host. Com o override `docker-compose.ssdp.yml`, a borda vai para a rede do host e alcança o tv3ws por `127.0.0.1`; uma falha do SSDP derruba a borda inteira (morre-inteiro, decidido pelo Luís em 09/10). Substituiu a opção B (decidida em 04/10, informado pelo Luís): um container próprio para o anúncio, `tv3ws-ssdp`, com a borda e o tv3ws na `ginga_net`, em que a falha do SSDP não derrubava as APIs. A C.3.4 não diz onde o anunciante roda; é decisão do projeto |
 
 ---

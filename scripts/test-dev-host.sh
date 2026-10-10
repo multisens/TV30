@@ -1,8 +1,9 @@
 #!/bin/bash
-# Teste do cenario de desenvolvimento (reunioes 21/09 e 28/09): sobe o MINIMO
-# de containers e roda um modulo REAL (tv3ws, aop ou bcast) fora do Docker,
-# com `npm ci && npm run dev`, verificando a comunicacao host <-> rede do
-# Docker em tres combinacoes:
+# Teste do cenario de desenvolvimento (reunioes 21/09 e 28/09; combinacoes
+# 4 e 5 pedidas na reuniao de 05/10 com o Joel): sobe o MINIMO de containers
+# e roda modulos REAIS (tv3ws, aop, bcast ou o componente de exemplo do
+# template) fora do Docker, com `npm ci && npm run dev`, verificando a
+# comunicacao host <-> rede do Docker em cinco combinacoes:
 #
 #   1  tv3ws no host | containers: redis, mosquitto, edgegateway (variante
 #      windows: backends em host.docker.internal:44654/44655), aop, bcast;
@@ -11,6 +12,12 @@
 #      linux), tv3ws, bcast (BCAST_HOSTNAME=localhost, BCAST_PORT=8081)
 #   3  bcast no host | containers: redis, mosquitto, edgegateway (variante
 #      linux), tv3ws, aop (alcanca o host por host.docker.internal)
+#   4  tv3ws, aop e bcast no host AO MESMO TEMPO | containers: redis,
+#      mosquitto, edgegateway (variante windows); bcast com
+#      BCAST_HOSTNAME=127.0.0.1 (o aop que o alcanca tambem esta no host);
+#      como no 1, o tv3ws do host e o unico anunciante SSDP
+#   5  componente novo no host (exemplo de templates/componente) | containers:
+#      redis e mosquitto; a borda fica PARADA durante o cenario
 #
 # Todo cenario verifica host->Redis (PING) e host->MQTT (pub/sub) a partir do
 # MESMO ambiente em que o modulo roda, os logs de conexao do proprio modulo e
@@ -23,15 +30,25 @@
 #   3  bcast no host publicando a sinalizacao (bcastEntryPackageUrl com
 #      host.docker.internal) e o aop em container alcancando o bcast do host
 #      pelo proxy HTTP; depois de matar o processo do host o proxy falha
+#   4  host->Redis/MQTT de cada um dos tres; borda -> tv3ws do host (como no
+#      1); BAMT do bcast do host chegando ao aop do host por MQTT; aop do host
+#      -> bcast do host pelo proxy HTTP; provas negativas matando o bcast
+#      (o proxy falha) e o tv3ws (a borda para de responder)
+#   5  o componente fala DIRETO com o Redis e o broker por 127.0.0.1, sem a
+#      borda: /health na 8090, ping por MQTT que volta com o valor que o teste
+#      acabou de gravar no Redis; depois de matar o processo do host, o ping
+#      fica sem resposta (o exemplo nao traz a lib mqtt, entao o host->MQTT
+#      desse cenario e o pub/sub do proprio componente)
 #
-# Ao fim de cada cenario o processo do host morre. No fim de tudo a stack
+# Ao fim de cada cenario os processos do host morrem. No fim de tudo a stack
 # padrao (EDGE_VARIANT=linux) e restaurada se estava de pe antes do teste, ou
 # derrubada (docker compose down) se nao estava.
 #
 # A borda roda SEMPRE na bridge durante o teste (COMPOSE_FILE fixo em
 # docker-compose.yml), mesmo que o .env ligue o docker-compose.ssdp.yml (borda
-# em rede do host, anunciando o SSDP; L6 = opcao A, 09/10). A restauracao
-# volta a configuracao do .env, inclusive esse override.
+# em rede do host, anunciando o SSDP; L6 = opcao A, 09/10); no cenario 5 ela
+# fica parada. A restauracao volta a configuracao do .env, inclusive esse
+# override.
 #
 # "Host" = processo na rede do host. Duas formas (DEVHOST_MODO):
 #   node    node/npm do PATH, numa copia temporaria do modulo (sem
@@ -41,8 +58,14 @@
 #           host, para maquinas sem node (ex.: WSL deste projeto)
 #   auto    node se houver node Linux no PATH, senao docker (padrao)
 #
+# Portas no host: 44654/44655 e 45000-45199 (tv3ws, cenarios 1 e 4), 8080
+# (aop, 2 e 4), 8081 (bcast, 3 e 4) e 8090 (componente, 5). Nenhuma colide
+# com a infra (6379, 1883, 9001, 44642/44643); 8080, 8081 e 45000-45199 sao
+# as mesmas do container do modulo, que o cenario para antes. O script
+# confere 44654, 8080, 8081 e 8090 livres antes de subir o processo.
+#
 # Uso: ./scripts/test-dev-host.sh [--cenario N[,N...]] [--build] [-h]
-#   --cenario  1, 2 e/ou 3 (padrao: todos, em ordem)
+#   --cenario  1, 2, 3, 4 e/ou 5 (padrao: todos, em ordem)
 #   --build    repassa --build ao docker compose up (ex.: borda com plugin novo)
 #
 # Variaveis opcionais:
@@ -66,7 +89,7 @@ ROOT=$(pwd)
 
 uso() { sed -n '2,/^set -u/p' "$0" | sed -e '$d' -e 's/^# \{0,1\}//'; }
 
-CENARIOS="1 2 3"
+CENARIOS="1 2 3 4 5"
 BUILD=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -80,7 +103,7 @@ while [ $# -gt 0 ]; do
 done
 CENARIOS=${CENARIOS//,/ }
 for n in $CENARIOS; do
-  case "$n" in 1|2|3) ;; *) echo "cenario invalido: $n (use 1, 2 ou 3)"; exit 2 ;; esac
+  case "$n" in 1|2|3|4|5) ;; *) echo "cenario invalido: $n (use 1, 2, 3, 4 ou 5)"; exit 2 ;; esac
 done
 
 case "$(uname -s)" in
@@ -214,16 +237,40 @@ subir() { # subir <EDGE_VARIANT> <servicos...> (variaveis extras: prefixo VAR=va
   fi
 }
 
-parar() { # parar <servico>: o modulo do host nao pode coexistir com o container
-  # (mesma porta e mesmo clientId MQTT fixo: tv3ws-client, aop-core, bcast_svc)
+parar() { # parar <servico> [motivo]: o modulo do host nao pode coexistir com o
+  # container (mesma porta e mesmo clientId MQTT fixo: tv3ws-client, aop-core,
+  # bcast_svc); o motivo muda so a mensagem (ex.: a borda no cenario 5)
   compose stop "$1" >>"$LOGDIR/compose.log" 2>&1 || true
   if container_rodando "$1"; then falha "container $1 continua rodando"; return 1; fi
-  ok "container $1 parado (o modulo roda so no host)"
+  ok "container $1 parado (${2:-o modulo roda so no host})"
 }
 
 # ------------------------------------------------------ processo do host ---
 
+# HOST_* descrevem o modulo CORRENTE, aquele sobre o qual host_vivo,
+# host_logs, host_node e host_stop agem. Mais de um modulo pode estar no host
+# ao mesmo tempo (cenario 4): o registro REG_* guarda o estado de cada um,
+# host_usar torna outro corrente e host_stop_todos encerra todos.
 HOST_MOD=""; HOST_PID=""; HOST_DIR=""; HOST_CTR=""; HOST_LOG=""
+declare -A REG_PID=() REG_DIR=() REG_CTR=() REG_LOG=()
+HOST_LISTA=""   # modulos de pe no host, na ordem em que subiram
+
+# pasta do modulo, relativa a raiz (o componente do cenario 5 e o exemplo do
+# template; os outros modulos tem pasta com o proprio nome)
+pasta_modulo() { case "$1" in componente) printf 'templates/componente' ;; *) printf '%s' "$1" ;; esac; }
+
+# guarda o estado do modulo corrente no registro
+host_registrar() {
+  REG_PID[$HOST_MOD]=$HOST_PID; REG_DIR[$HOST_MOD]=$HOST_DIR
+  REG_CTR[$HOST_MOD]=$HOST_CTR; REG_LOG[$HOST_MOD]=$HOST_LOG
+  case " $HOST_LISTA " in *" $HOST_MOD "*) ;; *) HOST_LISTA="${HOST_LISTA:+$HOST_LISTA }$HOST_MOD" ;; esac
+}
+
+host_usar() { # host_usar <modulo>: torna corrente um modulo que esta no host
+  case " $HOST_LISTA " in *" $1 "*) ;; *) falha "$1 nao esta rodando no host"; return 1 ;; esac
+  HOST_MOD=$1; HOST_PID=${REG_PID[$1]}; HOST_DIR=${REG_DIR[$1]}
+  HOST_CTR=${REG_CTR[$1]}; HOST_LOG=${REG_LOG[$1]}
+}
 
 copiar_modulo() { # copiar_modulo <origem> <destino>
   local f nome
@@ -243,14 +290,17 @@ COPIA_SH='mkdir -p /app && cd /src && for f in * .[!.]* ..?*; do [ -e "$f" ] || 
 # Diretorio de user-files visto pelo modulo do host
 dir_userfiles() { if [ "$MODO" = node ]; then printf '%s' "$ROOT/user-files"; else printf '/user-files'; fi; }
 
-host_start() { # host_start <modulo> VAR=valor...
-  local mod=$1 kv; shift
-  HOST_MOD=$mod
+host_start() { # host_start <modulo> VAR=valor...: o novo modulo vira o corrente
+  local mod=$1 kv src; shift
+  src=$(pasta_modulo "$mod")
+  case " $HOST_LISTA " in *" $mod "*) falha "$mod ja esta rodando no host"; return 1 ;; esac
+  HOST_MOD=$mod; HOST_PID=""; HOST_DIR=""; HOST_CTR=""
   HOST_LOG="$LOGDIR/cenario$CEN-$mod.log"
-  echo "  ...   $mod no host (modo $MODO): $(printf '%s ' "$@" | sed -E 's/(JWT_SECRET=)[^ ]*/\1***/')npm run dev"
+  echo "  ...   $mod ($src) no host (modo $MODO): $(printf '%s ' "$@" | sed -E 's/(JWT_SECRET=)[^ ]*/\1***/')npm run dev"
   if [ "$MODO" = node ]; then
     HOST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/tv30-devhost-$mod.XXXXXX")
-    copiar_modulo "$ROOT/$mod" "$HOST_DIR"
+    host_registrar   # registrado ja aqui: host_stop_todos limpa a copia se o npm ci falhar
+    copiar_modulo "$ROOT/$src" "$HOST_DIR"
     echo "  ...   npm ci em $HOST_DIR"
     if ! ( cd "$HOST_DIR" && npm ci --include=dev --no-audit --no-fund ) >"$HOST_LOG" 2>&1; then
       falha "npm ci ($mod) — ver $HOST_LOG"; tail -n 20 "$HOST_LOG" | sed 's/^/    | /'
@@ -258,8 +308,10 @@ host_start() { # host_start <modulo> VAR=valor...
     fi
     ( cd "$HOST_DIR" && exec env "$@" npm run dev ) >>"$HOST_LOG" 2>&1 &
     HOST_PID=$!
+    host_registrar
   else
     HOST_CTR="tv30-devhost-$mod"
+    host_registrar
     docker rm -f "$HOST_CTR" >/dev/null 2>&1
     local envs=()
     for kv in "$@"; do envs+=(-e "$kv"); done
@@ -268,7 +320,7 @@ host_start() { # host_start <modulo> VAR=valor...
       if [ -n "${!kv:-}" ]; then envs+=(-e "$kv"); fi
     done
     if ! docker run -d --init --name "$HOST_CTR" --network host \
-           -v "$ROOT/$mod:/src:ro" -v "$ROOT/user-files:/user-files" \
+           -v "$ROOT/$src:/src:ro" -v "$ROOT/user-files:/user-files" \
            -v tv30-devhost-npm:/root/.npm \
            "${envs[@]}" "$IMAGEM" \
            sh -c "$COPIA_SH; cd /app && npm ci --include=dev --no-audit --no-fund && exec npm run dev" \
@@ -321,7 +373,20 @@ host_stop() {
     docker rm -f "$HOST_CTR" >/dev/null 2>&1
   fi
   echo "  ...   $HOST_MOD do host encerrado (log: $HOST_LOG)"
+  # sai do registro
+  local m resto=""
+  for m in $HOST_LISTA; do [ "$m" = "$HOST_MOD" ] || resto="${resto:+$resto }$m"; done
+  HOST_LISTA=$resto
+  unset "REG_PID[$HOST_MOD]" "REG_DIR[$HOST_MOD]" "REG_CTR[$HOST_MOD]" "REG_LOG[$HOST_MOD]"
   HOST_MOD=""; HOST_PID=""; HOST_DIR=""; HOST_CTR=""
+}
+
+# encerra todos os modulos do host, do ultimo que subiu ao primeiro
+host_stop_todos() {
+  local m lista=""
+  for m in $HOST_LISTA; do lista="$m${lista:+ $lista}"; done
+  for m in $lista; do host_usar "$m" && host_stop; done
+  host_stop   # corrente fora do registro (nao deveria haver); no-op se vazio
 }
 
 # espera o modulo do host responder; falha cedo se o processo morrer
@@ -370,12 +435,53 @@ const n=Math.floor(Date.now()/1000);
 const h=b({alg:"HS256",typ:"JWT"}),p=b({iat:n,nbf:n,exp:n+600,iss:process.env.ISS,sub:"tv30-devhost-teste",class:"local-autonomous"});
 process.stdout.write(h+"."+p+"."+c.createHmac("sha256",process.env.SEC).update(h+"."+p).digest("base64url"));'
 
-checar_redis_mqtt() {
+# as duas verificacoes rodam no ambiente do modulo CORRENTE; o rotulo diz de
+# qual (util quando ha mais de um no host, cenario 4)
+checar_redis_host() {
   local r
-  if r=$(host_node "$JS_REDIS" 2>&1); then ok "host -> Redis 127.0.0.1:6379 (PING: $r)"
-  else falha "host -> Redis 127.0.0.1:6379 (PING: $(recorte "$r"))"; fi
-  if r=$(host_node "$JS_MQTT" 2>&1); then ok "host -> MQTT 127.0.0.1:1883 ($r)"
-  else falha "host -> MQTT 127.0.0.1:1883 ($(recorte "$r"))"; fi
+  if r=$(host_node "$JS_REDIS" 2>&1); then ok "host ($HOST_MOD) -> Redis 127.0.0.1:6379 (PING: $r)"
+  else falha "host ($HOST_MOD) -> Redis 127.0.0.1:6379 (PING: $(recorte "$r"))"; fi
+}
+# exige a lib mqtt do modulo (tv3ws, aop e bcast tem; o componente nao)
+checar_mqtt_host() {
+  local r
+  if r=$(host_node "$JS_MQTT" 2>&1); then ok "host ($HOST_MOD) -> MQTT 127.0.0.1:1883 ($r)"
+  else falha "host ($HOST_MOD) -> MQTT 127.0.0.1:1883 ($(recorte "$r"))"; fi
+}
+checar_redis_mqtt() { checar_redis_host; checar_mqtt_host; }
+
+# borda (44642) -> tv3ws no host: /health e GET /tv3/current-service com um
+# accessToken HS256 assinado, no ambiente do tv3ws do host, com o mesmo
+# JWT_SECRET da borda. O tv3ws do host tem de ser o modulo corrente.
+checar_borda_tv3ws_host() {
+  checar_http "borda 44642 /health -> tv3ws no host" \
+    http://127.0.0.1:44642/health '"status":"ok"' 15
+  local tk h
+  tk=$(host_node "$JS_TOKEN" SEC="$JWT_SECRET" ISS="$JWT_ISSUER" 2>/dev/null)
+  if [ -n "$tk" ]; then
+    checar_http "borda 44642 GET /tv3/current-service (Bearer, JWT_SECRET compartilhado) -> tv3ws no host" \
+      http://127.0.0.1:44642/tv3/current-service '"serviceContextId"' 5 -H "Authorization: Bearer $tk"
+    h=$(curl -s -m 5 -o /dev/null -D - -H "Authorization: Bearer $tk" \
+          http://127.0.0.1:44642/tv3/current-service 2>/dev/null | tr -d '\r' | grep -i '^X-TV30-Auth-Warn:' || true)
+    info "X-TV30-Auth-Warn com token valido: ${h:-ausente}"
+  else
+    falha "nao consegui gerar o accessToken de teste no ambiente do modulo"
+  fi
+  h=$(curl -s -m 5 -o /dev/null -D - http://127.0.0.1:44642/tv3/current-service 2>/dev/null \
+        | tr -d '\r' | grep -i '^X-TV30-Auth-Warn:' || true)
+  info "X-TV30-Auth-Warn sem token: ${h:-ausente} (em AUTH_ENFORCE=warn a borda deixa passar)"
+}
+
+# BALD do users-test retida no broker, publicada pelo bcast do host:
+# bcastEntryPackageUrl tem de trazer o host:porta esperado
+checar_bald() { # checar_bald <host:porta>
+  local r
+  r=$(docker exec mqtt-broker mosquitto_sub -h localhost -t "tlm/sls/$SID_USERS_TEST/bald" -C 1 -W 5 2>/dev/null)
+  if printf '%s' "$r" | grep -q -F -e "$1"; then
+    ok "sinalizacao do bcast do host no broker (bcastEntryPackageUrl em $1)"
+  else
+    falha "sinalizacao do bcast do host no broker — esperado $1, lido: $(recorte "$r")"
+  fi
 }
 
 # Abre o app users-test do bcast pelo fluxo real do aop: selecao no catalogo
@@ -388,6 +494,39 @@ abrir_users_test() {
   resposta "http://127.0.0.1:8080/btpapp/fullscr" >/dev/null
 }
 fechar_users_test() { resposta "http://127.0.0.1:8080/btpapp/appcat" >/dev/null; }
+
+# Componente do cenario 5 (exemplo de templates/componente/index.js): nome
+# proprio deste teste, para que um container do template de pe (meu-componente)
+# nao responda no lugar do processo do host. Topico e chave saem do nome,
+# como no index.js.
+COMP_NOME="devhost-componente-$$"
+COMP_TOPICO="tv30/$COMP_NOME/exemplo"
+COMP_CHAVE="tv30:$COMP_NOME:exemplo"
+COMP_PORTA=8090
+COMP_SUJO=""   # 1 quando a chave de teste pode ter ficado no Redis
+
+# ping_componente <valor> <mensagem> <espera_s>: grava <valor> na chave do
+# exemplo, publica <mensagem> em <topico>/ping e ecoa o pong recebido (vazio
+# se nenhum em <espera_s>). Cliente de teste no container do broker, como no
+# cenario 3 e em scripts/test-template.sh; o componente e que esta no host.
+# Chamado em $(...): quem chama marca COMP_SUJO (subshell nao altera o pai).
+ping_componente() {
+  local val=$1 msg=$2 w=$3 out="$LOGDIR/pong-cenario$CEN" bg
+  docker exec redis redis-cli SET "$COMP_CHAVE" "$val" >/dev/null 2>&1
+  : >"$out"
+  docker exec mqtt-broker mosquitto_sub -h localhost -C 1 -W "$w" -t "$COMP_TOPICO/pong" >"$out" 2>/dev/null &
+  bg=$!
+  sleep 1
+  docker exec mqtt-broker mosquitto_pub -h localhost -t "$COMP_TOPICO/ping" -m "$msg" >/dev/null 2>&1
+  wait "$bg" 2>/dev/null
+  cat "$out"
+}
+
+limpar_componente() {
+  [ -n "$COMP_SUJO" ] || return 0
+  docker exec redis redis-cli DEL "$COMP_CHAVE" >/dev/null 2>&1 && COMP_SUJO=""
+  return 0
+}
 
 # ------------------------------------------------------------- cenarios ---
 
@@ -405,25 +544,10 @@ cenario_1() {
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || { host_stop; return; }
   checar_redis_mqtt
-  checar_log "tv3ws do host conectou no Redis do container" '\[Redis\] Connected'
+  checar_log "tv3ws do host conectou no Redis do container" '\[redis\] pronto em 127\.0\.0\.1:6379'
   checar_log "tv3ws do host conectou no broker do container" 'Connected to MQTT broker'
 
-  checar_http "borda 44642 /health -> tv3ws no host" \
-    http://127.0.0.1:44642/health '"status":"ok"' 15
-  local tk h
-  tk=$(host_node "$JS_TOKEN" SEC="$JWT_SECRET" ISS="$JWT_ISSUER" 2>/dev/null)
-  if [ -n "$tk" ]; then
-    checar_http "borda 44642 GET /tv3/current-service (Bearer, JWT_SECRET compartilhado) -> tv3ws no host" \
-      http://127.0.0.1:44642/tv3/current-service '"serviceContextId"' 5 -H "Authorization: Bearer $tk"
-    h=$(curl -s -m 5 -o /dev/null -D - -H "Authorization: Bearer $tk" \
-          http://127.0.0.1:44642/tv3/current-service 2>/dev/null | tr -d '\r' | grep -i '^X-TV30-Auth-Warn:' || true)
-    info "X-TV30-Auth-Warn com token valido: ${h:-ausente}"
-  else
-    falha "nao consegui gerar o accessToken de teste no ambiente do modulo"
-  fi
-  h=$(curl -s -m 5 -o /dev/null -D - http://127.0.0.1:44642/tv3/current-service 2>/dev/null \
-        | tr -d '\r' | grep -i '^X-TV30-Auth-Warn:' || true)
-  info "X-TV30-Auth-Warn sem token: ${h:-ausente} (em AUTH_ENFORCE=warn a borda deixa passar)"
+  checar_borda_tv3ws_host
 
   host_stop
   checar_http_nao "sem o tv3ws do host a borda para de responder /health (resposta vinha do host)" \
@@ -473,13 +597,7 @@ cenario_3() {
     http://127.0.0.1:8081/users-test 'Trocar Usu' || { host_stop; return; }
   checar_redis_mqtt
   checar_log "bcast do host conectou no broker do container" 'MQTT client connected'
-  local r
-  r=$(docker exec mqtt-broker mosquitto_sub -h localhost -t "tlm/sls/$SID_USERS_TEST/bald" -C 1 -W 5 2>/dev/null)
-  if printf '%s' "$r" | grep -q 'host.docker.internal:8081'; then
-    ok "sinalizacao do bcast do host no broker (bcastEntryPackageUrl em host.docker.internal:8081)"
-  else
-    falha "sinalizacao do bcast do host no broker — lido: $(recorte "$r")"
-  fi
+  checar_bald host.docker.internal:8081
   checar_http "aop em container recebeu o BAMT do bcast no host (MQTT)" \
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
   abrir_users_test
@@ -491,13 +609,130 @@ cenario_3() {
   fechar_users_test
 }
 
+cenario_4() {
+  CEN=4
+  titulo "CENARIO 4 — tv3ws, aop e bcast no host | containers: infra (borda windows)"
+  parar tv3ws || return
+  parar aop || return
+  parar bcast || return
+  subir windows $INFRA || return
+  local p ud
+  for p in 44654 8080 8081; do
+    porta_livre "$p" || { falha "porta $p ja ocupada no host"; return; }
+  done
+  ud=$(dir_userfiles)
+
+  # tv3ws: as mesmas variaveis do cenario 1 (a borda windows procura a 44654)
+  host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
+    HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
+    USER_DATA_FILE="$ud/userData.json" USER_THUMBS="$ud/thumbs" \
+    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 LOG_LEVEL=INFO || return
+  esperar_modulo "tv3ws no host respondendo em 44654/health" \
+    http://127.0.0.1:44654/health '"status":"ok"' || return
+
+  # bcast antes do aop: a BALD retida no broker ja sai com o endereco do host.
+  # Quem segue o bcastEntryPackageUrl e o aop, tambem no host: 127.0.0.1:8081
+  # (a porta do proprio processo; 127.0.0.1 e nao localhost para nao depender
+  # da resolucao IPv6)
+  host_start bcast PORT=8081 MQTT_HOST=127.0.0.1 BCAST_HOSTNAME=127.0.0.1 \
+    BSID=tv30-default WEBMEDIA_SID=urn:tv30:service:webmedia \
+    UFF_SID=urn:tv30:service:uff EDUPLAY_SID=urn:tv30:service:eduplay || return
+  esperar_modulo "bcast no host servindo 8081" \
+    http://127.0.0.1:8081/users-test 'Trocar Usu' || return
+
+  host_start aop PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$MQTT_WS_PORT_CFG" \
+    USER_DATA_PATH="$ud" REDIS_HOST=127.0.0.1 REDIS_PORT=6379 || return
+  esperar_modulo "aop no host servindo 8080" \
+    http://127.0.0.1:8080/appcat 'HTTP_STATUS=200' || return
+  info "no host ao mesmo tempo: $HOST_LISTA"
+
+  # host -> Redis/MQTT do ambiente de CADA modulo, e os logs de conexao
+  host_usar tv3ws || return
+  checar_redis_mqtt
+  checar_log "tv3ws do host conectou no Redis do container" '\[redis\] pronto em 127\.0\.0\.1:6379'
+  checar_log "tv3ws do host conectou no broker do container" 'Connected to MQTT broker'
+  host_usar bcast || return
+  checar_redis_mqtt
+  checar_log "bcast do host conectou no broker do container" 'MQTT client connected'
+  host_usar aop || return
+  checar_redis_mqtt
+  checar_log "aop do host leu os perfis no Redis do container" 'Loaded [0-9]+ users from Redis'
+  checar_log "aop do host conectou no broker do container" 'Connected to MQTT broker'
+
+  # borda (container) -> tv3ws do host
+  host_usar tv3ws || return
+  checar_borda_tv3ws_host
+
+  # bcast do host -> broker -> aop do host, e aop do host -> bcast do host
+  checar_bald 127.0.0.1:8081
+  checar_http "aop do host recebeu o BAMT do bcast do host (MQTT)" \
+    http://127.0.0.1:8080/appcat 'Trocar Usu' 15
+  abrir_users_test
+  checar_http "aop do host -> bcast do host (proxy HTTP /graphicsAppProxy)" \
+    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10
+
+  # provas negativas: cada resposta vinha do processo do host
+  host_usar bcast && host_stop
+  checar_http_nao "sem o bcast do host o proxy do aop do host falha (resposta vinha do bcast do host)" \
+    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 5
+  fechar_users_test
+  host_usar tv3ws && host_stop
+  checar_http_nao "sem o tv3ws do host a borda para de responder /health (resposta vinha do host)" \
+    http://127.0.0.1:44642/health '"status":"ok"' 10
+  host_usar aop && host_stop
+}
+
+cenario_5() {
+  CEN=5
+  titulo "CENARIO 5 — componente novo no host (templates/componente) | containers: redis, mosquitto (borda parada)"
+  subir linux redis mosquitto || return
+  # Prova de que o caminho nao passa pela borda: ela fica parada durante o
+  # cenario (outro cenario ou a restauracao a traz de volta)
+  parar edgegateway "a borda fica fora do caminho: o componente fala direto com Redis e broker" || return
+  porta_livre "$COMP_PORTA" || {
+    falha "porta $COMP_PORTA ja ocupada no host (container meu-componente do template de pe?)"; return; }
+  host_start componente COMPONENTE_NOME="$COMP_NOME" MQTT_HOST=127.0.0.1 MQTT_PORT=1883 \
+    REDIS_HOST=127.0.0.1 REDIS_PORT=6379 PORT="$COMP_PORTA" || return
+  esperar_modulo "componente no host respondendo em $COMP_PORTA/health (so abre com Redis e broker conectados)" \
+    "http://127.0.0.1:$COMP_PORTA/health" '"status":"ok"' || return
+  checar_redis_host
+  checar_log "componente do host falou com o Redis do container por 127.0.0.1" \
+    '\['"$COMP_NOME"'\] redis 127\.0\.0\.1:6379 PING -> PONG'
+  checar_log "componente do host conectou no broker do container por 127.0.0.1" \
+    '\['"$COMP_NOME"'\] mqtt 127\.0\.0\.1:1883 conectado'
+
+  # ping pelo broker; o componente le a chave no Redis e responde em /pong
+  local i=0 val="" msg="" r=""
+  COMP_SUJO=1
+  while [ "$i" -lt 3 ]; do
+    val="v-$$-$RANDOM"; msg="ping-$$-$RANDOM"
+    r=$(ping_componente "$val" "$msg" 10)
+    if printf '%s' "$r" | grep -q -F -e "\"ping\":\"$msg\"" \
+       && printf '%s' "$r" | grep -q -F -e "\"valor\":\"$val\""; then break; fi
+    i=$((i + 1))
+  done
+  if [ "$i" -lt 3 ]; then
+    ok "ping em $COMP_TOPICO/ping voltou em /pong com o valor gravado agora no Redis (pub/sub e leitura do componente)"
+  else
+    falha "ping/pong do componente — esperado ping=$msg e valor=$val, recebido: $(recorte "$r")"
+  fi
+  checar_log "o proprio componente do host registrou o ping respondido" '\['"$COMP_NOME"'\] ping .* -> pong'
+
+  host_stop
+  r=$(ping_componente "v-$$-fim" "ping-$$-fim" 5)
+  if [ -z "$r" ]; then ok "sem o componente do host o ping fica sem pong (a resposta vinha do host)"
+  else falha "pong recebido com o componente do host encerrado: $(recorte "$r")"; fi
+  limpar_componente
+}
+
 # ----------------------------------------------------------- restauracao ---
 
 RESTAURADO=""
 restaurar() {
   [ -z "$RESTAURADO" ] || return 0
   RESTAURADO=1
-  host_stop
+  host_stop_todos
+  limpar_componente   # chave de teste do cenario 5, se ele foi interrompido
   CEN="-"
   if [ -n "${ANTES// /}" ]; then
     titulo "restaurando a stack padrao (EDGE_VARIANT=linux; COMPOSE_FILE do .env)"
@@ -522,7 +757,7 @@ echo "logs: $LOGDIR"
 
 for n in $CENARIOS; do
   "cenario_$n"
-  host_stop
+  host_stop_todos
 done
 
 restaurar

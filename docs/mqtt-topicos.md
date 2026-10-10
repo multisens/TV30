@@ -5,7 +5,7 @@ nav_order: 7
 
 # Tópicos MQTT
 
-O Mosquitto leva a **sinalização e os eventos** entre os serviços. Não é o único canal interno: o AoP e o tv3ws leem e escrevem no Redis diretamente, e o AoP faz proxy HTTP direto ao bcast (ver [Arquitetura]({{ site.baseurl }}/arquitetura)). O cliente no navegador acessa o broker via WebSocket na porta `MQTT_WS_PORT` (padrão 9001; no Windows costuma ser 9003).
+O Mosquitto leva a **sinalização e os eventos** entre os serviços. Não é o único canal interno: o AoP, o tv3ws e a borda leem e escrevem no Redis diretamente, e o AoP faz proxy HTTP direto ao bcast (ver [Arquitetura]({{ site.baseurl }}/arquitetura)). O cliente no navegador acessa o broker via WebSocket na porta `MQTT_WS_PORT` (padrão 9001; no Windows costuma ser 9003).
 
 ---
 
@@ -15,9 +15,9 @@ Publicadores, consumidores e flag de retenção conferidos nas chamadas `publish
 
 | Tópico | Publicado por | Consumido por | Retain | Significado |
 |--------|--------------|---------------|--------|-------------|
-| `aop/currentUser` | AoP; tv3ws (C.6.14.4) | AoP, tv3ws | sim | Id do usuário corrente |
+| `aop/currentUser` | AoP; tv3ws (C.6.14.4) | AoP, tv3ws | sim | Id do usuário corrente. Ao receber, o tv3ws grava `session:current-user`, e o AoP grava o `lastAccess` do perfil (D-0510-5) |
 | `aop/currentService` | AoP | tv3ws, AoP | sim | Id do serviço DTV ativo (`urn:tv30:service:...`) |
-| `aop/users` | AoP | tv3ws, AoP | não | Gatilho de re-sync `userData.json` → Redis |
+| `aop/users` | — (nenhum publicador no código) | AoP, assinatura que sobrou | não | Era o gatilho de re-sync `userData.json` → Redis no tv3ws, que saiu em 05/10; ver abaixo |
 | `aop/display/layers/rxgui` | AoP | front do AoP | não | Camada GUI ativa |
 | `aop/display/layers/video/url` | AoP | front do AoP | não | URL do stream de vídeo |
 | `aop/display/layers/video/size` | AoP | front do AoP | não | Posição e tamanho do vídeo |
@@ -31,15 +31,13 @@ Publicadores, consumidores e flag de retenção conferidos nas chamadas `publish
 
 ---
 
-## Tópico `aop/users` (re-sync)
+## Tópico `aop/users` (fora de uso desde 05/10)
 
-O AoP publica `aop/users` com o caminho de `user-files` quando algo muda o `userData.json`.
+Até a rodada de 05/10, o tv3ws assinava `aop/users` e, a cada mensagem, regravava os perfis a partir do `userData.json` (`syncUsersFromFile`), e o AoP recarregava a lista do Redis. Quem publicaria era o AoP, com o caminho de `user-files` (`notifyUsersChanged`), mas essa função já não tinha chamador no código: a página dizia "publicado por AoP" sem que nada publicasse.
 
-1. O tv3ws recebe a mensagem e roda `syncUsersFromFile` no arquivo.
-2. O tv3ws regrava `users:index` e `user:{id}` no Redis sem apagar o *consent* (`SADD`, não `DEL`).
-3. O AoP recebe a mesma mensagem e recarrega a lista de usuários **direto do Redis** (`loadUserData`, `aop/src/core.js`). Ele não chama mais a API HTTP do tv3ws.
+Na reunião de 05/10, o Joel apontou que os perfis tinham três escritores. A correção (D-0510-5) aplicou o P5, "um dono por família de chave": a plataforma (AoP) é a dona dos perfis, e o tv3ws só os lê. Saíram a função de publicação do AoP e a assinatura do tv3ws, que não sincroniza mais nada a partir do arquivo. O `userData.json` ficou só como carga inicial do Redis (ver [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis)).
 
-**Importante:** o *consent* é **incremental**. `syncUsersFromFile` usa `SADD`, não `DEL` + `SADD`, então o que foi concedido fora do JSON sobrevive à re-sincronização. Esse *consent* é a visibilidade do perfil por serviço, não o consentimento da seção 8.8 da norma.
+Sobraram duas referências sem efeito: o AoP ainda assina o tópico e recarrega a lista quando chega mensagem (`aop/src/core.js`), e o `infra/mqtt-broker/plugin/config/schemas.json` ainda declara o esquema dele.
 
 ---
 
@@ -56,6 +54,6 @@ O plugin não faz controle de acesso a tópicos nem consulta o Redis. O controle
 | Tipo de mensagem | Retain |
 |------------------|--------|
 | Estado atual (`currentUser`, `currentService`) | **sim**, para quem reconecta saber o estado |
-| Eventos pontuais (`aop/users`, pop-ups) | **não**, só para quem está escutando |
+| Eventos pontuais (pop-ups) | **não**, só para quem está escutando |
 | Camadas de display | **não** no código atual: o front que reabre não recebe a última camada |
 | Sinalização do bcast (`tlm/*`) | **sim**, a última versão dos metadados. O bcast publica vazio ao encerrar, para limpar |

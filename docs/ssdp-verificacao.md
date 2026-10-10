@@ -234,6 +234,31 @@ Ambiente:
 
 Uma captura no Linux durante o teste 32 não registrou o M-SEARCH, provavelmente por erro no filtro. Isso não muda o resultado: o receptor respondeu ao celular.
 
+## Medido em 09/10 — opção A (a borda anuncia), no WSL2 e em Linux nativo
+
+**No WSL2**, com a imagem da borda construída localmente e o override `docker-compose.ssdp.yml`:
+
+| # | Teste | Resultado |
+|---|---|---|
+| 33 | Borda em rede do host | `variant=host, ssdp=ligado`; `krakend` nas 44642 e 44643, `httpd` na 8085 e `ssdp-announcer` na UDP 1900, todos direto na VM; o tv3ws publica 44652 e 44653 **só em 127.0.0.1** |
+| 34 | NOTIFY | sai pela `eth0` da VM com TTL 4; o `/manifest` devolve o mesmo host do `LOCATION` |
+| 35 | Cliente no Windows (`vEthernet (WSL)`), 3 buscas | 3 respostas (uma por busca) e 6 com `ssdp:all`, todas com `max-age=1800`; o GET no `LOCATION` deu 200 |
+| 36 | Morre-inteiro | com o `ssdp-announcer` morto (`kill -9`), o entrypoint registrou "processo … morreu — derrubando o container inteiro"; a borda reiniciou (contador de 0 para 1) e voltou anunciando |
+| 37 | Parada | `docker compose stop edgegateway` enviou 2 `ssdp:byebye` (URN e UDN) |
+| 38 | Preflight em re-subida | "44642 em LISTEN pela propria borda em rede do host (re-up, ok)" e "UDP 1900 em uso pelo anunciante da propria borda" |
+| 39 | Regressão | `test-auth.sh` 148/0 com a borda na bridge e 148/0 em rede do host; `test-dev-host.sh` 27/0 |
+
+**Em Linux nativo** (o mesmo Ubuntu dos testes 28 a 32), com as imagens publicadas pelo CI e o `.env` com `COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml`:
+
+| # | Teste | Resultado |
+|---|---|---|
+| 40 | Subida | borda `network=host`, `variant=host, ssdp=ligado`, anunciando pela `wlp2s0` (192.168.2.7); o container antigo `tv3ws-ssdp` foi removido |
+| 41 | **Segundo aparelho: notebook** no mesmo Wi-Fi (192.168.2.5) | **3 respostas de 192.168.2.7 a 3 buscas**, `max-age=1800`; GET no `LOCATION` com 200 e `Server-BaseURL: 192.168.2.7:44642` |
+| 42 | `ssdp:all` do notebook | 147 respostas, do roteador (192.168.2.1), de outro aparelho da casa (192.168.2.6) e do receptor |
+| 43 | Porta direta do tv3ws pela LAN | `http://192.168.2.7:44652/health` **recusada**: a porta continua fechada para a rede (item 8) |
+
+**O que isso mostra:** com a opção A, a descoberta da C.3.4 funciona de ponta a ponta em Linux nativo, a partir de outro aparelho da rede, e a porta direta do tv3ws segue fechada para a LAN. O teste com o celular não foi repetido na opção A; o Luís o dispensou em 09/10, porque o notebook já cumpre o papel de segundo aparelho.
+
 ## L6: as opções avaliadas antes da decisão (decisão do projeto, não da norma)
 
 > **Registro da avaliação de 03/10, anterior às decisões.** A opção escolhida em 04/10 foi a B; em 09/10, o Luís a trocou pela A. Os números de linha citados são do código daquela data. A opção A foi feita como a linha dela previa: anunciante reescrito em Go, variante nova da borda (declarada no `routes.json`; o `generate.js` a gera sem mudança no código dele) e tv3ws publicado em `127.0.0.1`.
@@ -325,7 +350,7 @@ setTimeout(() => {
 - **Plataforma, decidida pelo Joel (informado pelo Luís em 04/10):** a descoberta SSDP só precisa funcionar em **Linux nativo** com Docker Engine. Windows com WSL2 e Docker Desktop ficam fora, como limitação documentada (testes 10 e 13).
 - **L6, re-decidida pelo Luís em 09/10: opção A,** a borda anunciando em rede do host, com o override `docker-compose.ssdp.yml`. Substituiu a opção B (o container `tv3ws-ssdp`, decidida em 04/10, informado pelo Luís). O arranjo está na seção [Arranjo decidido](#arranjo-decidido-a-borda-anuncia-em-rede-do-host); a avaliação anterior às decisões ficou como registro.
 - **Medições da opção A: nenhuma registrada.** Falta refazer, com ela, a subida e os logs, a captura do NOTIFY, a camada 3 com outro aparelho em Linux nativo e as falhas que derrubam a borda (UDP 1900 ocupada, interface inexistente, rede caindo).
-- **Camada 3:** negativa no WSL2 (testes 10 e 13) e **positiva em Linux nativo em 09/10, com a opção B** (testes 30 e 32: notebook e celular no Wi-Fi doméstico encontram o receptor). **Com a opção A, ainda não medida**; o teste vai ser refeito.
+- **Camada 3:** negativa no WSL2 (testes 10 e 13) e **positiva em Linux nativo em 09/10, com a opção B** (testes 30 e 32: notebook e celular no Wi-Fi doméstico encontram o receptor). **Com a opção A, positiva em Linux nativo em 09/10** (testes 40 a 43, com o notebook como segundo aparelho).
 - **Morre-inteiro na borda (decidido pelo Luís em 09/10):** com o override, uma falha do anúncio derruba todas as APIs até o `restart` trazer a borda de volta. Reabre o efeito do C8 de [Decisões pendentes](decisoes-pendentes.md), que a opção B tinha resolvido.
 - **Duplicatas do teste 7:** resolvidas com a opção B. Entre a VM do WSL e o Windows, 1 resposta por M-SEARCH (teste 18); numa LAN com Linux nativo, 3 respostas a 3 buscas (teste 30). A opção A também anuncia e responde por uma interface só (`infra/edgegateway/ssdp/iface.go`), sem medição.
 - **Imagem publicada:** até o push do infra e a publicação pelo CI, a `tv30-edgegateway` do Docker Hub não tem o `ssdp-announcer` nem os `krakend-*.host.json`. Pelo código do `entrypoint.sh` (o antigo também monta o nome do arquivo com `EDGE_VARIANT`), o override com essa imagem derruba a borda no boot, porque o KrakenD não acha a configuração `host`. Até lá, construa a imagem localmente (`docker compose build edgegateway`). A `tv30-tv3ws` publicada já tinha `dist/ssdp-announcer.js` em 09/10 (teste 28); com a opção A, ele não é mais usado.

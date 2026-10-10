@@ -7,6 +7,8 @@ nav_order: 5
 
 O **tv3ws** é a implementação dos **Ginga CC WebServices** da ABNT NBR 25608 (Anexo C) neste testbed. O roteamento fica em `tv3ws/src/app.ts`.
 
+Desde a reunião de 05/10 com o Joel, dois grupos de APIs declarados na borda **não** chegam ao tv3ws: a borda os responde sozinha, no plugin `tv30-auth`. São a C.6.8 (`/tv3/bind-context`, D-0510-2) e a C.6.7.8 e a C.6.7.9 (`/tv3/api-info`, D-0510-3). Eles aparecem na tabela abaixo, marcados "(borda)", porque o cliente os vê na mesma superfície. Qual processo responde cada API é decisão deste testbed; a norma só define as APIs.
+
 O cliente não fala com o tv3ws diretamente. As portas 44652 e 44653 não são publicadas no host, e todo acesso passa pela **borda** (`edgegateway`):
 
 - superfície interna: `http://localhost:44642`, porta fixa da C.3.4;
@@ -21,14 +23,15 @@ O cliente não fala com o tv3ws diretamente. As portas 44652 e 44653 não são p
 - **Rotas.** A tabela única `infra/edgegateway/routes.json` declara método, caminho e superfícies de cada rota. A borda não repassa ao tv3ws um caminho que não esteja declarado.
 - **Credenciais.** Desde a semana de 28/09, quem valida é a borda, com o plugin `tv30-auth` (detalhes em `infra/edgegateway/plugin/README.md`). Ele confere o accessToken, o bind-token e a classe de cliente, conforme a política de cada rota.
   - No modo padrão, `AUTH_ENFORCE=warn`, a borda não bloqueia falha de credencial: registra `[tv30-auth] WARN` e devolve o cabeçalho `X-TV30-Auth-Warn`. Rota não declarada (100) é bloqueada nos dois modos.
-  - Pela decisão de 28/09 (D1), o tv3ws só implementaria as APIs. **Estado corrente:** o tv3ws não exige credencial, mas ainda valida parte dela, nos dois modos. Responde 107 a um `Authorization` presente e inválido (`tv3ws/src/middleware/authorization.ts`) e 106 ao cliente não local que chega por HTTP (`validateClientProtocol` em `tv3ws/src/middleware/basic.ts`), o que acontece, por exemplo, com token `non-local` na 44642. A limpeza está pendente.
+  - **O tv3ws não valida credencial** (D-0510-1, reunião de 05/10 com o Joel). Até ali, ele ainda respondia 107 a um `Authorization` presente e inválido (`src/middleware/authorization.ts`, removido) e 106 ao cliente não local que chegava por HTTP (`validateClientProtocol`, removido de `src/middleware/basic.ts`). Sob `/tv3`, o tv3ws só negocia a versão e emite a credencial (`/tv3/authorize`, `/tv3/token`). O 106 por protocolo da C.4.1.6 ficou sem quem o aplique até a borda ter TLS (lacuna L3); só o `/tv3/token` ainda responde 106 à renovação do não local por HTTP.
 - **Erros.** Seguem o formato C.3.2: status 404 com corpo `{"error": <n>, "description": "..."}`.
+- **Falha do Redis** (D-0510-6, reunião de 05/10 com o Joel). Comando que não obtém resposta em 1,5 s falha (`tv3ws/src/redis-client.ts`), e a API responde 404 `{"error":200}` ("Platform resource unavailable", Tabela C.1), em vez de travar ou de tratar a falha como lista vazia. Os 1,5 s ficam abaixo dos 2 s que a borda espera o tv3ws, então o erro sai do próprio tv3ws. O registro de remote-device só abre a porta do WebSocket depois de gravar o espelho no Redis.
 - **CORS.** Quem aplica é a borda. O tv3ws **não** envia cabeçalhos CORS, para não duplicá-los (`tv3ws/src/middleware/basic.ts`). A borda põe `Access-Control-Allow-Origin: *` em toda resposta, também sem `Origin` na requisição (C.4.1.9.2). O preflight é respondido pelo módulo CORS do KrakenD; o `OPTIONS` sem preflight num caminho declarado recebe 200 com os três cabeçalhos da C.4.1.9.3.
-- **`Accept-Version`.** Opcional (`basic.ts`).
+- **`Accept-Version`.** Opcional (`basic.ts`; nas rotas da borda, `infra/edgegateway/plugin/edge.go`, com as mesmas regras).
   - Sem o cabeçalho, vale a versão 2.0.
   - São aceitas a 2.0 e a 2.1.
   - Valor malformado dá erro 101; versão fora desse conjunto dá erro 100.
-  - Toda resposta traz `API-Version`.
+  - Toda resposta sob `/tv3` traz `API-Version`, menos os erros 100 e 101 da própria negociação no tv3ws, que saem sem ele (divergência da C.3.6.6 registrada na seção D de [`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes)).
 
 ---
 
@@ -43,9 +46,11 @@ A coluna **bind-token** marca as APIs cujo campo "Security requirements" diz que
 | GET | `/tv3/authorize` | C.6.1.2 | |
 | GET | `/tv3/token` | C.6.1.3 | |
 | GET | `/tv3/current-service` | C.6.3.1 | |
-| POST | `/tv3/bind-context` | C.6.8.2 | |
-| GET | `/tv3/bind-context` | C.6.8.3 | o próprio token é o objeto da API |
-| DELETE | `/tv3/bind-context` | C.6.8.4 | |
+| POST | `/tv3/bind-context` | C.6.8.2 (borda) | |
+| GET | `/tv3/bind-context` | C.6.8.3 (borda) | o próprio token é o objeto da API |
+| DELETE | `/tv3/bind-context` | C.6.8.4 (borda) | |
+| GET | `/tv3/api-info/{apiId}` | C.6.7.8 (borda) | |
+| GET | `/tv3/api-info` | C.6.7.9 (borda) | |
 | GET | `/tv3/current-service/apps/{appid}/files` | C.6.4.7 | shall |
 | POST | `/tv3/current-service/users` | C.6.14.1 | shall |
 | POST | `/tv3/{serviceContextId}/users` | C.6.14.1, em variante com `<scid>` do testbed (a norma define a rota com `current-service`; mesmo handler no tv3ws). PENDENTE: a rota fica ou sai | shall (a borda exige; scid fora de `current-service` e da constante dá 108, L2) |
@@ -66,7 +71,8 @@ A coluna **bind-token** marca as APIs cujo campo "Security requirements" diz que
 
 **Notas:**
 
-- As rotas `/manifest` e `bind-context` entram na tabela de rotas na semana de 28/09.
+- As rotas `/manifest` e `bind-context` entram na tabela de rotas na semana de 28/09; as de `api-info`, na rodada de 05/10.
+- **Rotas "(borda)".** O plugin `tv30-auth` as responde depois da mesma decisão de credencial das demais, sem repasse ao tv3ws. A C.6.8 tem o mesmo contrato que o tv3ws implementava até 05/10, com uma diferença: o `POST` só aceita corpo JSON. A C.6.7.8 e a C.6.7.9 listam as 20 APIs implementadas (o campo `api` do `routes.json`, com o id e a versão da Tabela C.2), todas na versão 2.0. Os detalhes e os comportamentos provisórios estão em `infra/edgegateway/plugin/README.md`, seção *APIs respondidas pela borda*.
 - A antiga `POST /tv3/users` (criação de perfil, fora da norma) **não existe mais**: saiu no commit `8d5949d` da infra. A criação de perfil passou a ser função do gestor de perfis da plataforma, que grava direto no armazenamento (`aop/src/modules/profile-manager/service.js`).
 - Remote-device: os comentários de `tv3ws/src/api/multi-device/index.ts` citam C.6.15.5, C.6.15.6 e C.6.15.7. No PDF consultado (`docs/P_ABNTNBR25608_202X_en-US.pdf`), a seção C.6.15 só vai até a C.6.15.5. O fluxo por *handle* corresponde à versão 2.1, a proposta em discussão no Fórum (`basic.ts`).
 - A contagem completa das 27 APIs *shall*, inclusive as ainda não implementadas, está em [`avaliacao-item9-credenciais.md`]({{ site.baseurl }}/avaliacao-item9-credenciais).
@@ -79,11 +85,16 @@ A coluna **bind-token** marca as APIs cujo campo "Security requirements" diz que
 - Tabela C.3, erro 101: "if clientid has been used before" (p. 215; p. 233 do PDF);
 - C.6.1.4.4: no mesmo servidor, passar ao C.6.1.2 um `clientid` já usado é colisão e dá 101 (p. 219; p. 237 do PDF).
 
-No tv3ws, "já usado" vale para dois casos, os dois sem pop-up (`checkAuthorization`, em `tv3ws/src/api/client-identification/controller.ts`):
-- o cliente já autorizado, que tem o registro `client:{clientid}` no Redis, gravado quando o espectador o autoriza (`tv3ws/src/modules/auth-manager/manager.ts`);
+No tv3ws, "já usado" vale para dois casos, os dois sem pop-up (`checkAuthorization`, em `tv3ws/src/api/client-identification/controller.ts`, com uma leitura só, `clientIdStatus`):
+- o cliente já autorizado, que está em `clients:authorized` ou tem o registro `client:{clientid}` no Redis, gravados quando o espectador o autoriza (`tv3ws/src/modules/auth-manager/manager.ts`);
 - o cliente recusado pelo espectador, que fica em `clients:blocked`. A Tabela C.3 diz que, nesse caso, "any attempt to authorize immediately returns error 101, without displaying the authorization dialog". Até 03/10, o tv3ws respondia 102 aqui. Este segundo caso é conformidade com a nota da tabela, numa leitura da decisão de 03/10 feita na implementação, e **ainda espera a confirmação do Luís**.
 
 O 101 não cobre o reuso **simultâneo**: um segundo `/tv3/authorize` com o mesmo `clientid` enquanto o pop-up do primeiro ainda está aberto abre outro pop-up (ver `KNOWN-ISSUES.md`).
+
+**Autorizados e bloqueados** (D-0510-4, reunião de 05/10 com o Joel). O tv3ws guarda os clientes autorizados no SET `clients:authorized` e os recusados em `clients:blocked`. Um id fica em no máximo um dos dois, porque autorizar e bloquear são transações (`MULTI`).
+- O `/tv3/token` só emite para quem está em `clients:authorized`. Um cliente bloqueado depois de autorizado recebe 102, como pede a C.4.2.2 ("it is not able to request the access token", p. 208; p. 226 do PDF). Até 05/10, bastava o `client:{id}` existir.
+- Hoje o bloqueio só acontece na recusa do pop-up (ou quando ele expira). A tela de gerenciamento que a C.4.2.2 pede, onde o espectador consulta o histórico e bloqueia ou desbloqueia, não existe; `listAuthorizedClients` e `listBlockedClients` (`manager.ts`) são a base dela.
+- A borda recusa com 107 o token de um `sub` que está em `clients:blocked`. Ela não confere `clients:authorized` (ponto em aberto, E6 de [`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes)).
 
 O 102 fica só para a recusa no próprio pop-up ("If the user does not grant access"). Até 03/10, o cliente local já autorizado que chamava o `/tv3/authorize` de novo sem `pm` recebia o refresh token corrente, sem pop-up. Esse atalho saiu.
 
@@ -144,4 +155,4 @@ Esse *consent* é a visibilidade do perfil por serviço guardada no Redis. Não 
 
 ## Proxy puro na borda
 
-Toda rota da borda é **proxy puro** (`output_encoding: "no-op"`, `infra/edgegateway/generate.js`). O status, os cabeçalhos e o corpo do tv3ws passam sem reinterpretação, o que inclui as respostas binárias (`GET .../users/files`) e as de texto.
+Toda rota que a borda repassa ao tv3ws é **proxy puro** (`output_encoding: "no-op"`, `infra/edgegateway/generate.js`). O status, os cabeçalhos e o corpo do tv3ws passam sem reinterpretação, o que inclui as respostas binárias (`GET .../users/files`) e as de texto. A exceção é o 5xx do próprio KrakenD (backend lento ou fora do ar), que o plugin troca por 404 `{"error":200}`. As rotas marcadas "(borda)" na tabela acima não são repassadas: o plugin as responde.
