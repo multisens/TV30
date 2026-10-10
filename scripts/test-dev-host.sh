@@ -23,8 +23,9 @@
 # MESMO ambiente em que o modulo roda, os logs de conexao do proprio modulo e
 # o caminho especifico:
 #   1  borda (44642) -> tv3ws no host: /health e GET /tv3/current-service com
-#      accessToken HS256 assinado com o mesmo JWT_SECRET da borda; depois de
-#      matar o processo do host a borda deixa de responder (prova negativa)
+#      accessToken HS256 assinado com o mesmo JWT_SECRET da borda (resposta do
+#      Express do tv3ws: 200, ou 404 {error:300} sem servico em uso); depois
+#      de matar o processo do host a borda deixa de responder (prova negativa)
 #   2  aop no host servindo 8080, recebendo o BAMT do bcast por MQTT e
 #      alcancando o bcast em container pelo proxy HTTP (/graphicsAppProxy)
 #   3  bcast no host publicando a sinalizacao (bcastEntryPackageUrl com
@@ -450,6 +451,37 @@ checar_mqtt_host() {
 }
 checar_redis_mqtt() { checar_redis_host; checar_mqtt_host; }
 
+# GET /tv3/current-service pela borda, com o accessToken: a resposta tem de
+# vir do Express do tv3ws (X-Powered-By; a borda repassa os cabecalhos do
+# backend e nao responde esta rota). O corpo depende de haver servico em uso
+# (C.6.3.1, Tabela C.8; tv3ws/src/api/aop-communication/current-service/
+# controller.ts): com servico, 200 com serviceContextId; sem servico (nada
+# selecionado no catalogo, o caso do cenario 1), 404 {"error":300}. O que se
+# prova aqui e o caminho borda -> tv3ws do host com o JWT_SECRET
+# compartilhado, entao valem os dois. Nao se publica aop/currentService retido
+# para forcar o 200: o topico e da plataforma (o aop o publica e o le, no
+# container ou no host), e o valor ficaria no broker depois do teste.
+checar_current_service_host() { # checar_current_service_host <token>
+  local desc="borda 44642 GET /tv3/current-service (Bearer, JWT_SECRET compartilhado) -> tv3ws no host"
+  local i=0 h="" r=""
+  while [ "$i" -lt 5 ]; do
+    : >"$LOGDIR/current-service.body"
+    h=$(curl -s -m 5 -D - -o "$LOGDIR/current-service.body" -H "Authorization: Bearer $1" \
+          http://127.0.0.1:44642/tv3/current-service 2>/dev/null | tr -d '\r')
+    r=$(cat "$LOGDIR/current-service.body" 2>/dev/null)
+    if printf '%s' "$h" | grep -qi '^X-Powered-By: Express'; then
+      if printf '%s' "$r" | grep -q '"serviceContextId"'; then
+        ok "$desc: servico em uso, 200 com serviceContextId"; return 0
+      fi
+      if printf '%s' "$r" | grep -q '^{"error":300,'; then
+        ok "$desc: sem servico em uso, 404 {error:300} do tv3ws (C.6.3.1)"; return 0
+      fi
+    fi
+    i=$((i + 1)); sleep 2
+  done
+  falha "$desc — resposta: $(recorte "$r")"; return 1
+}
+
 # borda (44642) -> tv3ws no host: /health e GET /tv3/current-service com um
 # accessToken HS256 assinado, no ambiente do tv3ws do host, com o mesmo
 # JWT_SECRET da borda. O tv3ws do host tem de ser o modulo corrente.
@@ -459,8 +491,7 @@ checar_borda_tv3ws_host() {
   local tk h
   tk=$(host_node "$JS_TOKEN" SEC="$JWT_SECRET" ISS="$JWT_ISSUER" 2>/dev/null)
   if [ -n "$tk" ]; then
-    checar_http "borda 44642 GET /tv3/current-service (Bearer, JWT_SECRET compartilhado) -> tv3ws no host" \
-      http://127.0.0.1:44642/tv3/current-service '"serviceContextId"' 5 -H "Authorization: Bearer $tk"
+    checar_current_service_host "$tk"
     h=$(curl -s -m 5 -o /dev/null -D - -H "Authorization: Bearer $tk" \
           http://127.0.0.1:44642/tv3/current-service 2>/dev/null | tr -d '\r' | grep -i '^X-TV30-Auth-Warn:' || true)
     info "X-TV30-Auth-Warn com token valido: ${h:-ausente}"
@@ -539,7 +570,7 @@ cenario_1() {
   local ud; ud=$(dir_userfiles)
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
-    USER_DATA_FILE="$ud/userData.json" USER_THUMBS="$ud/thumbs" \
+    USER_THUMBS="$ud/thumbs" \
     SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || { host_stop; return; }
@@ -625,7 +656,7 @@ cenario_4() {
   # tv3ws: as mesmas variaveis do cenario 1 (a borda windows procura a 44654)
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
-    USER_DATA_FILE="$ud/userData.json" USER_THUMBS="$ud/thumbs" \
+    USER_THUMBS="$ud/thumbs" \
     SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || return

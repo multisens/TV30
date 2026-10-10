@@ -104,7 +104,6 @@ services:
       WS_PORT_MAX: 45199
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      USER_DATA_FILE: /user-files/userData.json
       USER_THUMBS:    /user-files/thumbs
       # Default de dev: permite subir em maquina virgem sem tv3ws/.env.
       # Override: JWT_SECRET no .env da RAIZ (ou no shell) — a secao
@@ -174,10 +173,12 @@ services:
     environment:
       PORT: 8080
       MQTT_HOST: mosquitto
-      # Browser conecta ws://localhost:${MQTT_WS_PORT}/mqtt do HOST. Por isso
-      # tem que bater com a porta exposta pelo Mosquitto no host (9003 no
-      # docker-compose.yml da infra — escapando do Windows WSL mirrored).
-      MQTT_WS_PORT: 9001
+      # O browser do overlay conecta ws://<host da pagina>:${MQTT_WS_PORT}/mqtt
+      # (graphic-overlays/view.ejs), entao tem que bater com a porta que o
+      # Mosquitto publica no host: ${MQTT_WS_PORT:-9001} no docker-compose.yml
+      # da infra. Mesma variavel e mesmo default dos dois lados (.env da raiz;
+      # 9003 em Windows+WSL com 9001/9002 ocupadas, ver .env.example).
+      MQTT_WS_PORT: ${MQTT_WS_PORT:-9001}
       USER_DATA_PATH: /user-files
       # A plataforma le perfis e escreve a lista de origens associadas
       # DIRETO no Redis (P1) — nao passa mais pela porta HTTP do tv3ws.
