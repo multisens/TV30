@@ -31,7 +31,7 @@ O cliente não fala com o tv3ws diretamente. As portas 44652 e 44653 não são p
   - Sem o cabeçalho, vale a versão 2.0.
   - São aceitas a 2.0 e a 2.1.
   - Valor malformado dá erro 101; versão fora desse conjunto dá erro 100.
-  - Toda resposta sob `/tv3` traz `API-Version` (C.3.6.6, p. 201; p. 219 do PDF), inclusive as de erro. Na resposta normal e nos erros das próprias APIs, vai a versão negociada. No erro 100, a mais recente que o servidor suporta, hoje a 2.1, como manda a exceção da C.3.6.6. No erro 101, a 2.0, a mesma de quando falta o cabeçalho: um `Accept-Version` malformado não pede versão nenhuma. Esta última é leitura feita na implementação, em 10/10, e está marcada no código como "A CONFIRMAR (Luis)". A borda segue a mesma regra nas respostas que ela mesma escreve (`apiVersion`, em `infra/edgegateway/plugin/handler.go`).
+  - Toda resposta sob `/tv3` traz `API-Version` (C.3.6.6, p. 201; p. 219 do PDF), inclusive as de erro. Na resposta normal e nos erros das próprias APIs, vai a versão negociada. No erro 100, a mais recente que o servidor suporta, hoje a 2.1, como manda a exceção da C.3.6.6. No erro 101, a 2.0, a mesma de quando falta o cabeçalho: um `Accept-Version` malformado não pede versão nenhuma. Esta última foi leitura da implementação, confirmada pelo Luís em 10/10. A borda segue a mesma regra nas respostas que ela mesma escreve (`apiVersion`, em `infra/edgegateway/plugin/handler.go`).
   - A negociação roda antes dos leitores de corpo (`tv3ws/src/app.ts`), então o 101 de JSON malformado também leva o cabeçalho.
   - Até 10/10, os erros 100 e 101 da negociação no tv3ws saíam sem `API-Version`, e o 100 da borda saía com `2.0`.
   - Fora de `/tv3`, o `/health` e o `/manifest` não levam `API-Version`.
