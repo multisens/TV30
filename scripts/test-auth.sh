@@ -112,7 +112,18 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 H_INT=${H_INT:-http://localhost:44642}
-H_EXT=${H_EXT:-http://localhost:44643}
+# C1 (decisao do Luis em 11/10): na bridge a 44643 e publicada sem porta fixa
+# no host (EDGE_EXT_PUBLISH; padrao: o Docker escolhe uma livre); no modo SSDP
+# (borda em rede do host) ela e a propria 44643. ext_url le a porta publicada
+# e e chamada de novo a cada recriacao da borda (edge_mode), porque a porta
+# sorteada muda. H_EXT no ambiente fixa o endereco e desliga a descoberta.
+ext_url() {
+  local p
+  p=$(docker port edgegateway 44643/tcp 2>/dev/null | head -1 | sed 's/.*://')
+  echo "http://localhost:${p:-44643}"
+}
+H_EXT_FIXO=${H_EXT:-}
+H_EXT=${H_EXT:-$(ext_url)}
 NODE_IMG=${NODE_IMG:-node:20-alpine}
 POP=aop/display/layers/popup/yesno
 POP_QR=aop/display/layers/popup/qrcode   # tv3ws/src/core.ts (_t)
@@ -206,6 +217,7 @@ edge_mode() {
   AUTH_ENFORCE=$mode EDGE_VARIANT=$ORIG_VARIANT JWT_SECRET=$EDGE_SECRET JWT_ISSUER=$EDGE_ISSUER \
     docker compose up -d --no-deps edgegateway >"$TMP/compose.log" 2>&1 \
     || { cat "$TMP/compose.log"; return 1; }
+  [ -n "$H_EXT_FIXO" ] || H_EXT=$(ext_url)   # porta de host nova a cada recriacao (C1)
   for i in $(seq 1 60); do
     if [ "$(docker logs edgegateway 2>&1 | grep -c "registrado surface=.* modo=$mode")" -ge 2 ] \
        && curl -s -o /dev/null -m 3 "$H_INT/health" && curl -s -o /dev/null -m 3 "$H_EXT/health"; then
@@ -784,6 +796,23 @@ else
 fi
 
 # ============================================================ ENFORCE =====
+# B3 (decisao do Luis em 11/10): o /manifest expoe ao navegador os seis
+# cabecalhos proprios dele (Access-Control-Expose-Headers do tv3ws,
+# tv3ws/src/manifest.ts). O modulo CORS da borda manda outra linha do mesmo
+# cabecalho (Content-Length, X-Tv30-Auth-Warn) e nao a sobrescreve: as duas
+# linhas valem, entao o caso junta todas.
+req GET "$H_INT/manifest" -H "Origin: $OTHER_ORIGIN"
+EXPOSE=$(grep -i '^Access-Control-Expose-Headers:' "$TMP/h2" | cut -d: -f2- | tr '\n' ',')
+FALTAM=""
+for hname in Server-BaseURL Server-SecureBaseURL Server-PairingMethods Device-BrandName Device-Model Device-FriendlyName; do
+  printf '%s' "$EXPOSE" | grep -qi "\(^\|[ ,]\)$hname\([ ,]\|$\)" || FALTAM="$FALTAM $hname"
+done
+if [ "$ST" = 200 ] && [ -z "$FALTAM" ]; then
+  pass "[44642] /manifest expoe os seis cabecalhos ao navegador (B3)"
+else
+  fail "[44642] /manifest: status=$ST, faltam em Access-Control-Expose-Headers:$FALTAM (veio: $EXPOSE)"
+fi
+
 echo; echo "== 2. recriando o edgegateway com AUTH_ENFORCE=enforce =="
 edge_mode enforce || die "edgegateway nao subiu em enforce"
 echo "ok: as duas superficies registraram o plugin em enforce"
@@ -873,13 +902,21 @@ desbloqueia() { rc SREM clients:blocked "$1" >/dev/null; }
 fcall tv30_cliente_bloqueia "$CLIENT" >/dev/null || fail "bloqueio de $CLIENT pela funcao recusado"
 expect_err "[44642] cliente em clients:blocked" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
 desbloqueia "$CLIENT"
-expect_pass "[44642] cliente desbloqueado volta a passar" GET "$H_INT/tv3/current-service" "${TOK[@]}"
+# E6 (decisao do Luis em 11/10): a borda exige o cliente em
+# clients:authorized. Desbloqueado sem nova autorizacao, ele fica fora dos
+# dois conjuntos e continua recusado; de volta ao conjunto (o script faz o
+# papel do tv3ws no boot: tv30_cliente_inclui_autorizado, que exige
+# client:{id} e o id fora de clients:blocked), passa.
+expect_err "[44642] cliente desbloqueado, fora de clients:authorized (E6)" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
+fcall tv30_cliente_inclui_autorizado "$CLIENT" >/dev/null || fail "reinclusao de $CLIENT em clients:authorized pela funcao recusada"
+expect_pass "[44642] cliente de volta em clients:authorized passa" GET "$H_INT/tv3/current-service" "${TOK[@]}"
 # token valido com class local-associated: dispensa bind-token, mas nao o bloqueio
 TOK_ASSOC=(-H "Authorization: Bearer $AT_ASSOC")
 expect_pass "[44642] token de classe associado dispensa bind-token" GET "$H_INT/tv3/current-service/users/current-user" "${TOK_ASSOC[@]}"
 fcall tv30_cliente_bloqueia "$CLIENT" >/dev/null || fail "bloqueio de $CLIENT pela funcao recusado"
 expect_err "[44642] token de classe associado de cliente bloqueado" 107 borda GET "$H_INT/tv3/current-service/users/current-user" "${TOK_ASSOC[@]}"
 desbloqueia "$CLIENT"
+fcall tv30_cliente_inclui_autorizado "$CLIENT" >/dev/null || fail "reinclusao de $CLIENT em clients:authorized pela funcao recusada"
 
 echo; echo "-- reuso de clientid (D-L2): 101 sem nova consulta ao espectador --"
 # cliente proprio do caso: se o 101 falhar e o pop-up sair, o timeout dele
@@ -896,9 +933,11 @@ fi
 echo; echo "-- rotas token+bind sem bind-token --"
 expect_err "[44642] GET current-user com token, sem bind-token" 104 borda GET "$H_INT/tv3/current-service/users/current-user" "${TOK[@]}"
 expect_err "[44643] POST sensory-effect com token, sem bind-token" 104 borda POST "$H_EXT/tv3/sensory-effect-renderers/x" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
-# POST {scid}/users cai no mesmo handler da C.6.14.1 (bind-token shall)
 expect_err "[44642] POST /tv3/current-service/users sem bind-token" 104 borda POST "$H_INT/tv3/current-service/users" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
-expect_err "[44642] POST /tv3/xyz/users sem bind-token (antes passava so com token)" 104 borda POST "$H_INT/tv3/xyz/users" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
+# A4 (decisao do Luis em 11/10): POST /tv3/{serviceContextId}/users, fora da
+# Tabela C.2 (a norma so define current-service/users, C.6.14.1), saiu da
+# tabela de rotas: a borda responde 100
+expect_err "[44642] POST /tv3/xyz/users (rota fora da norma, retirada: A4)" 100 borda POST "$H_INT/tv3/xyz/users" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
 
 echo; echo "-- POST /tv3/bind-context (associado simulado: Origin em origins:associated) --"
 for A in HS256 HS512 RS256 RS512; do
@@ -947,7 +986,7 @@ done
 ext_skip "$H_EXT" "[44643] $CU com bind-token RS512" \
   || expect_pass "[44643] $CU com bind-token RS512" GET "$H_EXT$CU" "${TOK[@]}" -H "bind-token: $BT_RS512"
 expect_pass "[44642] GET /tv3/$SCID_CONST/users/x (scid constante = servico corrente, L2)" GET "$H_INT/tv3/$SCID_CONST/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
-expect_pass "[44642] POST /tv3/$SCID_CONST/users com bind-token (L2)" POST "$H_INT/tv3/$SCID_CONST/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+expect_err "[44642] POST /tv3/$SCID_CONST/users com bind-token (rota retirada: A4)" 100 borda POST "$H_INT/tv3/$SCID_CONST/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
 
 echo; echo "-- bind-token invalido --"
 expect_err "bind-token de chave nao registrada" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_UNREG"
@@ -958,8 +997,8 @@ expect_err "bind-token com iat no futuro" 108 borda GET "$H_INT$CU" "${TOK[@]}" 
 expect_err "bind-token alg none" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_NONE"
 expect_err "bind-token que nao e JWT" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: abc"
 expect_err "scid de outro servico no caminho (provisorio L2)" 108 borda GET "$H_INT/tv3/outro-scid/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
-expect_err "POST /tv3/xyz/users com bind-token valido (scid de outro servico, L2)" 108 borda POST "$H_INT/tv3/xyz/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
-expect_err "POST /tv3/Current-Service/users (caixa trocada; o Express nao diferencia)" 108 borda POST "$H_INT/tv3/Current-Service/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+expect_err "POST /tv3/xyz/users com bind-token valido (rota retirada: A4)" 100 borda POST "$H_INT/tv3/xyz/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+expect_err "POST /tv3/Current-Service/users (caixa trocada: nao casa com current-service; A4)" 100 borda POST "$H_INT/tv3/Current-Service/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
 
 echo; echo "-- isolamento entre emissoras (D4) --"
 servico_corrente "$SVC_B"

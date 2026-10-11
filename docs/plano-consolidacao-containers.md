@@ -7,7 +7,7 @@ nav_order: 3
 # Plano de mudança — consolidação de containers
 
 {: .historico }
-> Plano de 19/09/2026, executado em 20/09 (fases 0 a 4). Registra o arranjo de antes (11 containers contínuos) e as decisões V1 a V13 daquela data. Depois dele, o `tv3ws-ssdp` entrou e saiu (opção B da L6, de 04 a 09/10), a borda passou a anunciar o SSDP em rede do host, e a política de portas mudou em alguns pontos (o bcast, por exemplo, voltou a ter porta fixa, `BCAST_PORT`, padrão 8081). **O estado atual está em [Arquitetura](arquitetura.md).**
+> Plano de 19/09/2026, executado em 20/09 (fases 0 a 4). Registra o arranjo de antes (11 containers contínuos) e as decisões V1 a V13 daquela data. Depois dele, o `tv3ws-ssdp` entrou e saiu (opção B da L6, de 04 a 09/10), a borda passou a anunciar o SSDP em rede do host, e a política de portas mudou em alguns pontos (o bcast, por exemplo, voltou a ter porta fixa, `BCAST_PORT`, padrão 8081). **Em 11/10, a política de portas mudou de novo** (C1, decisão do Luís, opção b): ficaram fixas a 44642, a do AoP, a 1883, a 6379 e a faixa 45000–45199 (e a 44643 no modo SSDP), e passaram a uma porta escolhida pelo Docker a 44643 na bridge, a 8081 do bcast (`BCAST_PUBLISH`, no lugar do `BCAST_PORT`) e a 9001 do Mosquitto, que o navegador do AoP deixou de usar: a página da TV fala MQTT pelo `/mqtt` do próprio AoP. No mesmo dia, a exceção do redis-commander ao morre-inteiro (override 2, abaixo) caiu (C2). As tabelas abaixo ficam como estavam em 19/09. **O estado atual está em [Arquitetura](arquitetura.md).**
 
 > **Status: fases 0–4 EXECUTADAS (20/09/2026)** — renome R1 concluído
 > (tv3ws em toda a cadeia: submodule, service, container, imagem,

@@ -185,7 +185,10 @@ if [ -n "$PIDN" ]; then
     fi
     sleep 1
   done
-  DIE=$(docker events --since "$T0" --until "$(date +%s)" --filter "container=$NAME" --filter event=die \
+  # --until 2 s no futuro: o docker events espera ate la. Com o "agora" (como
+  # antes de 11/10), o die de um restart rapido podia ficar fora da janela e o
+  # caso falhava de vez em quando, com o container caindo e voltando certo.
+  DIE=$(docker events --since "$T0" --until "$(( $(date +%s) + 2 ))" --filter "container=$NAME" --filter event=die \
         --format '{{.Actor.Attributes.exitCode}}' 2>/dev/null | head -1)
   if [ -n "$DIE" ]; then pass "kill -9 no node derrubou o container (evento die, exitCode=$DIE)"
   else fail "kill -9 no node nao derrubou o container (nenhum evento die desde $T0)"; fi

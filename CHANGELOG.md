@@ -7,6 +7,202 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-11 (Luis's decisions, second part)
+
+On 2026-10-11 Luis decided eleven points that `docs/decisoes-pendentes.md`
+listed as the advisor's and that are implementation choices of the testbed
+(he reclassified them): A4, B2, B3, C1, C2, C5, E1, E3, E6, F-2 and F-3.
+Eight of them changed code; E1, E3 and F-2 keep the code as it was. A10
+(C.4.4) goes to Joel with a design proposal. None of Joel's open points was
+decided here.
+
+#### Changed
+
+- infra `redis/entrypoint.sh` (C2): the redis-commander is under the
+  die-whole rule too. A watchdog checks both processes every second; if
+  `redis-server` or the commander dies, it stops the other, waits for
+  `redis-server` to finish shutting down (AOF) and exits 1, and
+  `restart: unless-stopped` brings the container back. On `docker stop` it
+  stops the commander and waits for `redis-server`. Until now the death of
+  the commander did not stop the database (V8/V9 of the consolidation plan).
+  Comments in `redis/Dockerfile` and `redis/docker-compose.yml`.
+- `.gitmodules` (C5): bcast over HTTPS,
+  `https://github.com/multisens/BcastService.git`; cloning no longer needs an
+  SSH key on GitHub.
+- infra `edgegateway/ssdp/config.go`, `main.go`, `iface.go` (B2): with
+  `SSDP_ENABLED=true`, `SSDP_ADVERTISE_HOST` is mandatory. Missing, empty or
+  without a host is a configuration error: the announcer exits 1 and the
+  whole edge goes down, like the other configuration errors of C8.
+  `SERVER_URL` and the local IP are no longer sources of the announced host
+  (`localIP` removed); the host is read once, at start. A loopback value is
+  still accepted, with `[ssdp] AVISO`. The announcement log line now ends
+  with `(host de SSDP_ADVERTISE_HOST)`. The tv3ws `/manifest` and the tv3ws
+  Node announcer (dev-host only) keep their chain (`SSDP_ADVERTISE_HOST`,
+  then `SERVER_URL`, then the local IP).
+- `scripts/preflight.sh` and `docker-compose.ssdp.yml` (B2): with the SSDP
+  override, the preflight stops the start (exit 1) when
+  `SSDP_ADVERTISE_HOST` is missing; the override gives the preflight the same
+  env files as the edge (`tv3ws/.env`, then `.env`).
+- tv3ws `src/manifest.ts` (B3): `/manifest` sends
+  `Access-Control-Expose-Headers` with its six headers (`MANIFEST_HEADERS`:
+  `Server-BaseURL`, `Server-SecureBaseURL`, `Server-PairingMethods`,
+  `Device-BrandName`, `Device-Model`, `Device-FriendlyName`), so a script on
+  another origin can read them. Through the edge, the KrakenD CORS module
+  adds another line of the same header (`Content-Length`,
+  `X-TV30-Auth-Warn`) without replacing the tv3ws one.
+- infra `edgegateway/routes.json`, `generate.js` (A4):
+  `POST /tv3/{serviceContextId}/users` (not in the standard, which only has
+  `POST /tv3/current-service/users`, C.6.14.1) is out of the route table; the
+  edge answers 100 for any scid, including the constant and
+  `Current-Service`. Routes: 26 on the internal surface and 24 on the
+  external one (were 27 and 25); the API lists do not change (20 and 18).
+- infra `edgegateway/plugin/handler.go`, `redis.go` (E6): the edge requires
+  the access token `sub` in `clients:authorized` (`SISMEMBER`); outside it,
+  107 (`cliente fora de clients:authorized (E6)`), like a blocked client,
+  also for `local-associated` tokens; a token without `sub` is 107 too. The
+  blocked check comes first and keeps its message. Only on routes that ask
+  for a token (`token`, `token+bind`); in `warn`, only the warning. Until
+  now a valid token of an id outside both sets passed, such as a client
+  unblocked by hand.
+- Ports (C1, option b), root `docker-compose.yml` and infra
+  `docker-compose.yml`: fixed on the host are 44642, the AoP port (8080,
+  `AOP_PUBLIC_PORT`), 1883, 6379, the 45000-45199 range and, in SSDP mode,
+  44643. On a free host port chosen by Docker: 44643 on the bridge
+  (`EDGE_EXT_PUBLISH`, default `44643`), bcast 8081 (`BCAST_PUBLISH`,
+  default `8081`), Mosquitto 9001 (`MQTT_WS_PUBLISH`, default `9001`), and,
+  as before, 8085 and 18081. Each variable is the value that goes in
+  `ports:`: the number alone is the container port on a random host port,
+  `host:container` pins it. `BCAST_PORT` is gone, and the compose no longer
+  reads `MQTT_WS_PORT` from the root `.env`. `scripts/preflight.sh` warns
+  only about the fixed ports.
+- aop `src/mqtt-ws.js` (new), `src/server.js`,
+  `src/modules/graphic-overlays/view.ejs` and `index.js` (C1): the TV page
+  connects to MQTT on its own origin, `ws(s)://<page host>/mqtt`, and the AoP
+  proxies the WebSocket upgrade to `ws://${MQTT_HOST}:${MQTT_WS_PORT}`
+  (default 9001; in the compose, the internal 9001 of mosquitto). Only on the
+  AoP host: on an app host, or on another path, the upgrade gets 404; with
+  the broker unreachable, 502. An invalid `MQTT_WS_PORT` or `MQTT_HOST`
+  stops the boot. With the AoP on the host, `MQTT_WS_PORT` is the published
+  port (`docker compose port mosquitto 9001`).
+- Profile id as UUID (F-3, Table 7, no compatibility with the old ids):
+  infra `redis/esquema.json` (version 2; `idPerfil` of type `uuid`, RFC 9562
+  text form, lower case; the divergence entry is gone), `redis/funcoes.lua`
+  (the `uuid` rule), `user-files-template/userData.json`
+  (`c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`); aop
+  `src/modules/profile-manager/service.js` (`crypto.randomUUID()`; a profile
+  without `lastAccess` counts as the oldest, no instant read from the id);
+  bcast `src/modules/webmedia/app.ejs` (cites the new id).
+  `session:current-user` stays text up to 64 characters.
+- Tests: aop `test/mqtt-ws.test.js` (7 tests, with a real WebSocket upgrade
+  to a local broker) and UUID cases in `test/redis.test.js`; tv3ws
+  `test/manifest.test.ts` (B3); infra `generate.test.js` (A4 and the route
+  counts), plugin `TestDecisaoClientesAutorizados` and the contract test
+  (E6), ssdp tests (B2; `TestLocalIP` removed), redis `test/funcoes.test.js`
+  (the pre-F-3 volume) and `test/run.sh imagem` (UUID seed, commander
+  die-whole).
+- Scripts: `scripts/test-auth.sh` (B3 case; A4 cases now expect 100; E6: an
+  unblocked client gets 107 until `tv30_cliente_inclui_autorizado` puts it
+  back; reads the 44643 host port after each edge recreation),
+  `scripts/test-dev-host.sh` (scenario 2 pins `BCAST_PUBLISH=8081:8081`; the
+  host aop gets `MQTT_WS_PORT` from Docker; `/mqtt` check in scenarios 2 and
+  4), `scripts/test-consolidacao.sh` (killing the commander must restart the
+  redis container), `scripts/test-template.sh` (`docker events --until` 2 s
+  ahead, for a flaky window).
+- Docs: `README.md`, `.env.example`, `ARCHITECTURE.md`, `KNOWN-ISSUES.md`,
+  `docs/decisoes-pendentes.md`, new `docs/proposta-c44-recursos-compartilhados.md`,
+  `docs/{index,instalacao,arquitetura,mqtt-topicos,dev-local,troubleshooting,modelo-redis,apis-tv3ws,borda-credenciais,avaliacao-item9-credenciais,glossario,como-testar,ssdp,plano-consolidacao-containers}.md`;
+  infra `README.md`, `docs/02-rede-docker.md`, `docs/05-autenticacao.md`,
+  `docs/06-modelo-redis.md`, `redis/README.md`, `edgegateway/plugin/README.md`;
+  `bcast/README.md`; `aop/.env.example`, `tv3ws/.env.example`. Statements
+  found wrong and fixed on the way: `docs/apis-tv3ws.md` and infra
+  `docs/05-autenticacao.md` said authorizing and blocking were `MULTI`
+  transactions (Redis functions since P4); infra `README.md` said both
+  surfaces had the same route table (wrong since P1.9); infra
+  `docs/05-autenticacao.md` still said the 101 for a blocked `clientid` and
+  the `kex` fix awaited Luis's approval (confirmed on 2026-10-05); infra
+  `docs/02-rede-docker.md` pointed to `infra/ARCHITECTURE.md`, itself
+  historical, as the current state.
+
+#### Decided (Luis, 2026-10-11)
+
+- A4, B2, B3, C1, C2, C5, E6 and F-3: as above.
+- E1 (101 for a Table C.2 id the testbed does not implement), E3 (C.6.7.9
+  without `subsystem` lists every API) and F-2 (each surface lists only the
+  APIs it offers): kept as they were, no code change. The code comments
+  still say `PENDENTE (Joel)` (`edgegateway/plugin/apiinfo.go`,
+  `edgegateway/generate.js`).
+- A10 (C.4.4, release of shared resources): a survey with design options
+  for Luis to take to Joel, `docs/proposta-c44-recursos-compartilhados.md`.
+  A proposal, not a decision.
+
+#### Known limits
+
+- Found while documenting, from the code; no decision. On the bridge, the
+  `/manifest` still says `Server-SecureBaseURL: <host>:44643`
+  (`EDGE_HTTPS_PORT`) and the external OpenAPI `servers` says
+  `http://localhost:44643`, which are not the host port Docker chose for the
+  external surface (`KNOWN-ISSUES.md`). `EDGE_EXT_PUBLISH=44643:44643`
+  brings back the old behaviour.
+- The `LOCATION` does not follow a network change (fixed `.env` value), a
+  consequence of B2.
+- The token that `scripts/test-dev-host.sh` signs has `sub`
+  `tv30-devhost-teste`, outside `clients:authorized`: by the code, its
+  `info` line `X-TV30-Auth-Warn com token valido` now shows 107 instead of
+  `ausente` (the PASS does not depend on it).
+
+#### Upgrading
+
+- Rebuild `redis`, `tv3ws`, `aop`, `edgegateway` and `bcast` together
+  (`docker compose build redis tv3ws aop edgegateway bcast`). With the
+  previous AoP image, the TV page connects to host port 9001, which is no
+  longer published on a fixed port, and profile creation writes
+  `user_<epoch-ms>`, which schema version 2 refuses (404 `{"error":200}`).
+- An existing Redis volume is outside schema version 2 (old profile ids, no
+  compatibility, by decision): `docker compose down -v`, which also deletes
+  the profiles created and the broker's retained messages. New clones are
+  not affected. The local `user-files/userData.json` (the gitignored copy of
+  the template made at the first start) keeps the old ids; no service reads
+  it.
+- Existing clones: `git submodule sync --recursive && git submodule update
+  --init --recursive`, so that bcast uses the HTTPS URL.
+- `.env`: `BCAST_PORT` and `MQTT_WS_PORT` are no longer read; to pin a host
+  port use `BCAST_PUBLISH`, `MQTT_WS_PUBLISH` or `EDGE_EXT_PUBLISH` with
+  `host:container` (for instance `EDGE_EXT_PUBLISH=44643:44643`). The advice
+  of `MQTT_WS_PORT=9003` on Windows with Hyper-V is gone: the TV page no
+  longer uses the Mosquitto host port. Find a Docker-chosen port with
+  `docker compose port <service> <container port>` or `docker compose ps`.
+- With the SSDP override, set `SSDP_ADVERTISE_HOST` in the root `.env` (or
+  in `tv3ws/.env`); without it the start stops at the preflight.
+- AoP on the host (dev-host):
+  `MQTT_WS_PORT=$(docker compose port mosquitto 9001 | sed 's/.*://')`, and
+  `BCAST_PUBLISH=8081:8081` for bcast in a container
+  (`docs/dev-local.md`).
+- A valid access token whose `sub` is not in `clients:authorized`
+  (hand-signed tokens, clients unblocked by hand) now gets 107 in `enforce`
+  and the warning in `warn`.
+
+#### Verified
+
+- On the stack (WSL2, 2026-10-11), after copying and recreating the volumes
+  (`down -v`, authorized by Luis): the ports came out as decided (44642,
+  8080, 1883 and 6379 fixed; 44643, 8081, 9001, 8085 and 18081 on host ports
+  chosen by Docker); the seed loaded `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`
+  and the audit was empty; `/manifest` exposed the six headers (B3); the
+  AoP `/mqtt` answered 101, and headless Chrome 154 showed the graphics
+  layer connected through it and drew the PIN and the QR code;
+  `scripts/test-auth.sh` 227 PASS, 0 FAIL on the bridge and 227/0 with the
+  edge on the host network; `scripts/test-dev-host.sh` 67/0;
+  `test-template.sh` 13/0 three times in a row (after fixing its `docker
+  events` window, which made the kill -9 case fail now and then);
+  `test-consolidacao.sh` ok (Redis went down and came back when the commander
+  died, C2); `test-fase0.sh` and `test-bcast-shutdown.sh` ok;
+  `infra/redis/test/run.sh tudo` ok; with the SSDP override and no
+  `SSDP_ADVERTISE_HOST`, the preflight exited 1 with the message (B2).
+- Unit: tv3ws `npm test` 78/78 and `tsc --noEmit` ok; aop `npm test` 37/37;
+  bcast `tsc --noEmit` ok; `generate.test.js` 13/13; plugin `go test` 72
+  PASS + 1 SKIP (the contract test, run by `infra/redis/test/run.sh
+  contrato`), ssdp `go test` 19 PASS, gofmt and vet clean.
+
 ### 2026-10-11 (Luis's confirmations of the second round)
 
 On 2026-10-11 Luis decided the nine points that the second round of

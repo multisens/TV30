@@ -10,7 +10,9 @@ O Redis guarda o estado de sessão, os perfis de usuário e as credenciais. Ele 
 
 Redis, borda e mensageria são decisões de implementação deste testbed, não da ABNT NBR 25608. O *consent* destas chaves é a visibilidade do perfil por serviço, e não o consentimento da seção 8.8 da norma.
 
-UI de inspeção: Redis Commander, em porta dinâmica do host — `docker port redis 18081` mostra qual. A UI exige login: usuário `admin` e senha `tv30-redis-admin` por padrão, trocáveis por `REDIS_COMMANDER_USER`/`REDIS_COMMANDER_PASSWORD` no `.env` da raiz (decisão D-L1, tomada pelo Luís em 03/10; ver [README](https://github.com/multisens/TV30/blob/main/README.md#interface-administrativa-do-redis)). A senha vale só para a UI: a conexão com o banco (6379) segue sem senha.
+UI de inspeção: Redis Commander, em porta dinâmica do host — `docker port redis 18081` mostra qual. A UI exige login: usuário `admin` e senha `tv30-redis-admin` por padrão, trocáveis por `REDIS_COMMANDER_USER`/`REDIS_COMMANDER_PASSWORD` no `.env` da raiz (decisão D-L1, tomada pelo Luís em 03/10; ver [README](https://github.com/multisens/TV30/blob/main/README.md#interface-administrativa-do-redis)). A senha vale só para a UI: a conexão com o banco (6379) segue sem senha. Desde 11/10 (C2, decisão do Luís), a morte do commander derruba o container do Redis inteiro, e o `restart` o traz de volta (`infra/redis/entrypoint.sh`); até 11/10, o banco seguia sem ele.
+
+**Id do perfil em UUID (F-3, decisão do Luís em 11/10).** O esquema, na versão 2, exige o id do perfil no formato textual da IETF RFC 9562 (8-4-4-4-12 dígitos hexadecimais), em minúsculas, como pede a Tabela 7 ("UUID string"), sem compatibilidade com os ids antigos. O AoP gera `crypto.randomUUID()`, e a carga inicial traz `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`. Até 11/10, o id era texto de 1 a 64 caracteres sem `:`, o AoP gerava `user_<epoch-ms>`, e a carga trazia `c3167a18-5dc5`. Um volume de antes fica fora do esquema (seção *Auditoria*, abaixo).
 
 **Esquema nas escritas (P4, decisão do Luís em 10/10).** Toda escrita que o código do projeto faz nas famílias abaixo passa por uma **função do próprio Redis**, que confere o esquema e grava de forma atômica. Dado fora do esquema volta como erro `TV30ESQUEMA`, e nada é gravado. Uma função só de leitura, a auditoria, aponta as chaves fora do esquema. A escrita manual pelo `redis-cli` ou pelo commander continua possível. Como funciona, como inspecionar, como rodar a auditoria e como gravar à mão: seção *Esquema nas escritas*, logo abaixo da tabela de donos.
 
@@ -18,7 +20,7 @@ UI de inspeção: Redis Commander, em porta dinâmica do host — `docker port r
 
 ## Quem escreve e quem lê cada família (P5)
 
-O P5, decidido antes da rodada de 05/10, pede um dono por família de chave. Na reunião de 05/10, o Joel apontou que os perfis tinham três escritores (a carga inicial, o tv3ws e a plataforma). A correção (D-0510-5) pôs a plataforma como dona dos perfis; a escolha da plataforma foi feita na implementação, pelo critério do P5. Na mesma rodada, a C.6.8 foi para a borda (D-0510-2), e a borda passou a escrever `bind-context:*`. Estado pelo código em 10/10:
+O P5, decidido antes da rodada de 05/10, pede um dono por família de chave. Na reunião de 05/10, o Joel apontou que os perfis tinham três escritores (a carga inicial, o tv3ws e a plataforma). A correção (D-0510-5) pôs a plataforma como dona dos perfis; a escolha da plataforma foi feita na implementação, pelo critério do P5. Na mesma rodada, a C.6.8 foi para a borda (D-0510-2), e a borda passou a escrever `bind-context:*`. Estado pelo código em 11/10:
 
 | Família | Escreve | Função que grava (P4) | Lê |
 |---|---|---|---|
@@ -26,7 +28,7 @@ O P5, decidido antes da rodada de 05/10, pede um dono por família de chave. Na 
 | `session:current-service` | tv3ws (`src/core.ts`; a API C.6.3.1 do tv3ws responde da memória, não deste hash) | `tv30_sessao_servico` | a borda, na C.6.8.3 |
 | `users:index`, `user:{id}`, `user:{id}:consent` | **AoP** (gestor de perfis: criação, despejo e `lastAccess`). A carga inicial só escreve no banco vazio | `tv30_perfil_grava`, `tv30_perfil_ultimo_acesso`, `tv30_perfil_remove` | AoP; tv3ws, só leitura desde 05/10 |
 | `user:{id}:broadcaster-attrs:{scid}` | tv3ws (C.6.14.5) e AoP (apaga no despejo): **dois escritores**, ponto em aberto (E4 de [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes)) | `tv30_atributos_emissora`; no despejo, `tv30_perfil_remove` | tv3ws |
-| `client:{id}`, `clients:authorized`, `clients:blocked` | tv3ws (`src/modules/auth-manager/manager.ts`) | `tv30_cliente_grava`, `tv30_cliente_autoriza`, `tv30_cliente_bloqueia`, `tv30_cliente_inclui_autorizado` | tv3ws; a borda lê `clients:blocked` |
+| `client:{id}`, `clients:authorized`, `clients:blocked` | tv3ws (`src/modules/auth-manager/manager.ts`) | `tv30_cliente_grava`, `tv30_cliente_autoriza`, `tv30_cliente_bloqueia`, `tv30_cliente_inclui_autorizado` | tv3ws; a borda lê `clients:blocked` e, desde 11/10 (E6, decisão do Luís), `clients:authorized` |
 | `origins:associated` | AoP (`src/core.js`) | `tv30_origem_registra`, `tv30_origem_remove`, `tv30_origens_limpa` | borda; tv3ws (`classifyClient`) |
 | `bind-context:{serviceId}` | **borda**, na C.6.8.2 e na C.6.8.4, desde 05/10 (antes, o tv3ws) | `tv30_bind_registra`, `tv30_bind_remove` | borda |
 | `remote-devices:index`, `remote-devices:class:{classe}`, `remote-device:{handle}` | tv3ws: espelho dos dispositivos remotos conectados, limpo no boot | nenhuma: fora do alcance do P4, escrita direta | só o próprio tv3ws, na limpeza do boot |
@@ -54,7 +56,7 @@ Detalhes, a lista de funções com argumentos e como mudar uma regra: `infra/red
 | `session:current-user` | tv3ws | STRING | texto de até 64 caracteres, vazio vale "sem usuário" (o mesmo teto de `aop/currentUser` no `schemas.json` do broker) |
 | `session:current-service-id` | tv3ws | STRING | texto de até 256 caracteres, vazio vale "sem serviço" (o mesmo teto de `aop/currentService` no broker) |
 | `session:current-service` | tv3ws | HASH | exatamente os cinco campos da Tabela C.8; `serviceId` inteiro em decimal ou vazio |
-| `users:index` | AoP | SET | ids de perfil (`idPerfil`: 1 a 64 caracteres, sem `:`) |
+| `users:index` | AoP | SET | ids de perfil (`idPerfil`: UUID no formato da IETF RFC 9562, em minúsculas, desde 11/10, F-3; até ali, 1 a 64 caracteres sem `:`) |
 | `user:{id}` | AoP | HASH | Tabela 7 mais `lastAccess`: obrigatórios e condicionais da tabela, booleanos `"true"`/`"false"`, `nickname` de 1 a 20 caracteres, `maxContentRating` em L/10/12/14/16/18, idiomas em IETF RFC 5646, `closedSigningWidth` de 14 a 28; o campo `id` igual ao da chave; nenhum campo fora da lista |
 | `user:{id}:consent` | AoP | SET | ids de serviço (1 a 256 caracteres) |
 | `user:{id}:broadcaster-attrs:{scid}` | tv3ws grava; AoP apaga no despejo (E4) | HASH | nome e valor não vazios, sem os básicos que a C.6.14.5 proíbe redefinir (`id`, `nickname`, `parentalControl`, `maxContentRating`), até 20 MB de nomes mais valores (P3/10.3.3) |
@@ -77,7 +79,7 @@ Detalhes, a lista de funções com argumentos e como mudar uma regra: `infra/red
 O erro diz a função, a chave, o campo e o motivo, e nada é gravado:
 
 ```
-TV30ESQUEMA tv30_perfil_grava: user:u2 campo parentalControl: deve ser "true" ou "false" (veio "False")
+TV30ESQUEMA tv30_perfil_grava: user:0b6e3c1a-7f2d-4e8b-9a5c-3d1f2e4a6b8c campo parentalControl: deve ser "true" ou "false" (veio "False")
 TV30ESQUEMA tv30_origem_registra: origins:associated nome de campo: host deve estar em minusculas (como o navegador o manda no Origin) (veio "http://X.apps.localhost")
 ```
 
@@ -86,7 +88,7 @@ Para o serviço, a recusa é **defeito do serviço**. O erro sobe como uma falha
 ### Como inspecionar
 
 ```bash
-docker exec redis redis-cli FCALL_RO tv30_versao 0                 # versao do esquema carregado
+docker exec redis redis-cli FCALL_RO tv30_versao 0                 # versao do esquema carregado (2 desde 11/10)
 docker exec redis redis-cli FUNCTION LIST LIBRARYNAME tv30         # funcoes e flags
 docker logs redis 2>&1 | grep -E 'biblioteca|carga'                 # carregou nesta partida?
 ```
@@ -105,6 +107,8 @@ A auditoria é só de leitura (flag `no-writes`). Ela percorre as chaves dos pre
 - no volume da stack em 10/10, a auditoria (rodada sobre uma cópia) apontou `user:abc-123`, um hash só com `lastAccess`, de 25/09: o hash fantasma que o `lastAccess` avulso de antes de 05/10 criava.
 
 Para começar limpo, use `docker compose down -v`, que apaga o volume e com ele os perfis criados. A outra saída é corrigir ou apagar as chaves apontadas.
+
+**Volume de antes de 11/10 (F-3).** O id do perfil passou a UUID sem compatibilidade com os ids antigos (decisão do Luís). Num volume de antes, a auditoria aponta, de cada perfil com id antigo (`user_<epoch-ms>`, do AoP, e `c3167a18-5dc5`, da carga), `users:index`, `user:{id}`, `user:{id}:consent` e `user:{id}:broadcaster-attrs:*` (`{id} da chave: deve ser UUID ...`). Com esse id, `tv30_perfil_grava` e `tv30_atributos_emissora` recusam a escrita; `tv30_perfil_ultimo_acesso` ainda grava o `lastAccess`, porque num registro que já existe confere só o campo escrito, e `tv30_perfil_remove` ainda remove (`infra/redis/README.md`). A carga só roda em banco vazio, então o volume antigo também não recebe o perfil novo da carga. Saída: `docker compose down -v`, que apaga também os retidos do broker. Quem clona o projeto agora não é afetado. O `session:current-user` não muda: continua texto de até 64 caracteres, espelho do tópico.
 
 ### Gravar à mão para depurar
 
@@ -141,8 +145,9 @@ Os testes das funções num Redis real ficam em `infra/redis/test/run.sh`, nos m
 
 ### Onde o código não segue a norma (registrado no `esquema.json`, em `divergencias`)
 
-- A Tabela 7 pede "UUID string" no `id`. O AoP gera `user_<epoch-ms>`, e a carga inicial traz `c3167a18-5dc5`, que o bcast/webmedia também cita. O esquema exige só `idPerfil`. PENDENTE (Joel): adotar UUID ou registrar a exceção.
 - A Tabela 7 pede "file path" no `avatar`. O AoP e a carga gravam o SVG em linha, e o esquema aceita qualquer texto.
+
+Até 11/10, a lista tinha também o `id`: a Tabela 7 pede "UUID string", e o AoP gerava `user_<epoch-ms>`, com a carga em `c3167a18-5dc5`. Saiu com a F-3 (decisão do Luís em 11/10): o esquema exige UUID, e o AoP, a carga e o bcast/webmedia, que cita o id do perfil da carga, passaram a `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10` ou a ids gerados por `crypto.randomUUID()`.
 
 ---
 
@@ -150,7 +155,7 @@ Os testes das funções num Redis real ficam em `infra/redis/test/run.sh`, nos m
 
 | Chave | Tipo | Conteúdo |
 |-------|------|----------|
-| `session:current-user` | STRING | Id do perfil ativo no momento, o mesmo de `aop/currentUser` (ex.: `user_1760000000000`; vazio = sem usuário). Até 64 caracteres, o teto do tópico |
+| `session:current-user` | STRING | Id do perfil ativo no momento, o mesmo de `aop/currentUser` (ex.: `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`; vazio = sem usuário). Até 64 caracteres, o teto do tópico; o esquema desta chave não exige UUID (F-3 não a mudou) |
 | `session:current-service-id` | STRING | ID do serviço DTV ativo (ex.: `urn:tv30:service:users-test`; vazio = sem serviço). Até 256 caracteres, o teto do tópico |
 | `session:current-service` | HASH | Serviço corrente, regravado inteiro pelo tv3ws a cada troca de serviço (`tv30_sessao_servico`), com os campos de `GET /tv3/current-service` (`serviceContextId`, `serviceId`, `serviceName`, `transportStreamId`, `originalNetworkId`). O `serviceId` vai como inteiro em decimal ou vazio (Tabela C.8; até 10/10 ia o texto que viesse em `aop/services`) |
 
@@ -166,11 +171,12 @@ Index de todos os IDs de usuário existentes.
 
 ```
 SMEMBERS users:index
-1) "c3167a18-5dc5"
-2) "user_lote_alice"
-3) "user_1778457650050"
+1) "c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10"
+2) "5f0c2b9e-8d4a-4c1e-a7b3-2e6f9d1c4a80"
 ...
 ```
+
+Desde 11/10 (F-3), só UUID: o perfil da carga inicial e os que o AoP cria com `crypto.randomUUID()` (o segundo id acima é ilustrativo).
 
 ### `user:{id}` (HASH)
 
@@ -178,7 +184,7 @@ Atributos básicos do perfil (conforme **ABNT NBR 25608, Tabela 7**) mais o `las
 
 | Campo | Tabela 7 | Esquema no Redis (P4) |
 |-------|----------|-----------------------|
-| `id` | UUID, requerido | obrigatório, igual ao `{id}` da chave, 1 a 64 caracteres sem `:` (não exige UUID: ver *Onde o código não segue a norma*) |
+| `id` | UUID, requerido | obrigatório, igual ao `{id}` da chave, UUID no formato da IETF RFC 9562, em minúsculas (desde 11/10, F-3; até ali, 1 a 64 caracteres sem `:`). Versão e variante do UUID não são conferidas |
 | `nickname` | string até 20 caracteres, requerido | obrigatório, 1 a 20 caracteres (contados como caracteres, não bytes) |
 | `avatar` | file path, opcional | opcional, qualquer texto (o testbed grava SVG em linha) |
 | `parentalControl` | true/false, requerido | obrigatório, `"true"` ou `"false"` |
@@ -200,7 +206,7 @@ Nenhum outro campo entra no hash.
 Inspecionar:
 
 ```bash
-docker exec redis redis-cli HGETALL user:user_1778457650050
+docker exec redis redis-cli HGETALL user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10
 ```
 
 ### `user:{id}:consent` (SET)
@@ -208,10 +214,14 @@ docker exec redis redis-cli HGETALL user:user_1778457650050
 Lista de serviços DTV para os quais este usuário concedeu consent. Filtragem em `getUserList` usa este SET — usuários sem consent para o `current-service` não aparecem na listagem com serviço ativo.
 
 ```
-SMEMBERS user:user_lote_alice:consent
-1) "urn:tv30:service:users-test"
-2) "urn:tv30:service:webmedia"
+SMEMBERS user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10:consent
+1) "urn:tv30:service:webmedia"
+2) "urn:tv30:service:uff"
+3) "urn:tv30:service:eduplay"
+4) "urn:tv30:service:users-test"
 ```
+
+(o perfil da carga inicial, com o `accessConsent` do `infra/user-files-template/userData.json`; o Redis não garante a ordem dos membros)
 
 ### `user:{id}:broadcaster-attrs:{serviceContextId}` (HASH)
 
@@ -224,8 +234,8 @@ Atributos extras definidos pela emissora para o usuário, **dentro do contexto d
 | Chave | Tipo | Quem escreve | Conteúdo |
 |-------|------|--------------|----------|
 | `client:{id}` | HASH | tv3ws (autorização, C.6.1) | `class` (`local-associated`, `local-autonomous` ou `non-local`), `refreshToken`, `accessToken` — o vínculo cliente↔token. Fica também depois de um bloqueio |
-| `clients:authorized` | SET | tv3ws | Ids de cliente autorizados pelo espectador (D-0510-4, reunião de 05/10 com o Joel). O `/tv3/token` só emite para quem está aqui. Disjunto de `clients:blocked`: autorizar e bloquear são uma função cada (`tv30_cliente_autoriza` e `tv30_cliente_bloqueia`, P4; antes, transações `MULTI`), que tira o id de um conjunto e o põe no outro. No boot, o tv3ws inclui aqui os `client:{id}` anteriores ao conjunto que não estão bloqueados (`tv30_cliente_inclui_autorizado`). Base da futura tela de histórico de autorizações (C.4.2.2), que não existe |
-| `clients:blocked` | SET | tv3ws | Ids de cliente bloqueados pelo usuário (C.4.2.2); a borda responde 107 a token de cliente nesta lista |
+| `clients:authorized` | SET | tv3ws | Ids de cliente autorizados pelo espectador (D-0510-4, reunião de 05/10 com o Joel). O `/tv3/token` só emite para quem está aqui. Disjunto de `clients:blocked`: autorizar e bloquear são uma função cada (`tv30_cliente_autoriza` e `tv30_cliente_bloqueia`, P4; antes, transações `MULTI`), que tira o id de um conjunto e o põe no outro. No boot, o tv3ws inclui aqui os `client:{id}` anteriores ao conjunto que não estão bloqueados (`tv30_cliente_inclui_autorizado`). Base da futura tela de histórico de autorizações (C.4.2.2), que não existe. Desde 11/10 (E6, decisão do Luís), a borda também o lê: o `sub` do access token tem de estar aqui, e fora dele a resposta é 107, como a do bloqueado (só nas rotas que pedem token). Um cliente desbloqueado à mão (`SREM clients:blocked`) fica fora dos dois conjuntos e continua recusado até voltar a este |
+| `clients:blocked` | SET | tv3ws | Ids de cliente bloqueados pelo usuário (C.4.2.2); a borda responde 107 a token de cliente nesta lista, conferida antes de `clients:authorized` |
 | `origins:associated` | HASH | AoP (P1; `aop/src/core.js`) | `origem → id do serviço corrente` (o valor de `aop/currentService`, o mesmo de `session:current-service-id`, ou `current-service` sem serviço; não é o `serviceContextId`, que é constante no tv3ws) das aplicações de emissora lançadas. Desde o P1.3 (decisão do Luís em 10/10), a origem é a **própria** da aplicação, `http://<rótulo>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT>` (padrão `http://<rótulo>.apps.localhost:8080`; porta 80 omitida), em que a camada gráfica a abre e que o navegador manda no `Origin` das chamadas dela; o rótulo sai do `appId` da BALD (`aop/src/app-hosts.js`), fixo por app desde 11/10 (o users-test grava `http://urn-tv30-app-users-test.apps.localhost:8080`), e a mesma entrada volta a cada lançamento, também depois de o bcast reiniciar. O caminho da URL, com o prefixo `/graphicsAppProxy` desde 11/10, não entra na origem. O AoP grava a entrada ao lançar a aplicação, apaga ao encerrá-la ou trocá-la, e limpa a chave no boot. O caminho antigo `/graphicsAppProxy`, no host do AoP, não grava nada: até 11/10 servia a aplicação na origem do AoP, e desde 11/10 redireciona (302) para o host dela. Até 10/10, a origem gravada era a do alvo do proxy, `http://bcast:8081`, que nenhum navegador manda. Base para reconhecer o cliente local associado (L1, risco do `Origin` forjado aceito pelo Luís em 03/10; a C.4.1.7 sugere porta de origem e deixa o mecanismo à implementação) |
 | `bind-context:{serviceId}` | LIST | borda (`POST /tv3/bind-context`, C.6.8.2, respondida pelo plugin `tv30-auth` desde a reunião de 05/10; antes, o tv3ws) | Uma entrada JSON por chave registrada pela emissora: `{"alg":"RS256","key":"<string recebida>","registeredAt":<ms>}` |
 
@@ -265,10 +275,10 @@ Quem grava os perfis é o **gestor de perfis do AoP** (`aop/src/modules/profile-
 
 1. O dado do form é conferido: nickname, classificação, Libras e, desde o P4, os idiomas (IETF RFC 5646) e a lista de visibilidade (ids de serviço). Dado inválido dá 400, com a mensagem.
 2. Teto de 5 perfis: acima dele, despeja o de último acesso mais antigo (P3) com `tv30_perfil_remove`, que apaga numa operação só `users:index`, `user:{id}`, `user:{id}:consent` e todos os `user:{id}:broadcaster-attrs:*`. Antes eram `SREM`, `DEL`, `KEYS` e `DEL` avulsos.
-3. `tv30_perfil_grava` numa operação só: `users:index` recebe o `{userId}`, `user:{userId}` é regravado com os campos da Tabela 7 (com `lastAccess` igual ao instante da criação) e `user:{userId}:consent` recebe o `{session:current-service-id}` (visibilidade automática para o serviço ativo — termo aceito no form). Antes, `SADD`, `DEL`, `HSET` e `SADD` avulsos.
+3. `tv30_perfil_grava` numa operação só, com o `{userId}` gerado por `crypto.randomUUID()` (desde 11/10, F-3; até ali, `user_<epoch-ms>`): `users:index` recebe o `{userId}`, `user:{userId}` é regravado com os campos da Tabela 7 (com `lastAccess` igual ao instante da criação) e `user:{userId}:consent` recebe o `{session:current-service-id}` (visibilidade automática para o serviço ativo — termo aceito no form). Antes, `SADD`, `DEL`, `HSET` e `SADD` avulsos.
 4. O AoP recarrega a própria lista de usuários do Redis (`refreshUserData`); o `userData.json` não é alterado.
 
-**`lastAccess`** (campo de `user:{id}`, usado pelo despejo). Desde 05/10, só o AoP o grava (`touchLastAccess`), em toda troca de usuário corrente: a feita pela própria plataforma (seletor de perfis) e a que chega pelo tópico `aop/currentUser`, publicada por outro componente (por exemplo, a C.6.14.4 no tv3ws). A gravação é a função `tv30_perfil_ultimo_acesso` (antes, um script Lua do AoP), que só escreve se o id estiver em `users:index`, para não criar um hash avulso de um perfil inexistente ou despejado. Perfil sem `lastAccess` conta pelo instante embutido no id (`user_<epoch-ms>`). Até 05/10, quem gravava era o tv3ws.
+**`lastAccess`** (campo de `user:{id}`, usado pelo despejo). Desde 05/10, só o AoP o grava (`touchLastAccess`), em toda troca de usuário corrente: a feita pela própria plataforma (seletor de perfis) e a que chega pelo tópico `aop/currentUser`, publicada por outro componente (por exemplo, a C.6.14.4 no tv3ws). A gravação é a função `tv30_perfil_ultimo_acesso` (antes, um script Lua do AoP), que só escreve se o id estiver em `users:index`, para não criar um hash avulso de um perfil inexistente ou despejado. O AoP grava o `lastAccess` também na criação. Perfil sem `lastAccess` (o da carga inicial, enquanto não for usado) conta como o mais antigo (0) no despejo. Até 11/10, ele contava pelo instante embutido no id (`user_<epoch-ms>`); com o id em UUID (F-3), essa leitura saiu, porque um UUID que começa por dígitos viraria um instante falso (`lastAccessOf`, em `aop/src/modules/profile-manager/service.js`). Até 05/10, quem gravava era o tv3ws.
 
 ---
 

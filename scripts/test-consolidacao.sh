@@ -56,9 +56,18 @@ docker exec redis printenv REDIS_COMMANDER_PASSWORD \
 docker exec redis redis-cli ping | xargs echo "redis-cli ping sem senha (6379 segue aberto) ="
 PORTA_CMD=$(docker port redis 18081/tcp | head -1)
 echo "commander no host: $PORTA_CMD"
-echo "-- matando o commander (banco deve sobreviver) --"
+# C2 (decisao do Luis em 11/10): morre-inteiro tambem para o commander. Antes
+# a morte dele nao derrubava o banco; agora o container do redis cai e o
+# restart (unless-stopped) o traz de volta, saudavel depois da carga.
+echo "-- matando o commander (o container do redis deve cair e voltar) --"
+REINICIOS_ANTES=$(docker inspect -f '{{.RestartCount}}' redis)
 docker exec redis pkill -f redis-commander
-sleep 2
+for i in $(seq 1 60); do
+  [ "$(docker inspect -f '{{.RestartCount}}' redis)" != "$REINICIOS_ANTES" ] \
+    && [ "$(docker inspect -f '{{.State.Health.Status}}' redis 2>/dev/null)" = healthy ] && break
+  sleep 1
+done
+echo "reinicios do redis: $REINICIOS_ANTES -> $(docker inspect -f '{{.RestartCount}}' redis) (esperado +1)"
 docker ps --filter name=redis --format '{{.Names}} {{.Status}}'
 docker exec redis redis-cli ping
 

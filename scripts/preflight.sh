@@ -2,18 +2,27 @@
 # Preflight do TV30 — roda como one-shot ANTES dos servicos (network+pid do
 # host). Diagnostica e imprime avisos legiveis para que, se o compose falhar
 # logo depois (ex.: bind de porta), a causa ja esteja nomeada no log. So
-# bloqueia a subida num caso: a 44642 ocupada por outro processo (exit 1,
-# abaixo); a borda depende deste servico e entao nao sobe. Ver docs/troubleshooting.md.
+# bloqueia a subida em dois casos (exit 1, abaixo): a 44642 ocupada por outro
+# processo, e o SSDP ligado sem SSDP_ADVERTISE_HOST (B2, decisao do Luis em
+# 11/10); a borda depende deste servico e entao nao sobe. Ver
+# docs/troubleshooting.md.
 set -u
 
-# Politica de portas (plano de consolidacao, V10):
+# Politica de portas (C1, decisao do Luis em 11/10; antes, V10 do plano de
+# consolidacao):
 #   44642  — FIXA DA NORMA (C.3.4): ocupada = ERRO BLOQUEANTE
-#   demais fixas por contrato local (aviso): 44643, 9001 (WS do browser),
-#   8080 (URL humana; AOP_PUBLIC_PORT, a porta publicada do AoP e das apps
-#   de emissora em <app>.apps.localhost, P1.3), 6379 (convencao), 1883,
-#   44652/44653 (servico)
-#   dinamicas (docs, commander, bcast) nao entram na checagem
-PORTS_WARN="1883 9001 6379 ${AOP_PUBLIC_PORT:-8080} 8081 44643 44652 44653"
+#   fixas (aviso se ocupadas): 1883 (MQTT), 6379 (Redis), a do AoP
+#   (AOP_PUBLIC_PORT, padrao 8080; tambem a porta das apps de emissora em
+#   <app>.apps.localhost, P1.3); com a borda em rede do host (SSDP_EDGE), a
+#   44643 (vai no anuncio), a 8085 e as 44652/44653 do tv3ws em 127.0.0.1
+#   sem porta fixa (o Docker escolhe uma livre; nao entram na checagem): a
+#   44643 na bridge, a 9001 do mosquitto, a 8081 do bcast, a 8085 na bridge e
+#   a 18081 do commander. A faixa 45000-45199 do remote-device fica de fora:
+#   o tv3ws escolhe uma porta livre dentro dela.
+PORTS_WARN="1883 6379 ${AOP_PUBLIC_PORT:-8080}"
+if [ "${SSDP_EDGE:-}" = "true" ]; then
+  PORTS_WARN="$PORTS_WARN 44643 8085 44652 44653"
+fi
 PORT_BLOCK="44642"
 WARN=0
 
@@ -68,6 +77,18 @@ if echo "$LISTEN" | grep -qE "[:.]${PORT_BLOCK}$"; then
         exit 1
       fi ;;
   esac
+fi
+
+# B2 (decisao do Luis em 11/10): com o anuncio ligado, o host do LOCATION e
+# o SSDP_ADVERTISE_HOST, obrigatorio. Sem ele o anunciante da borda sai com
+# erro de configuracao (C8) e a borda cai; aqui a subida para antes, com a
+# mensagem. O override do SSDP repassa ao preflight os mesmos arquivos de
+# ambiente da borda (tv3ws/.env e .env).
+if [ "${SSDP_EDGE:-}" = "true" ] && [ -z "$(printf '%s' "${SSDP_ADVERTISE_HOST:-}" | tr -d ' ')" ]; then
+  echo "[preflight] ERRO: o anuncio SSDP esta ligado (docker-compose.ssdp.yml) e falta SSDP_ADVERTISE_HOST."
+  echo "[preflight]       Defina no .env da raiz o IP (ou nome) desta maquina na rede, por exemplo"
+  echo "[preflight]       SSDP_ADVERTISE_HOST=192.168.0.23, e rode 'docker compose up -d' de novo."
+  exit 1
 fi
 
 for p in $PORTS_WARN; do
