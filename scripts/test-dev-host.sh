@@ -459,13 +459,15 @@ checar_redis_mqtt() { checar_redis_host; checar_mqtt_host; }
 # backend e nao responde esta rota). O corpo depende de haver servico em uso
 # (C.6.3.1, Tabela C.8; tv3ws/src/api/aop-communication/current-service/
 # controller.ts): com servico, 200 com serviceContextId; sem servico (nada
-# selecionado no catalogo, o caso do cenario 1), 404 {"error":300}. O que se
-# prova aqui e o caminho borda -> tv3ws do host com o JWT_SECRET
-# compartilhado, entao valem os dois. Nao se publica aop/currentService retido
+# selecionado no catalogo, o caso do cenario 1), 404 {"error":300}; valem os
+# dois. O que se prova aqui e o caminho borda -> tv3ws do host. NAO prova o
+# JWT_SECRET compartilhado: em warn (padrao) a borda repassa mesmo com token
+# invalido; o que diz se a borda aceitou o token e o X-TV30-Auth-Warn (ausente
+# = aceito), registrado como info por checar_borda_tv3ws_host. Nao se publica aop/currentService retido
 # para forcar o 200: o topico e da plataforma (o aop o publica e o le, no
 # container ou no host), e o valor ficaria no broker depois do teste.
 checar_current_service_host() { # checar_current_service_host <token>
-  local desc="borda 44642 GET /tv3/current-service (Bearer, JWT_SECRET compartilhado) -> tv3ws no host"
+  local desc="borda 44642 GET /tv3/current-service (Bearer assinado com o JWT_SECRET da borda) -> tv3ws no host"
   local i=0 h="" r=""
   while [ "$i" -lt 5 ]; do
     : >"$LOGDIR/current-service.body"

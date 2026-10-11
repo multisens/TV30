@@ -2,5 +2,10 @@ source "https://rubygems.org"
 
 # Necessário para rodar o site localmente (jekyll serve).
 # No GitHub Pages, a stack já vem pronta — esses Gemfiles são só pra dev local.
-gem "github-pages", group: :jekyll_plugins
+# Versão fixa: a que o GitHub Pages usa em 10/10 (pages.github.com/versions:
+# github-pages 232, jekyll 3.10.0, Ruby 3.3.4). Sem ela, o bundler resolveu uma
+# github-pages antiga (jekyll 3.6.2), que não carrega no Ruby 3.3.
+# Build local testado em 10/10 num container ruby:3.3:
+#   bundle install && bundle exec jekyll build --baseurl /TV30
+gem "github-pages", "= 232", group: :jekyll_plugins
 gem "jekyll-remote-theme"

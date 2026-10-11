@@ -1,5 +1,5 @@
 title: TV 3.0 — Plataforma de Referência
-description: Documentação técnica do monorepo TV30 (multisens)
+description: Documentação técnica do monorepo TV30 (multisens), para alunos novos e desenvolvedores
 
 # Tema via remote_theme (suportado pelo GitHub Pages sem precisar instalar localmente)
 remote_theme: just-the-docs/just-the-docs
@@ -11,6 +11,19 @@ plugins:
 search_enabled: true
 heading_anchors: true
 color_scheme: dark
+
+# Navegação: as seções (Primeiros passos, Como funciona, Histórico) são
+# páginas com has_children; a ordem de cada página vem do nav_order dela.
+
+# Avisos em destaque. Uso no Markdown: uma linha "{: .historico }" logo antes
+# do parágrafo (ou do bloco "> ...") do aviso.
+callouts:
+  historico:
+    title: Registro histórico
+    color: yellow
+  nota:
+    title: Norma × implementação
+    color: blue
 
 aux_links:
   "Repositório":

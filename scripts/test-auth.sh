@@ -93,6 +93,16 @@
 # Redis congelado (docker pause redis) dura poucos segundos e o trap
 # descongela o container se o script cair no meio.
 #
+# P4 (decisao do Luis em 10/10, "Funcoes + auditoria"): quando o script faz o
+# papel de um servico no Redis (o tv3ws espelhando aop/currentService, o AoP
+# registrando a origem associada, o tv3ws bloqueando um cliente), ele grava
+# pelas FUNCOES do esquema (fcall, abaixo), como o servico gravaria. Escrita
+# direta so onde nao existe operacao de servico: o desbloqueio (PENDENTE
+# (Joel): futura tela, C.4.2.2) e a remocao dos dados de teste no fim. No fim,
+# depois de desfazer o que semeou, roda a auditoria (FCALL_RO tv30_auditoria):
+# chave fora do esquema = FAIL (inclusive se ja estava la antes da suite —
+# o script avisa no comeco).
+#
 # Estado tocado no broker: o retido de aop/currentService (o servico em uso do
 # tv3ws, core.app.sid; a plataforma o publica retido e o tv3ws o espelha em
 # session:current-service-id e no hash session:current-service). Os casos da
@@ -134,6 +144,28 @@ info() { echo "      $*"; }
 die()  { echo "ERRO: $*" >&2; exit 2; }
 
 rc() { docker exec redis redis-cli "$@"; }
+# fcall <funcao> [args...]: grava pela funcao do esquema (numkeys 0), no lugar
+# do servico dono da familia; recusa (TV30ESQUEMA) ou erro -> mensagem e
+# retorno != 0
+fcall() {
+  local out st
+  out=$(docker exec redis redis-cli --no-raw FCALL "$1" 0 "${@:2}" 2>&1); st=$?
+  # --no-raw: resposta de erro do Redis sai como "(error) ..." (o redis-cli
+  # sai com 0 mesmo assim); container parado ou sem conexao: st != 0
+  if [ "$st" -ne 0 ] || [[ "$out" == *"(error)"* ]]; then
+    echo "ERRO: FCALL $1 nao gravou: $out" >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
+}
+# servico corrente no lugar do tv3ws (espelho de aop/currentService); vazio =
+# sem servico corrente (antes: SET/DEL direto)
+servico_corrente() { fcall tv30_sessao_servico_id "$1" >/dev/null; }
+# auditoria do esquema: uma linha "chave | familia | motivo" por achado
+auditoria() {
+  docker exec redis redis-cli --raw FCALL_RO tv30_auditoria 0 2>&1 \
+    | awk 'NR%3==1{k=$0} NR%3==2{f=$0} NR%3==0{print k " | " f " | " $0}'
+}
 env_of() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" | sed -n "s/^$2=//p" | head -1; }
 
 # ---------------------------------------------------------------- pre-req --
@@ -155,6 +187,18 @@ CS_TOPIC=aop/currentService
 ORIG_CS=$(docker exec mqtt-broker mosquitto_sub -t "$CS_TOPIC" -C 1 -W 2 --retained-only 2>/dev/null)
 ORIG_CS_HASH=$(rc HGETALL session:current-service | base64 -w0)
 echo "== borda: modo=$ORIG_MODE variante=$ORIG_VARIANT; servico corrente='${ORIG_SVC}'; $CS_TOPIC retido='${ORIG_CS}' =="
+# P4: sem a biblioteca de funcoes o script nao consegue fazer o papel dos
+# servicos (imagem do redis anterior ao P4?)
+VERSAO_ESQUEMA=$(rc --raw FCALL_RO tv30_versao 0 2>&1)
+case "$VERSAO_ESQUEMA" in
+  ''|*ERR*|*rror*) die "funcoes do Redis ausentes (FCALL_RO tv30_versao 0: '$VERSAO_ESQUEMA'): reconstrua a imagem do redis (docker compose build redis && docker compose up -d redis)" ;;
+esac
+echo "== Redis: biblioteca de funcoes tv30, esquema versao $VERSAO_ESQUEMA =="
+AUD_ANTES=$(auditoria)
+if [ -n "$AUD_ANTES" ]; then
+  echo "ATENCAO: a auditoria do Redis ja tem achados ANTES da suite (o fim da suite exige vazia):"
+  printf '%s\n' "$AUD_ANTES" | sed 's/^/  /'
+fi
 
 # recria SO o edgegateway no modo pedido, preservando variante e segredo
 edge_mode() {
@@ -193,9 +237,12 @@ cs_publish() {
   return 1
 }
 
-cleanup() {
-  set +e
-  echo; echo "== limpeza =="
+# Desfaz o que a suite semeou no Redis (uma vez: no fim normal, antes da
+# auditoria, ou no trap se o script cair no meio).
+REDIS_RESTAURADO=0
+restaura_redis() {
+  [ "$REDIS_RESTAURADO" = 1 ] && return 0
+  REDIS_RESTAURADO=1
   # o redis primeiro: o resto da limpeza fala com ele
   if [ "$REDIS_TOUCHED" = 1 ] && [ "$(docker inspect -f '{{.State.Paused}}' redis 2>/dev/null)" = true ]; then
     docker unpause redis >/dev/null && echo "redis descongelado"
@@ -207,23 +254,36 @@ cleanup() {
       || { docker start tv3ws >/dev/null && echo "tv3ws religado"; }
   fi
   # o retido de aop/currentService antes do Redis: o tv3ws reescreve
-  # session:current-service-id e o hash session:current-service ao recebe-lo
+  # session:current-service-id e o hash session:current-service ao recebe-lo.
+  # O hash de antes volta pela funcao do tv3ws (tv30_sessao_servico, P4);
+  # sem hash antes, fica o que o tv3ws regravou para o retido restaurado.
   if [ "$CS_TOUCHED" = 1 ]; then
     if cs_publish "$ORIG_CS"; then echo "$CS_TOPIC retido restaurado ('$ORIG_CS')"
     else echo "ATENCAO: $CS_TOPIC publicado ('$ORIG_CS'), mas o tv3ws nao o espelhou no Redis em 10 s"; fi
     local k v hs=()
     while IFS= read -r k && IFS= read -r v; do hs+=("$k" "$v"); done < <(printf '%s' "$ORIG_CS_HASH" | base64 -d)
-    rc DEL session:current-service >/dev/null
-    [ "${#hs[@]}" -gt 0 ] && rc HSET session:current-service "${hs[@]}" >/dev/null
+    if [ "${#hs[@]}" -gt 0 ]; then
+      fcall tv30_sessao_servico "${hs[@]}" >/dev/null \
+        || echo "ATENCAO: o hash session:current-service de antes da suite nao passou no esquema (veja a auditoria)"
+    fi
   fi
-  if [ -n "$ORIG_SVC" ]; then rc SET session:current-service-id "$ORIG_SVC" >/dev/null
-  else rc DEL session:current-service-id >/dev/null; fi
+  servico_corrente "$ORIG_SVC" || echo "ATENCAO: session:current-service-id de antes ('$ORIG_SVC') nao passou no esquema"
+  fcall tv30_origem_remove "$ASSOC" >/dev/null
+  # Dados de teste (ids e servicos com o sufixo desta execucao): escrita
+  # direta DE PROPOSITO — nenhum servico apaga cliente nem a lista inteira de
+  # bind-context, entao nao ha funcao para isso. O que sobra (os conjuntos sem
+  # os ids de teste) cumpre o esquema; a auditoria no fim confere.
   rc DEL "bind-context:$SVC_A" "bind-context:$SVC_B" "client:$CLIENT" "client:$REFUSED" \
     "client:$REUSE" "client:$NL_QR" "client:$NL_KEX" "client:$REDIS_CID" >/dev/null
-  rc HDEL origins:associated "$ASSOC" >/dev/null
   rc SREM clients:authorized "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" >/dev/null
   rc SREM clients:blocked "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" >/dev/null
   echo "Redis restaurado (servico corrente='$(rc GET session:current-service-id)')"
+}
+
+cleanup() {
+  set +e
+  echo; echo "== limpeza =="
+  restaura_redis
   if [ "$(env_of edgegateway AUTH_ENFORCE)" != "$ORIG_MODE" ]; then
     if edge_mode "$ORIG_MODE"; then echo "edgegateway de volta ao modo $ORIG_MODE"
     else echo "ATENCAO: nao consegui voltar o edgegateway para $ORIG_MODE"; fi
@@ -728,8 +788,10 @@ echo; echo "== 2. recriando o edgegateway com AUTH_ENFORCE=enforce =="
 edge_mode enforce || die "edgegateway nao subiu em enforce"
 echo "ok: as duas superficies registraram o plugin em enforce"
 
-rc SET session:current-service-id "$SVC_A" >/dev/null
-rc HSET origins:associated "$ASSOC" "$SVC_A" >/dev/null
+# no lugar do tv3ws (servico corrente) e do AoP (origem associada), pelas
+# funcoes do esquema (P4)
+servico_corrente "$SVC_A" || die "nao consegui gravar o servico corrente de teste pela funcao"
+fcall tv30_origem_registra "$ASSOC" "$SVC_A" >/dev/null || die "nao consegui registrar a origem associada de teste pela funcao"
 ASSOC_H=(-H "Origin: $ASSOC")
 
 echo; echo "-- access token (fluxo real /tv3/authorize + /tv3/token) --"
@@ -799,16 +861,25 @@ expect_api_version "[44642] 101 do tv3ws" 2.0
 expect_pass "[44642] GET /tv3/current-service com Accept-Version 2.1" GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: 2.1'
 expect_api_version "[44642] 200 do tv3ws com Accept-Version 2.1" 2.1
 
-rc SADD clients:blocked "$CLIENT" >/dev/null
+# Bloqueio pelo espectador: o script faz o papel do tv3ws e bloqueia pela
+# funcao (tv30_cliente_bloqueia, P4: sai de clients:authorized e entra em
+# clients:blocked, como o BlockClient). O /tv3/token deste cliente ja foi
+# chamado acima; daqui em diante so a borda confere o token dele.
+# Desbloqueio: nao ha operacao de servico — PENDENTE (Joel): o que o
+# desbloqueio faz com client:{id} e decisao da futura tela (C.4.2.2). O script
+# tira o id de clients:blocked direto, DE PROPOSITO; o id fica fora dos dois
+# conjuntos, estado que cumpre o esquema.
+desbloqueia() { rc SREM clients:blocked "$1" >/dev/null; }
+fcall tv30_cliente_bloqueia "$CLIENT" >/dev/null || fail "bloqueio de $CLIENT pela funcao recusado"
 expect_err "[44642] cliente em clients:blocked" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
-rc SREM clients:blocked "$CLIENT" >/dev/null
+desbloqueia "$CLIENT"
 expect_pass "[44642] cliente desbloqueado volta a passar" GET "$H_INT/tv3/current-service" "${TOK[@]}"
 # token valido com class local-associated: dispensa bind-token, mas nao o bloqueio
 TOK_ASSOC=(-H "Authorization: Bearer $AT_ASSOC")
 expect_pass "[44642] token de classe associado dispensa bind-token" GET "$H_INT/tv3/current-service/users/current-user" "${TOK_ASSOC[@]}"
-rc SADD clients:blocked "$CLIENT" >/dev/null
+fcall tv30_cliente_bloqueia "$CLIENT" >/dev/null || fail "bloqueio de $CLIENT pela funcao recusado"
 expect_err "[44642] token de classe associado de cliente bloqueado" 107 borda GET "$H_INT/tv3/current-service/users/current-user" "${TOK_ASSOC[@]}"
-rc SREM clients:blocked "$CLIENT" >/dev/null
+desbloqueia "$CLIENT"
 
 echo; echo "-- reuso de clientid (D-L2): 101 sem nova consulta ao espectador --"
 # cliente proprio do caso: se o 101 falhar e o pop-up sair, o timeout dele
@@ -863,9 +934,9 @@ expect_edge "POST bind-context com Accept-Version 2.1 (repetido)" '^\{"serviceCo
 expect_err "[44643] POST bind-context (so na superficie interna, P1.9)" 100 borda \
   POST "$H_EXT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application/json' -d "$BODY_HS512"
 # sem servico corrente nao ha a que ligar a chave: 300 ("No DTV service currently in use")
-rc DEL session:current-service-id >/dev/null
+servico_corrente ""
 expect_err "POST bind-context sem servico corrente" 300 borda POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application/json' -d "$BODY_HS256"
-rc SET session:current-service-id "$SVC_A" >/dev/null
+servico_corrente "$SVC_A"
 
 echo; echo "-- bind-token assinado com cada chave registrada --"
 CU="/tv3/current-service/users/current-user"
@@ -891,9 +962,9 @@ expect_err "POST /tv3/xyz/users com bind-token valido (scid de outro servico, L2
 expect_err "POST /tv3/Current-Service/users (caixa trocada; o Express nao diferencia)" 108 borda POST "$H_INT/tv3/Current-Service/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
 
 echo; echo "-- isolamento entre emissoras (D4) --"
-rc SET session:current-service-id "$SVC_B" >/dev/null
+servico_corrente "$SVC_B"
 expect_err "servico corrente trocado: bind-token da emissora A" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS256"
-rc SET session:current-service-id "$SVC_A" >/dev/null
+servico_corrente "$SVC_A"
 expect_pass "servico A de volta: o mesmo bind-token passa" GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS256"
 
 echo; echo "-- associado (D8): sem access token e sem bind-token --"
@@ -940,7 +1011,7 @@ if curl -s -m 5 -o /dev/null "$AOP/appcat"; then
     curl -s -m 5 -o /dev/null "$AOP/keydown/27"
   fi
   curl -s -m 5 -o /dev/null "$AOP/btpapp/appcat"
-  rc SET session:current-service-id "$SVC_A" >/dev/null
+  servico_corrente "$SVC_A"
 else
   info "AoP fora do ar em $AOP: casos da app de verdade (P1.3) pulados"
 fi
@@ -982,9 +1053,9 @@ expect_err "DELETE por nao associado" 106 borda DELETE "$H_INT/tv3/bind-context"
 # P1.9: o DELETE (classes: local-associated) tambem so existe na 44642
 expect_err "[44643] DELETE bind-context (so na superficie interna, P1.9)" 100 borda DELETE "$H_EXT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: $HS512_KEY"
 expect_pass "a HS512 continua registrada depois do DELETE recusado na 44643" GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS512"
-rc DEL session:current-service-id >/dev/null
+servico_corrente ""
 expect_edge "DELETE sem servico corrente -> {} (nada a remover)" '^\{\}$' DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: $HS512_KEY"
-rc SET session:current-service-id "$SVC_A" >/dev/null
+servico_corrente "$SVC_A"
 expect_pass "a HS512 continua registrada depois do DELETE sem servico corrente" GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS512"
 
 echo; echo "-- APIs de informacao de API (C.6.7.8, C.6.7.9), respondidas pela borda --"
@@ -1189,6 +1260,17 @@ if docker pause tv3ws >/dev/null 2>&1; then
   expect_pass "[44642] tv3ws descongelado volta a responder" GET "$H_INT/tv3/current-service" "${TOK[@]}"
 else
   fail "docker pause tv3ws falhou (caso do backend lento nao testado)"
+fi
+
+echo; echo "-- esquema do Redis (P4): auditoria depois de desfazer o que a suite semeou --"
+restaura_redis
+AUD=$(auditoria)
+if [ -z "$AUD" ]; then
+  pass "auditoria do esquema vazia (FCALL_RO tv30_auditoria 0) depois da suite"
+else
+  ANTES=""
+  [ -n "$AUD_ANTES" ] && ANTES=" (ja havia achados ANTES da suite: volume antigo? ver o aviso do comeco e docs/modelo-redis.md)"
+  fail "auditoria do esquema com achados depois da suite${ANTES}:"$'\n'"$(printf '%s\n' "$AUD" | sed 's/^/        /')"
 fi
 
 # ================================================================ fim =====

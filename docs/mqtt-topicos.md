@@ -1,6 +1,7 @@
 ---
 title: Tópicos MQTT
-nav_order: 7
+parent: Como funciona
+nav_order: 4
 ---
 
 # Tópicos MQTT
@@ -20,14 +21,21 @@ Publicadores, consumidores e flag de retenção conferidos nas chamadas `publish
 | `aop/display/layers/rxgui` | AoP | front do AoP | não | Camada GUI ativa |
 | `aop/display/layers/video/url` | AoP | front do AoP | não | URL do stream de vídeo |
 | `aop/display/layers/video/size` | AoP | front do AoP | não | Posição e tamanho do vídeo |
-| `aop/display/layers/graphics` | AoP | front do AoP | não | URL do iframe gráfico. Desde o P1.3 (decisão do Luís em 10/10), `http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT><bcastEntryPointUrl>`, o host próprio da app (padrão `<app>.apps.localhost:8080`; `aop/src/app-hosts.js`); vazio encerra a app. Até 10/10, `/graphicsAppProxy<bcastEntryPointUrl>`, na origem do AoP |
-| `aop/display/layers/popup/*` | tv3ws | front do AoP | não | Pop-ups de autorização (sim/não, QR code, PIN) |
+| `aop/display/layers/graphics` | AoP | front do AoP | não | URL do iframe gráfico. Desde o P1.3 (decisão do Luís em 10/10), `http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT><bcastEntryPointUrl>`, o host próprio da app (padrão `<app>.apps.localhost:8080`; a porta some quando é 80, como o navegador escreve o `Origin`; `aop/src/app-hosts.js`); vazio encerra a app. Até 10/10, `/graphicsAppProxy<bcastEntryPointUrl>`, na origem do AoP |
+| `aop/display/layers/popup/yesno/message` | tv3ws | front do AoP | não | Pop-up de autorização sim/não (`showYesNoPopUpAsync`, em `tv3ws/src/core.ts`) |
+| `aop/display/layers/popup/yesno/response` | front do AoP (`aop/public/js/popup.js`) | tv3ws | não | Resposta do espectador: `true`, ou `false` no "Não" e no tempo esgotado |
+| `aop/display/layers/popup/qrcode`, `aop/display/layers/popup/pin` | tv3ws | AoP, camada gráfica (`aop/display/layers/popup/+`, desde 11/10; ver nota abaixo) | não | QR code e PIN do pareamento do cliente não local (C.4.3) |
 | `aop/:serviceId/currentApp` | — (nenhum publicador nestes módulos) | tv3ws | — | App ativo no serviço |
 | `aop/services` | — (nenhum publicador nestes módulos) | tv3ws | — | Lista de serviços |
 | `aop/devices/<classe>` | tv3ws | — | sim | Dispositivos remotos registrados |
+| `aop/<sid>/<appId>/path`, `aop/<sid>/<appId>/doc/nodes` | — (nenhum publicador nestes módulos) | tv3ws (`tv3ws/src/mqtt-client.ts`, `core.ts`) | — | Caminho e nós do documento da aplicação, para o remote-device |
+| `aop/<sid>/<appId>/doc/<nó>/...` | tv3ws (eventos do remote-device: `.../eventNotification` sem retain; `.../user` e `.../value` com retain) | tv3ws (`/interfaces`, `.../actionNotification`, `.../attributionEvent/value`) | misto | Troca de estado dos nós entre a aplicação e os dispositivos remotos (`tv3ws/src/modules/remotedevice-manager/remote-device.ts`). O `publish` do tv3ws retém por padrão (`tv3ws/src/mqtt-client.ts`) |
+| `errors/<client_id>` | plugin do broker | — (nenhum consumidor nestes módulos) | não | Erro de validação de esquema de uma publicação daquele cliente (ver *Plugin C do Mosquitto*) |
 | `video/event` | bcast (`src/modules/live_stream/index.ts`) | front do AoP (camada gráfica) | não | Eventos do fluxo simulado. O front os repassa à app da camada gráfica como `stream_event`; desde o P1.3, com a app em outra origem, por `postMessage`, e a ponte `bcast/public/js/aop-bridge.js` os redespacha no documento dela |
 | `tlm/lls/<bsid>/bamt` | bcast | AoP | sim | BAMT: aplicações anunciadas |
 | `tlm/sls/<sid>/esg`, `tlm/sls/<sid>/bald` | bcast | AoP (assina o serviço selecionado) | sim | ESG e BALD por serviço; a BALD traz o `bcastEntryPackageUrl` |
+
+**Os pop-ups de QR code e PIN não chegavam à tela** (achado de 10/10, pela leitura do código; **corrigido em 11/10**). O tv3ws os publica em `aop/display/layers/popup/qrcode` e `.../pin` (`tv3ws/src/core.ts`), mas a camada gráfica só assina `aop/display/layers/+`, `aop/display/layers/video/+` e `aop/display/layers/popup/+/message` (`aop/src/modules/graphic-overlays/view.ejs`), e nenhum desses filtros casa com os dois tópicos. O `aop/public/js/popup.js` sabe desenhar o QR code e o PIN, mas não os recebe. O `scripts/test-auth.sh` não pegava o defeito, porque lê o QR code e o PIN direto do broker, no lugar do espectador. Desde 11/10 a camada gráfica também assina `aop/display/layers/popup/+`. Conferido no mesmo dia num Chrome 154 sem interface, controlado por CDP: a camada gráfica do AoP reconstruído conectou ao broker e desenhou o PIN e o QR code publicados nos dois tópicos.
 
 ---
 
@@ -43,7 +51,10 @@ Sobraram duas referências sem efeito, e as duas saíram em 10/10: a assinatura 
 
 ## Plugin C do Mosquitto
 
-O plugin (`infra/mqtt-broker/plugin/src/mosquitto_plugin.c`) **só valida o esquema** das mensagens publicadas em tópicos que têm esquema declarado (`infra/mqtt-broker/plugin/config/schemas.json`). Quando a validação falha, ele publica o erro em `errors/<client_id>`.
+O plugin (`infra/mqtt-broker/plugin/src/mosquitto_plugin.c`) **valida o esquema** das mensagens publicadas em tópicos que têm esquema declarado (`infra/mqtt-broker/plugin/config/schemas.json`):
+- **Tópicos com esquema:** `aop/currentUser`, `aop/currentService`, `aop/display/layers/rxgui`, `aop/display/layers/graphics`, `aop/display/layers/video/url`, `aop/display/layers/video/size`, `video/event`, `tlm/lls/+/bamt`, `tlm/sls/+/esg` e `tlm/sls/+/bald`, mais três tópicos de teste (`sensor/room1/temperature`, `sensor/room2/humidity` e `sensor/comprehensive/test`). Os demais, inclusive os pop-ups, `aop/devices/*` e os tópicos do remote-device, passam sem validação.
+- **Publicação inválida é recusada,** e não só registrada: o plugin devolve `MOSQ_ERR_ACL_DENIED` ao broker e publica o erro em `errors/<client_id>` (QoS 0, sem retain). Payload vazio não é validado, e por isso a limpeza dos retidos de `tlm/*` com mensagem vazia passa.
+- **Medidor de tempo de resposta:** o plugin também responde às mensagens dos tópicos `PublisherResponseTime*`, publicando em `PluginResponseTime<id>/iteration<n>` (`response_time_tester.c`). Serve à medição de `infra/mqtt-broker/brokertimetest/`.
 
 O plugin não faz controle de acesso a tópicos nem consulta o Redis. O controle de acesso foi removido por decisão de desenho: o isolamento que a norma exige é por contexto de serviço DTV, na fronteira das APIs. A versão anterior desta página dizia que o plugin "verifica consent do usuário no Redis", o que não corresponde ao código.
 
@@ -55,5 +66,6 @@ O plugin não faz controle de acesso a tópicos nem consulta o Redis. O controle
 |------------------|--------|
 | Estado atual (`currentUser`, `currentService`) | **sim**, para quem reconecta saber o estado |
 | Eventos pontuais (pop-ups) | **não**, só para quem está escutando |
+| Eventos dos nós no remote-device (`.../user`, `.../value`) | **sim**, porque o `publish` do tv3ws retém por padrão (`tv3ws/src/mqtt-client.ts`); o `.../eventNotification` sai sem retain |
 | Camadas de display | **não** no código atual: o front que reabre não recebe a última camada |
 | Sinalização do bcast (`tlm/*`) | **sim**, a última versão dos metadados. O bcast publica vazio ao encerrar, para limpar |

@@ -1,6 +1,6 @@
 ---
-title: Troubleshooting
-nav_order: 8
+title: Solução de problemas
+nav_order: 5
 ---
 
 # Troubleshooting
@@ -15,7 +15,7 @@ daemon Docker via snap):
 sudo ss -ltnp | grep -E '3000|3001'
 
 # 2. e um container deste daemon?
-sudo docker ps -a --format '{{.Names}}\t{{.Ports}}' | grep 3001
+sudo docker ps -a --format '{% raw %}{{.Names}}\t{{.Ports}}{% endraw %}' | grep 3001
 #    -> apareceu: remova-o (docker rm -f <nome>) ou faca down no projeto dono.
 
 # 3. ss mostra docker-proxy mas o docker ps -a vem vazio?
@@ -61,6 +61,32 @@ O antigo container de carga `redis-seed`, que rodava `pip install redis` na part
 O healthcheck do `redis` só passa depois da carga (chave `seed:done`, testada a cada 2 s, até 30 vezes; `infra/redis/docker-compose.yml`). O `tv3ws` e o `edgegateway` dependem dele com `condition: service_healthy`; o broker não depende do Redis. Para ver em que ponto a carga está: `docker logs redis`, que registra `[redis] aplicando carga inicial (redis-cli --pipe)...` e `[redis] carga concluida`, ou `[redis] carga ja aplicada (seed:done presente) — mantida`.
 
 O seed sai do template `infra/user-files-template/userData.json` no build. Uma mudança no template só entra com a imagem reconstruída e, mesmo assim, só num volume `redis_data` que ainda não tenha `seed:done`: o entrypoint não reaplica a carga num volume já semeado.
+
+Desde o P4 (decisão do Luís em 10/10), o healthcheck também exige que a biblioteca de funções `tv30` tenha carregado **nesta** partida (marca `/tmp/tv30-redis-pronto`, criada pelo entrypoint). No log aparece `[redis] biblioteca de funcoes tv30 carregada (esquema versao N)`. Se o log mostrar `ERRO: a biblioteca de funcoes tv30 NAO carregou`, o container encerra, porque sem as funções toda escrita dos serviços falharia. A causa é um `esquema.json` ou `funcoes.lua` quebrado numa imagem montada à mão: reconstrua a partir do repositório (`docker compose build redis`), já que o build confere a biblioteca. Se o log mostrar `ERRO: a carga inicial foi recusada pelo esquema`, um perfil do `userData.json` está fora do esquema: o log diz qual campo, `seed:done` não é gravado e o container fica *unhealthy*. Corrija o template e reconstrua a imagem.
+
+## Erro `TV30ESQUEMA` numa resposta ou no log
+
+```
+TV30ESQUEMA tv30_perfil_grava: user:u2 campo parentalControl: deve ser "true" ou "false" (veio "False")
+```
+
+É uma função do Redis recusando uma escrita fora do esquema (P4, decisão do Luís em 10/10). A mensagem diz a função, a chave, o campo e o motivo, e nada foi gravado. Para o serviço, é defeito de quem grava. O tv3ws e o AoP respondem 404 `{"error":200}` com a mensagem no `description` e no log (`[error] <método> <url>: TV30ESQUEMA ...`). A borda responde com `escrita recusada pelo esquema do Redis (...)`. Um handler MQTT só loga (no tv3ws, `[mqtt] FALHA no handler de <tópico>`).
+
+- **Veio de uma escrita do código:** o serviço montou um dado que o esquema não aceita. Compare a mensagem com a regra no `infra/redis/esquema.json` (o campo `fonte` diz de onde ela veio) e corrija quem grava, não a regra. Mudar a regra é decisão e vai registrada.
+- **Veio de um script ou de uma chamada à mão (`FCALL`):** os argumentos estão fora do esquema. Os formatos de cada função estão em `infra/redis/README.md`.
+- **`ERR Function not found`:** o Redis está sem a biblioteca. Pode ser uma imagem anterior ao P4 ou um Redis que não é o da stack. Reconstrua com `docker compose build redis && docker compose up -d redis`.
+
+## Auditoria do Redis com achados
+
+```bash
+docker exec redis redis-cli FCALL_RO tv30_auditoria 0
+```
+
+Cada achado é `[chave, familia, motivo]`, e a auditoria vazia é o estado esperado. O `scripts/test-auth.sh` dá FAIL se ela não terminar vazia e avisa no começo se já havia achados antes da suíte. Causas comuns:
+
+- **Volume de antes do P4.** A carga antiga gravava os booleanos como `"False"`/`"True"`, e o `lastAccess` avulso de antes de 05/10 deixava hashes `user:{id}` só com `lastAccess`, fora de `users:index` (por exemplo, `user:abc-123`). Para começar limpo, use `docker compose down -v`, que apaga o volume e com ele os perfis criados. A outra saída é corrigir ou apagar as chaves apontadas.
+- **Escrita à mão** pelo `redis-cli` ou pelo Redis Commander, que não passa pelas funções. Grave pela função (`FCALL <funcao> 0 ...`, exemplos em [Modelo de dados Redis](modelo-redis.md)) ou desfaça a escrita.
+- **`chave sem familia no esquema`:** a chave tem um prefixo do alcance (`user:`, `session:`, `client:`...) mas não é de nenhuma família, como a antiga `user:{id}:profile`. Se ninguém a usa, apague.
 
 ## WSL2 + Docker
 
@@ -171,6 +197,8 @@ docker exec redis redis-cli SMEMBERS users:index
 docker exec redis redis-cli HGETALL user:user_xxx
 docker exec redis redis-cli GET session:current-user
 docker exec redis redis-cli HGETALL origins:associated   # origem da app em execucao -> servico
+docker exec redis redis-cli FCALL_RO tv30_auditoria 0    # chaves fora do esquema (P4); vazio = ok
+docker exec redis redis-cli FCALL_RO tv30_versao 0       # versao do esquema carregado
 
 # MQTT
 docker exec mqtt-broker mosquitto_sub -t '#' -v

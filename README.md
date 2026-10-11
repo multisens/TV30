@@ -8,11 +8,9 @@ Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 2560
 
 É um **monorepo com submodules Git** orquestrado por um único `docker-compose.yml` na raiz. Toda a stack sobe de uma vez só, em qualquer host com Docker, sem build local — as imagens vêm do Docker Hub e são atualizadas automaticamente pelos workflows de cada submodule.
 
-> **Exceção temporária (04/10/2026):** as imagens com as mudanças de 03 e 04/10 (`tv30-redis` com login no Redis Commander, `tv30-tv3ws` com o 101 no reuso de `clientid` e o `kex` com `key`, `tv30-edgegateway` com o 404 `{"error":200}` no lugar do 500 vazio) ainda só existem em build local. Até serem publicadas, um clone novo puxa do Docker Hub as versões anteriores; para ter as novas, rode `docker compose build redis tv3ws edgegateway` antes do `docker compose up -d`.
-
 > **Imagens da rodada de 05/10 andam juntas.** As decisões da reunião de 05/10 com o Joel mudaram três imagens ao mesmo tempo: `tv30-edgegateway` (a borda passa a responder a C.6.8, `/tv3/bind-context`, e a C.6.7.8/C.6.7.9, `/tv3/api-info`), `tv30-tv3ws` (sem validação de credencial, sem a C.6.8 e sem escrita de perfis) e `tv30-aop` (dono dos perfis, inclusive do `lastAccess`). Pelo código, misturar versões quebra funções: com a borda anterior e o tv3ws novo, a C.6.8 responde 404 `{"error":100}` (a borda antiga repassa a rota a um tv3ws que não a tem mais), e a `/tv3/api-info` também dá 100 (a borda antiga não a declara); com o tv3ws novo e o AoP anterior, ninguém atualiza o `lastAccess` na troca de usuário corrente, e o despejo de perfis passa a contar só a criação do perfil. Use as três da mesma rodada, publicadas ou construídas localmente (`docker compose build edgegateway tv3ws aop`).
 
-> **`tv30-aop` e `tv30-bcast` de 10/10 também andam juntas** (P1.3, [seção própria](#apps-de-emissora-um-nome-de-host-por-app)). Pelo código, com o AoP novo e o bcast anterior, as apps abrem na origem própria mas não têm a ponte `aop-bridge.js`, e não recebem teclas nem eventos do vídeo. Até as imagens serem publicadas, construa as duas localmente (`docker compose build aop bcast`); a borda da mesma leva (P1.9) também: `docker compose build edgegateway`.
+> **As imagens da segunda leva de 10/10 andam juntas** (P1.3, P1.9 e P4, decisões do Luís em 10/10): `tv30-redis` traz as funções que conferem o esquema das escritas, e `tv30-tv3ws`, `tv30-aop` e `tv30-edgegateway` gravam no Redis só por elas (P4, [seção própria](#interface-administrativa-do-redis)); `tv30-aop` abre cada app de emissora no host próprio dela, e `tv30-bcast` traz a ponte `aop-bridge.js` sem a qual as apps não recebem teclas nem eventos do vídeo (P1.3, [seção própria](#apps-de-emissora-um-nome-de-host-por-app)); `tv30-edgegateway` também separa as rotas por superfície (P1.9). Pelo código, misturar estas imagens com as anteriores quebra: com o Redis anterior, toda escrita dos serviços novos falha (`ERR Function not found`, e a rota responde 404 `{"error":200}`); com um serviço anterior, a escrita dele não passa pelas funções, e o que ficar fora do esquema aparece na auditoria. Enquanto as imagens publicadas no Docker Hub forem anteriores a esta leva, construa as cinco localmente: `docker compose build redis tv3ws aop edgegateway bcast`.
 
 ---
 
@@ -189,6 +187,8 @@ O container `redis` embute o Redis Commander (0.9.0, versão fixada no `infra/re
 
 > **A conexão com o banco (porta 6379) continua sem senha.** A senha protege só a interface administrativa. tv3ws, AoP, borda e `redis-cli` conectam como antes, sem `requirepass`.
 
+> **Esquema nas escritas (P4, decisão do Luís em 10/10):** o código grava no Redis só por funções que conferem o esquema (`infra/redis/esquema.json`), e o que for gravado à mão pela interface ou pelo `redis-cli` aparece na auditoria, `docker exec redis redis-cli FCALL_RO tv30_auditoria 0` (ver [Modelo de dados Redis](docs/modelo-redis.md)).
+
 O login é configurado pelo entrypoint da imagem `tv30-redis`. Uma imagem construída antes de 03/10, ou puxada do Docker Hub antes da publicação das imagens novas, sobe a interface **sem** login, mesmo com as variáveis definidas. Nesse caso, reconstrua com `docker compose build redis && docker compose up -d redis`.
 
 ---
@@ -212,7 +212,7 @@ Depois, `docker compose up -d` e `docker logs edgegateway`. Libere a UDP 1900 e 
 - Sem o override, nada é anunciado. O cliente ainda chega ao receptor pelo IP: `http://<IP>:44642/manifest`. Para desligar, comente o `COMPOSE_FILE` e rode `docker compose up -d`.
 - **Quem usava a opção B** (perfil `ssdp`, que deixou de existir): remova o container antigo, `docker rm -f tv3ws-ssdp` (ou `docker compose up -d --remove-orphans`). O `preflight` avisa se ele estiver de pé.
 - Até a imagem nova da borda ser publicada pelo CI, a do Docker Hub não tem o anunciante nem a variante `host`; construa-a localmente (`docker compose build edgegateway`).
-- Medições, arranjo e roteiro de teste com um segundo aparelho: [`docs/ssdp-verificacao.md`](./docs/ssdp-verificacao.md).
+- Arranjo, como ligar e roteiro de teste com um segundo aparelho: [`docs/ssdp.md`](./docs/ssdp.md); medições: [`docs/ssdp-verificacao.md`](./docs/ssdp-verificacao.md).
 
 ---
 
