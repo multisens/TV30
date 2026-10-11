@@ -168,9 +168,11 @@ services:
     container_name: aop
     networks: [ginga_net]
     extra_hosts:
-      # O aop faz proxy HTTP direto ao bcast (host proprio de cada aplicacao
-      # e /graphicsAppProxy -> bcastEntryPackageUrl da BALD; /videoStreamProxy
-      # -> initialMediaURLs da BAMT). Com o
+      # O aop faz proxy HTTP direto ao bcast (host proprio de cada aplicacao,
+      # <app>.<APPS_DOMAIN>/graphicsAppProxy/... -> bcastEntryPackageUrl da
+      # BALD; /videoStreamProxy -> initialMediaURLs da BAMT). Desde 11/10 o
+      # /graphicsAppProxy no host do proprio aop so redireciona (302) para o
+      # host da aplicacao. Com o
       # bcast rodando no HOST (desenvolvimento,
       # BCAST_HOSTNAME=host.docker.internal) o nome precisa resolver em Linux;
       # inocuo no deploy padrao.

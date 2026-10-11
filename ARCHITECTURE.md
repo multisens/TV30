@@ -43,8 +43,8 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
   AoP (aop/)              ← UI do receptor; dono dos perfis no Redis; atende
                             o host próprio de cada app (<app>.apps.localhost,
                             P1.3) e grava a origem dela em origins:associated
-        ↓ HTTP (proxy: host próprio da app; /videoStreamProxy;
-                /graphicsAppProxy, caminho antigo)
+        ↓ HTTP (proxy: host próprio da app, <app>.apps.localhost:8080/
+                graphicsAppProxy/...; /videoStreamProxy)
   bcast (bcast/)          ← sinalização (BAMT/ESG/BALD) por MQTT; apps de
                             serviço e mídia por HTTP
 
@@ -60,7 +60,7 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
 
 - sinalização e eventos passam pelo MQTT;
 - o AoP e o tv3ws acessam o Redis diretamente, e a borda também: lê o que a decisão de credencial precisa e, desde a reunião de 05/10, escreve as chaves da C.6.8 (`bind-context:*`). Quem escreve cada família está em [`docs/modelo-redis.md`](./docs/modelo-redis.md);
-- o AoP busca as aplicações e o vídeo do bcast por proxy HTTP, no `bcastEntryPackageUrl` anunciado (`aop/src/server.js`). Desde o P1.3 (decisão do Luís em 10/10), cada aplicação de emissora é servida num nome de host próprio, na porta do AoP (`http://<app>.apps.localhost:8080`; `aop/src/app-hosts.js`), para que o navegador mande o `Origin` dela, que o AoP grava em `origins:associated` enquanto ela roda. A camada gráfica entrega teclas e eventos do vídeo à aplicação por `postMessage` (ponte `bcast/public/js/aop-bridge.js`). O caminho antigo `/graphicsAppProxy`, na origem do AoP, continua para scripts de teste e não grava origem.
+- o AoP busca as aplicações e o vídeo do bcast por proxy HTTP, no `bcastEntryPackageUrl` anunciado (`aop/src/server.js`). Desde o P1.3 (decisão do Luís em 10/10), cada aplicação de emissora é servida num nome de host próprio, na porta do AoP (origem `http://<app>.apps.localhost:8080`; `aop/src/app-hosts.js`), para que o navegador mande o `Origin` dela, que o AoP grava em `origins:associated` enquanto ela roda. O `<app>` sai do `appId` da BALD, fixo por app desde 11/10 (`urn-tv30-app-users-test`, por exemplo). Desde 11/10 (decisão do Luís), a URL que a camada gráfica abre mantém o prefixo do caminho antigo, `http://<app>.apps.localhost:8080/graphicsAppProxy<bcastEntryPointUrl>`, e o `/graphicsAppProxy/...` no host do próprio AoP redireciona (302) para o host da app; até 11/10, servia a app na origem do AoP, sem gravar origem. A camada gráfica entrega teclas e eventos do vídeo à aplicação por `postMessage` (ponte `bcast/public/js/aop-bridge.js`).
 
 Os gateways não validam consentimento, e o plugin C do broker não faz controle de acesso a tópicos. A validação de credenciais é feita só na borda (decisão de 28/09), pelo plugin `tv30-auth`. Na reunião de 05/10, o Joel decidiu tirar do tv3ws a validação que ainda restava nele (D-0510-1) e pôr na borda a C.6.8 (D-0510-2) e a C.6.7.8/C.6.7.9 (D-0510-3); o plugin responde essas APIs sem repassá-las ao tv3ws. São decisões de desenho do testbed: a norma define as APIs, não qual processo as responde.
 

@@ -24,14 +24,14 @@ Estes testes conferem o comportamento do testbed. Onde um caso cita uma seção 
 |---|---|---|---|
 | tv3ws: `npm test` | não | 77 PASS, 0 FAIL (10/10, depois do P4) | 16 s |
 | tv3ws: `npx tsc --noEmit` | não | sem erro (10/10) | 7 s |
-| aop: `npm test` | não | 28 PASS, 0 FAIL (10/10, depois do P4) | 5 s |
+| aop: `npm test` | não | 29 PASS, 0 FAIL (11/10, depois das confirmações do Luís no P1.3) | 9 s |
 | Redis: `bash infra/redis/test/run.sh tudo` (P4) | não (Docker, com containers descartáveis) | estático 5/5, funções 26/26, contrato 4/4 + contrato Go, imagem 10 verificações, todos ok (10/10) | não cronometrado |
-| bcast: `npx tsc --noEmit` | não | sem erro (10/10) | 8 s |
+| bcast: `npx tsc --noEmit` | não | sem erro (11/10, com o `appId` fixo) | 8 s |
 | borda: `node --test generate.test.js` | não | 12 PASS, 0 FAIL (10/10) | 1 s |
 | borda: testes Go do plugin `tv30-auth` | não (Docker, para o compilador) | 72 testes, todos ok (10/10, depois do P4; o de contrato é pulado sem Redis) | 15 s, com a imagem do compilador já baixada |
 | borda: testes Go do anunciante SSDP | não (Docker, para o compilador) | 20 testes e 12 subtestes, todos ok (10/10) | 7 s, idem |
 | `scripts/test-auth.sh` | sim | 225 PASS, 0 FAIL, com a borda na bridge e em rede do host (11/10) | 1,5 min |
-| `scripts/test-dev-host.sh` | sobe e desce o que precisa | 66 PASS, 0 FAIL, nos 5 cenários (11/10) | 3 min, com o cache do npm já cheio |
+| `scripts/test-dev-host.sh` | sobe e desce o que precisa | 65 PASS, 0 FAIL, nos 5 cenários (11/10, já com a app no host próprio com o prefixo e o 302 do caminho antigo) | 3 min, com o cache do npm já cheio |
 | `scripts/test-template.sh` | sim | 13 PASS, 0 FAIL (10/10) | 30 s |
 | `scripts/test-consolidacao.sh` | recria a stack | saída conferida, sem falha (10/10) | 1 min |
 | `scripts/test-fase0.sh` | sobe a stack | saída conferida, sem falha (10/10) | 20 s |
@@ -85,7 +85,7 @@ npm test            # node --test test/redis.test.js test/app-hosts.test.js test
 |---|---|
 | `redis.test.js` | O cliente Redis que falha rápido (ioredis de verdade contra uma porta fechada e contra um servidor mudo), o `lastAccess` só de perfil existente, a criação de perfil (`POST /profile/create`), o despejo e, desde o P4, as escritas pelas funções do Redis, a conferência de idiomas e da visibilidade (400) e a recusa de esquema (404 `{"error":200}`) |
 | `redis-escritas.test.js` | Teste estático do P4: o AoP só grava no Redis pelo adaptador `src/redis-funcoes.js` |
-| `app-hosts.test.js` | O P1.3: o rótulo DNS de cada app, a origem que o navegador manda, o registro e a remoção em `origins:associated` ao lançar, trocar e encerrar a app, o roteamento por `Host` (proxy para a app, 404 e 502) e o caminho antigo `/graphicsAppProxy`. O "bcast" é um servidor HTTP local |
+| `app-hosts.test.js` | O P1.3: o rótulo DNS de cada app, a origem que o navegador manda, o registro e a remoção em `origins:associated` ao lançar, trocar e encerrar a app, o roteamento por `Host` (proxy para a app, 404 e 502), o prefixo `/graphicsAppProxy` na URL que a camada gráfica recebe e opcional no host da app (`stripPrefix`), e o caminho antigo `/graphicsAppProxy` no host do AoP, que desde 11/10 responde 302 para o host da app, ou 404 sem app, sem gravar origem. O "bcast" é um servidor HTTP local |
 
 ### bcast
 
@@ -172,11 +172,11 @@ bash scripts/test-auth.sh
 ./scripts/test-dev-host.sh --cenario 2   # um só
 ```
 
-- **O que cobre:** as cinco combinações de [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local), com o módulo real (`npm ci && npm run dev`) fora do Docker. São elas: o tv3ws, o aop e o bcast, um de cada vez; os três ao mesmo tempo; e um componente novo falando direto com o Redis e o broker. Em cada uma, confere a conversa com o Redis e o broker a partir do ambiente do módulo, os logs de conexão dele e o caminho próprio do cenário, com uma prova negativa: o módulo é morto e o caminho para de responder.
+- **O que cobre:** as cinco combinações de [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local), com o módulo real (`npm ci && npm run dev`) fora do Docker. São elas: o tv3ws, o aop e o bcast, um de cada vez; os três ao mesmo tempo; e um componente novo falando direto com o Redis e o broker. Em cada uma, confere a conversa com o Redis e o broker a partir do ambiente do módulo, os logs de conexão dele e o caminho próprio do cenário, com uma prova negativa: o módulo é morto e o caminho para de responder. Nos cenários 2 a 4, desde 11/10, confere a app users-test no host próprio, com o prefixo (`/graphicsAppProxy/users-test` e `Host: <rótulo>.apps.localhost:8080`), e o 302 do mesmo caminho no host do aop para essa URL (`checar_app_aberta`).
 - **Pré-requisitos:** Linux ou WSL2 com Docker Engine. Sem Node Linux no PATH, o script roda cada módulo num container `node:23-alpine` com `--network host`. O `npm ci` precisa alcançar o registro do npm; em rede corporativa que intercepta SSL, ele pode falhar dentro do container.
 - **O que ele mexe:** para os containers dos módulos que vão para o host e recria a borda na variante certa. No fim, restaura a stack padrão se havia algum container do projeto de pé, ou a derruba. O cache do npm fica no volume `tv30-devhost-npm`, que o script não apaga.
 - **Tempo:** cerca de 3 minutos em 10/10, com o cache do npm já cheio. A primeira execução, que baixa as dependências dos módulos, demora mais; esse tempo não foi medido.
-- **Resultado esperado:** `RESUMO (N PASS, 0 FAIL)`, com os logs dos módulos num diretório temporário indicado no fim. Em 11/10, 66 PASS e 0 FAIL nos 5 cenários.
+- **Resultado esperado:** `RESUMO (N PASS, 0 FAIL)`, com os logs dos módulos num diretório temporário indicado no fim. Em 11/10, depois das confirmações do Luís (host próprio com o prefixo `/graphicsAppProxy`, 302 do caminho antigo), 65 PASS e 0 FAIL nos 5 cenários. Antes delas eram 66: no cenário 3, as duas provas negativas (host da app e caminho antigo) viraram uma, porque o caminho antigo só redireciona.
 
 ### `scripts/test-template.sh`: o template de componente
 

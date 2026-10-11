@@ -22,19 +22,24 @@ Das 27 rotas de `infra/edgegateway/routes.json`, 22 são repassadas ao tv3ws; as
 
 O associado é reconhecido pelo `Origin` em `origins:associated` (L1; o risco do `Origin` forjado foi aceito pelo Luís em 03/10, D-L4).
 
-**Como ficou** (decisão do Luís em 10/10: um nome de host por app, na mesma porta do AoP):
-- o AoP abre cada app de emissora em `http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT><bcastEntryPointUrl>` (padrão `<app>.apps.localhost:8080`) e atende esse nome com um proxy para o `bcastEntryPackageUrl` da app em execução (`aop/src/app-hosts.js`, montado antes de todas as rotas em `aop/src/server.js`). `<app>` é um rótulo DNS tirado do `appId` da BALD;
+**Como ficou** (decisão do Luís em 10/10: um nome de host por app, na mesma porta do AoP; confirmações dele em 11/10):
+- o AoP abre cada app de emissora em `http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT>/graphicsAppProxy<bcastEntryPointUrl>` (padrão `<app>.apps.localhost:8080`; o prefixo `/graphicsAppProxy` está na URL desde 11/10, e no host da app é opcional) e atende esse nome com um proxy para o `bcastEntryPackageUrl` da app em execução (`aop/src/app-hosts.js`, montado antes de todas as rotas em `aop/src/server.js`). `<app>` é um rótulo DNS tirado do `appId` da BALD, fixo por app desde 11/10 (`urn:tv30:app:users-test` vira `urn-tv30-app-users-test`);
 - ao lançar a app, o AoP grava essa origem em `origins:associated`, e a apaga ao encerrar ou trocar de app (`aop/src/core.js`). É a origem que o navegador manda no `Origin` das chamadas da app;
-- a camada gráfica entrega teclas e eventos do vídeo à app por `postMessage`, e a ponte `bcast/public/js/aop-bridge.js` os redespacha no documento dela.
+- a camada gráfica entrega teclas e eventos do vídeo à app por `postMessage`, e a ponte `bcast/public/js/aop-bridge.js` os redespacha no documento dela;
+- no host do próprio AoP, o caminho antigo `/graphicsAppProxy/<caminho>` redireciona (302) para o mesmo caminho no host da app em execução, e responde 404 sem app (desde 11/10).
 
-**Conferido em 10/10, fora da stack:** `npm test` do aop com 22 testes (14 novos, do roteamento por `Host` e do registro da origem) sem falha; o Firefox 154 do receptor Linux resolveu `*.apps.localhost` para `::1` e mandou o `Origin` do nome; o Chrome 154 headless no Windows mandou o mesmo `Origin` que o AoP grava, e a ponte entregou os eventos. **Na stack, em 10/10 (borda na bridge):** `scripts/test-auth.sh` abriu o users-test pelo AoP, achou a origem `http://urn-tv30-app-<sorteio>.apps.localhost:8080` em `origins:associated`, passou sem credencial com esse `Origin` em `enforce`, recebeu 107 com o `Origin` do próprio AoP e de novo 107 depois do ESC (224 PASS, 0 FAIL no script); `scripts/test-dev-host.sh` conferiu a origem gravada e o acesso pelo host da app nos cenários 2, 3 e 4 (66 PASS, 0 FAIL).
+**Conferido em 11/10, fora da stack:** `npm test` do aop com 29 testes sem falha (o prefixo na URL, o prefixo opcional no host da app, o 302 do caminho antigo e o 404 sem app); `npx tsc --noEmit` do bcast sem erro.
+
+**Conferido em 10/10, fora da stack:** `npm test` do aop com 22 testes (14 novos, do roteamento por `Host` e do registro da origem) sem falha; o Firefox 154 do receptor Linux resolveu `*.apps.localhost` para `::1` e mandou o `Origin` do nome; o Chrome 154 headless no Windows mandou o mesmo `Origin` que o AoP grava, e a ponte entregou os eventos. **Na stack, em 10/10 (borda na bridge):** `scripts/test-auth.sh` abriu o users-test pelo AoP, achou a origem `http://urn-tv30-app-<sorteio>.apps.localhost:8080` (o `appId` era sorteado até 11/10) em `origins:associated`, passou sem credencial com esse `Origin` em `enforce`, recebeu 107 com o `Origin` do próprio AoP e de novo 107 depois do ESC (224 PASS, 0 FAIL no script); `scripts/test-dev-host.sh` conferiu a origem gravada e o acesso pelo host da app nos cenários 2, 3 e 4 (66 PASS, 0 FAIL).
 
 **Continua:**
 - **Tela do AoP aberta de outra máquina:** `*.localhost` resolve para a máquina de quem abre a página, e as apps não carregam. `APPS_DOMAIN` permite usar um domínio resolvível na rede, com `*.<domínio>` apontando para a máquina do AoP.
-- **O nome muda quando o bcast reinicia:** o bcast sorteia o `appId` (`cuid.slug()`) a cada partida, e com ele mudam o nome do host e o `localStorage` da app, que é por origem. A CONFIRMAR (Luís): fixar os `appId`.
-- **App sem a ponte não recebe teclas:** toda app da camada gráfica precisa incluir `aop-bridge.js` (users-test, uff, webmedia e eduplay incluem).
-- **O caminho antigo `/graphicsAppProxy`** continua, na origem do AoP, e não grava origem: a app aberta por ele não é reconhecida como associada. Quando aposentá-lo está a confirmar pelo Luís.
+- **App sem a ponte não recebe teclas:** toda app da camada gráfica precisa incluir `aop-bridge.js` (users-test, uff, webmedia e eduplay incluem). O contrato da ponte foi aceito pelo Luís como está em 11/10.
 - **QtWebEngine** não foi testado.
+
+**Resolvido em 11/10 (decisões do Luís):**
+- **O nome mudava quando o bcast reiniciava:** até 11/10, o bcast sorteava o `appId` (`cuid.slug()`) a cada partida, e com ele mudavam o nome do host e o `localStorage` da app, que é por origem. Agora o `appId` é fixo por app, `urn:tv30:app:<módulo>`, trocável por `EDUPLAY_APP_ID`, `UFF_APP_ID`, `USERS_TEST_APP_ID` e `WEBMEDIA_APP_ID` com o bcast fora do container (`bcast/README.md`).
+- **O caminho antigo `/graphicsAppProxy`**, até 11/10, servia a app na origem do AoP, sem gravar origem: a app aberta por ele não era reconhecida como associada. Agora ele redireciona (302) para o host da app, e o prefixo ficou na URL que a camada gráfica abre.
 
 **Era assim** (até 10/10). O AoP gravava nessa lista o alvo do proxy, `http://bcast:8081`, mas o navegador abria a app pelo proxy do AoP (`/graphicsAppProxy/...`), e as chamadas dela chegavam à borda com o `Origin` do próprio AoP. **Medido na stack em 04/10**, com o serviço sintonizado pelo catálogo do AoP: `origins:associated` tinha só `http://bcast:8081`. A sequência de chamadas das páginas users-test e webmedia, com `Origin: http://localhost:8080`, recebeu `X-TV30-Auth-Warn: 107` na lista de perfis, nas duas páginas e nas duas cargas. Em `warn` a chamada passava. Em `enforce`, pela lógica do plugin, essas apps seriam bloqueadas com 107, como cliente sem access token.
 

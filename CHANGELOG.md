@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-11 (Luis's confirmations of the second round)
+
+On 2026-10-11 Luis decided the nine points that the second round of
+2026-10-10 had left as `A CONFIRMAR (Luis)`: three of P1.3 and six of P4.
+Two of them changed code (the bcast `appId` and the AoP URL prefix); the
+other seven keep the code as it was. None of Joel's open points was decided
+here.
+
+#### Changed
+
+- bcast `src/modules/{eduplay,uff,users-test,webmedia}/index.ts` (P1.3):
+  each app publishes a FIXED `appId` in its BALD, `urn:tv30:app:<module>`,
+  overridable with `EDUPLAY_APP_ID`, `UFF_APP_ID`, `USERS_TEST_APP_ID` and
+  `WEBMEDIA_APP_ID` (`bcast/README.md`, `bcast/.env.example`). Until now
+  every start drew a new one (`cuid.slug()`). The AoP derives the app host
+  from it, so the host (`urn-tv30-app-users-test.apps.localhost:8080` for
+  users-test) and what the app stores in the browser survive bcast
+  restarts. The root `docker-compose.yml` does not pass the four variables,
+  so the container uses the default.
+- aop `src/app-hosts.js` (P1.3): the URL published on
+  `aop/display/layers/graphics` keeps the prefix of the old path,
+  `http://<label>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT>/graphicsAppProxy<bcastEntryPointUrl>`
+  (`entryUrl`), so that people who already know the project see where the
+  app goes through. On the app host the prefix is optional: `stripPrefix`
+  removes it (whole segment only; `/graphicsAppProxyX` is not the prefix)
+  before the request goes to bcast, and root paths such as `/js/...` and
+  `/media/...` go as they are. The `Origin` (scheme, host and port) does
+  not change.
+- aop `src/server.js` and `src/core.js` (P1.3): `/graphicsAppProxy/<path>`
+  on the AoP's own host (`localhost:8080`) no longer serves the app on the
+  AoP's origin. It answers 302 to the same path, with the prefix, on the
+  host of the running app (`legacyGraphicsRedirect`), and 404 when no app
+  is running. `core.getGraphicsAppURL` became `core.getGraphicsApp`.
+- aop `test/app-hosts.test.js`: the prefix in the published URL,
+  `stripPrefix`, the optional prefix on the app host, the 302 of the old
+  path (with a query string, and with the bare prefix) and the 404 without
+  an app.
+- `scripts/test-dev-host.sh`: scenarios 2 to 4 check the app on its own
+  host with the prefix (`/graphicsAppProxy/users-test` with
+  `Host: <label>.apps.localhost:8080`) and the 302 of the same path on the
+  aop host to that URL (`checar_app_aberta`); the negative checks of
+  scenarios 3 and 4 go through the app host.
+- Docs: `README.md` (app section and port table), `.env.example`,
+  `aop/.env.example`, `KNOWN-ISSUES.md`, `ARCHITECTURE.md`,
+  `docs/decisoes-pendentes.md` (section F and the summary on top, which
+  still said the P4 stack run was pending), `docs/arquitetura.md`,
+  `docs/dev-local.md` (scenarios 2 to 4; `aop/src/server.js` line numbers),
+  `docs/troubleshooting.md`, `docs/mqtt-topicos.md`, `docs/modelo-redis.md`
+  (`origins:associated`), `docs/glossario.md`, `docs/como-testar.md`,
+  `docs/apis-tv3ws.md`; infra `docs/05-autenticacao.md` and
+  `edgegateway/plugin/README.md`; the comment on the aop proxy in the root
+  `docker-compose.yml`. What held until 2026-10-11 stays as history.
+
+#### Decided (Luis, 2026-10-11)
+
+- P1.3, `appId`: fixed per app (above).
+- P1.3, bridge: the `postMessage` contract
+  (`{type: 'tv30-aop-event', event, key | detail}`, outside the standard)
+  is accepted as it is; every graphics-layer app must include
+  `bcast/public/js/aop-bridge.js`. No code change.
+- P1.3, `/graphicsAppProxy`: the prefix stays in the URL, now on the app
+  host, and the old path on the AoP host redirects (302) (above). Luis's
+  reason: "importante pra quem hoje já conhece o projeto ter visão do que
+  está sendo mudado".
+- P4, the six implementation choices stay as they were implemented (no code
+  change): on an existing hash the function checks only the fields it
+  writes; a library that does not load stops the Redis container, and an
+  initial load refused by the schema leaves it unhealthy, without
+  `seed:done`; the profile id has 1 to 64 characters and no `:`, until Joel
+  decides on the UUID of Table 7; an origin outside the browser's `Origin`
+  format is refused; the code-derived invariants `perfil-dependentes` and
+  `autorizado-tem-registro` hold; the AoP profile form answers 400 with the
+  message.
+
+#### Upgrading
+
+- Rebuild `aop` and `bcast` together (`docker compose build aop bcast`).
+  Scripts and `curl` calls that fetched the app through
+  `http://localhost:8080/graphicsAppProxy/...` now get a 302 and have to
+  follow it, or call the app host directly.
+
+#### Verified
+
+- Unit (2026-10-11): aop `npm test` 29/29; bcast `npx tsc --noEmit` ok.
+- On the stack (WSL2, 2026-10-11): the users-test BALD carries
+  `appId` `urn:tv30:app:users-test`; the graphics layer got
+  `http://urn-tv30-app-users-test.apps.localhost:8080/graphicsAppProxy/users-test`;
+  the app host answered 200 with and without the prefix (and served the
+  app's own `/js/aop-bridge.js`); `localhost:8080/graphicsAppProxy/users-test`
+  answered 302 to the app host, and 404 after ESC. `scripts/test-auth.sh`
+  225 PASS, 0 FAIL; `scripts/test-dev-host.sh` 65 PASS, 0 FAIL (66 before:
+  scenario 3 now has one negative check instead of two); audit empty.
+
 ### 2026-10-11 (final integration of the second round of 10/10)
 
 Integration of P1.3, P1.9 and P4 (decisions by Luis on 2026-10-10) on the
