@@ -14,6 +14,17 @@ docker ps --format '{{.Names}}\t{{.Status}}' | sort
 echo; echo "== redis consolidado =="
 docker inspect redis --format 'health={{.State.Health.Status}}'
 docker exec redis redis-cli --raw SCARD users:index | xargs echo "users:index SCARD ="
+# P4 (Luis, 10/10): biblioteca de funcoes carregada nesta partida (antes da
+# carga inicial) e auditoria do esquema; achado = chave fora do esquema
+# (escrita manual, ou volume de antes do P4: ver docs/modelo-redis.md)
+docker logs redis 2>&1 | grep -E "biblioteca de funcoes|carga" | tail -2
+docker exec redis redis-cli --raw FCALL_RO tv30_versao 0 | xargs echo "funcoes tv30: esquema versao ="
+AUD=$(docker exec redis redis-cli --raw FCALL_RO tv30_auditoria 0)
+if [ -z "$AUD" ]; then echo "auditoria do esquema: vazia (OK)"
+else
+  echo "auditoria do esquema: ACHADOS (chave | familia | motivo)"
+  printf '%s\n' "$AUD" | awk 'NR%3==1{k=$0} NR%3==2{f=$0} NR%3==0{print "  " k " | " f " | " $0}'
+fi
 # D-L1 (Luis, 03/10): a UI do commander exige login; a conexao com o banco
 # (6379) segue sem senha. No redis-commander 0.9.0 o login nao e HTTP basic:
 # GET / (formulario) abre sem credencial; POST /signin troca usuario/senha

@@ -1,9 +1,13 @@
 ---
-title: "Avaliação: item 9 — validação de credenciais (P2)"
-nav_order: 12
+title: "Avaliação do item 9 (credenciais)"
+parent: Histórico
+nav_order: 2
 ---
 
 # Item 9 (P2) — validação de credenciais: avaliação antes de implementar
+
+{: .historico }
+> Avaliação escrita em 21/09/2026, antes da implementação, com as decisões de 28/09, 03/10, 05/10 e 10/10 acrescentadas no topo e as correções marcadas no meio. O texto a partir de *O que P2 exige* ficou como estava em 21/09 e descreve opções que não foram adotadas (a decisão de 28/09 pôs toda a validação na borda). **O estado atual está em [Borda e credenciais](borda-credenciais.md), [APIs do tv3ws](apis-tv3ws.md) e [Decisões pendentes](decisoes-pendentes.md).** Onde esta página diverge delas ou do código, vale o estado atual.
 
 ## Decisões de 10/10 (Luís)
 
@@ -34,10 +38,10 @@ Três pontos que estavam em aberto foram decididos **pelo Luís em 03/10**, e n�
 | | Ponto | Decisão |
 |---|---|---|
 | **A1** (D-L1) | Redis sem senha e publicado no host (6379) | A conexão com o Redis fica **como está**: sem senha, com a 6379 publicada, e sem mudança nos clientes, na carga inicial e no healthcheck. Só a interface administrativa (redis-commander, processo auxiliar do container `redis`) passa a exigir login, com `REDIS_COMMANDER_USER` (padrão `admin`) e `REDIS_COMMANDER_PASSWORD` (padrão `tv30-redis-admin`). Na versão instalada (0.9.0, fixada no `infra/redis/Dockerfile` desde 04/10), o login não é HTTP basic auth: a página de login abre sem credencial, e as rotas de dados respondem 401 sem o token que ele devolve. **O risco da 6379 continua:** em `enforce`, quem alcança a porta grava `origins:associated` ou `bind-context:*` e contorna a borda. |
-| **A2** (D-L2) | `GET /tv3/authorize` sem `pm` reemitia o refresh token de qualquer cliente já autorizado | **101 no reuso de `clientid`**, para qualquer classe. Na norma, a Tabela C.3 prevê o erro 101 "if clientid has been used before" (p. 215; p. 233 do PDF), e a C.6.1.4.4 trata o reuso como colisão (p. 219; p. 237 do PDF). **A confirmar pelo Luís:** o `clientid` recusado pelo espectador também passou a dar 101, e não mais 102. É o que manda a nota da mesma tabela, mas a decisão falava só do `clientid` já usado; foi uma leitura dela feita na implementação. Quem perdeu o refresh token roda a autorização de novo com `clientid` novo (C.6.1.4.5), o que exige nova autorização do espectador. |
+| **A2** (D-L2) | `GET /tv3/authorize` sem `pm` reemitia o refresh token de qualquer cliente já autorizado | **101 no reuso de `clientid`**, para qualquer classe. Na norma, a Tabela C.3 prevê o erro 101 "if clientid has been used before" (p. 215; p. 233 do PDF), e a C.6.1.4.4 trata o reuso como colisão (p. 219; p. 237 do PDF). **A confirmar pelo Luís** (confirmado depois, na reunião de 05/10): o `clientid` recusado pelo espectador também passou a dar 101, e não mais 102. É o que manda a nota da mesma tabela, mas a decisão falava só do `clientid` já usado; foi uma leitura dela feita na implementação. Quem perdeu o refresh token roda a autorização de novo com `clientid` novo (C.6.1.4.5), o que exige nova autorização do espectador. |
 | **A5** (D-L4) | L1: reconhecer o local associado pelo `Origin` | **Risco aceito do `Origin` forjado**, sem mudança de comportamento. O critério continua sendo o `Origin` presente em `origins:associated`, e um `Origin` forjado fora do navegador passa como associado. O comentário no código é `DECIDIDO (Luis, 03/10): risco aceito`, no plugin da borda (`infra/edgegateway/plugin/handler.go`) e na classificação do cliente no tv3ws (`classifyClient`, em `tv3ws/src/api/client-identification/controller.ts`). **Não decidido em 03/10: P1.3, origem própria por app.** Até 10/10, as apps de emissora servidas pelo proxy do AoP chegavam com o `Origin` do AoP, e o AoP gravava em `origins:associated` o alvo do proxy (`http://bcast:8081`); por isso elas não eram reconhecidas como associadas e seriam bloqueadas em `enforce`. **Decidido pelo Luís em 10/10:** um nome de host por app (seção *Decisões de 10/10*). |
 
-**Feito na integração de 04/10, espera o aval do Luís:** a correção do pareamento `kex` (o `/tv3/authorize?pm=kex` passou a devolver também `key`, como pedem a Tabela C.3, formato 3, e a C.4.3.3, passo 1). É correção de conformidade, não decisão de desenho; está descrita em [Decisões pendentes](decisoes-pendentes.md).
+**Feito na integração de 04/10, espera o aval do Luís** (confirmado depois, na reunião de 05/10)**:** a correção do pareamento `kex` (o `/tv3/authorize?pm=kex` passou a devolver também `key`, como pedem a Tabela C.3, formato 3, e a C.4.3.3, passo 1). É correção de conformidade, não decisão de desenho; está descrita em [Decisões pendentes](decisoes-pendentes.md).
 
 ## Decisão de 28/09
 
@@ -95,7 +99,7 @@ As afirmações de 21/09 que estão erradas seguem abaixo, cada uma marcada como
   - o item 3 do plano de ativação, que dá bind-token ao associado.
 - **Correção: o cliente local autônomo também precisa de bind-token.** Além do access token, ele envia bind-token nas APIs protegidas. Os erros 104 e 108 de cada API valem para "non-local client or stand-alone local client".
 - **Correção: o receptor não assina nem emite bind-token.** Ele só registra a chave (C.6.8.2), valida o token e revoga a chave (C.6.8.4). O token é obtido "directly with DTV service providers" (A.4.9). Estão erradas as afirmações "a mais nova assina" e "hoje não há emissor... pré-requisito de implementação". Uma ferramenta que simule a emissora seria decisão do projeto, não exigência da norma.
-- **Correção: a contagem é 27, não 20.** São **27 APIs** cujo campo "Security requirements" exige o bind-token (*shall*), além de 3 classes de evento. Somando as 8 que listam 104/108 com o campo em branco, chega-se a 35. Somando também as 2 de persistência, 37. Nenhum critério dá 20; o número veio da vacina (P2.5) e foi copiado para cá.
+- **Correção: a contagem é 27, não 20.** São **27 APIs** cujo campo "Security requirements" exige o bind-token (*shall*), além de 3 classes de evento. Somando as 8 que listam 104/108 com o campo em branco, chega-se a 35. Somando também as 2 de persistência, 37. Nenhum critério dá 20; o número veio do documento interno de requisitos (P2.5) e foi copiado para cá.
 
 Tabela corrigida, que substitui a da seção *Descoberta na norma*. Os nomes de classe são os que o tv3ws grava no claim `class`:
 
@@ -111,7 +115,7 @@ Tabela corrigida, que substitui a da seção *Descoberta na norma*. Os nomes de 
 > "tem que ver se vai ser tão tranquilo assim". Este documento é essa
 > avaliação. Nada daqui está implementado.
 
-## O que P2 exige (vacina, decisão tomada)
+## O que P2 exige (documento interno de requisitos, decisão tomada)
 
 1. accessToken validado **na borda**, por configuração estática.
 2. `POST /validate` ligado como ponto de validação do **bind-token**, sem o

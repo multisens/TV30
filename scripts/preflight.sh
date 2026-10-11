@@ -1,8 +1,9 @@
 #!/bin/sh
 # Preflight do TV30 — roda como one-shot ANTES dos servicos (network+pid do
-# host). Nunca bloqueia a subida: diagnostica e imprime avisos legiveis para
-# que, se o compose falhar logo depois (ex.: bind de porta), a causa ja
-# esteja nomeada no log. Ver docs/troubleshooting.md.
+# host). Diagnostica e imprime avisos legiveis para que, se o compose falhar
+# logo depois (ex.: bind de porta), a causa ja esteja nomeada no log. So
+# bloqueia a subida num caso: a 44642 ocupada por outro processo (exit 1,
+# abaixo); a borda depende deste servico e entao nao sobe. Ver docs/troubleshooting.md.
 set -u
 
 # Politica de portas (plano de consolidacao, V10):

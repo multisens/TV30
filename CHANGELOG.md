@@ -7,6 +7,186 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-11 (final integration of the second round of 10/10)
+
+Integration of P1.3, P1.9 and P4 (decisions by Luis on 2026-10-10) on the
+stack, the docs site revision for new students and developers, and one bug
+fix found by that revision. None of Joel's open points was decided here.
+
+#### Fixed
+
+- aop: the pairing pop-ups of the non-local client (QR code, C.4.3.2; PIN,
+  C.4.3.3) never reached the screen. tv3ws publishes on
+  `aop/display/layers/popup/qrcode` and `.../pin`, but the graphics layer
+  only subscribed to `aop/display/layers/+`, `.../video/+` and
+  `.../popup/+/message`, and none of these filters matches the two topics.
+  `aop/public/js/popup.js` already drew both. The graphics layer now also
+  subscribes to `aop/display/layers/popup/+`
+  (`aop/src/modules/graphic-overlays/view.ejs`). `scripts/test-auth.sh` did
+  not catch it because it reads the QR code and the PIN straight from the
+  broker.
+- Comments: the preflight blocks the start in one case (44642 taken by
+  another process, `exit 1`, and the edge depends on it); `/videoStreamProxy`
+  goes to the BAMT `initialMediaURLs`, not to `bcastEntryPackageUrl`;
+  `scripts/test-dev-host.sh` proves the edge -> host tv3ws path, not the
+  shared `JWT_SECRET` (in warn the edge forwards an invalid token too).
+
+#### Changed
+
+- Docs site (`docs/`, Jekyll + just-the-docs), for new students and
+  developers: navigation grouped as Primeiros passos, Como funciona,
+  Decisoes, Solucao de problemas and Historico; new pages `como-testar.md`
+  (every unit test and suite: what it covers, how to run it, last numbers),
+  `glossario.md`, `borda-credenciais.md`, `ssdp.md` (current state; the
+  measurements stay in `ssdp-verificacao.md`), and the section pages;
+  historical documents keep their content under Historico with a notice on
+  top; about 40 statements corrected against the code (for instance, the
+  Quick start lacked `cp .env.example .env`, without which `aop`, `tv3ws`,
+  `bcast` and `mosquitto` do not start). `docs/Gemfile` pins `github-pages`
+  232 (the unpinned Gemfile resolved Jekyll 3.6.2, which fails on Ruby 3.3).
+- `README.md`: the images of this round go together (`tv30-redis` with the
+  functions; `tv30-tv3ws`, `tv30-aop`, `tv30-edgegateway` writing through
+  them; `tv30-bcast` with `aop-bridge.js`); the outdated "temporary
+  exception" of 2026-10-04 is gone.
+
+#### Upgrading
+
+- Rebuild or pull `redis`, `tv3ws`, `aop`, `edgegateway` and `bcast`
+  together. On an existing volume, run the audit
+  (`docker exec redis redis-cli FCALL_RO tv30_auditoria 0`) after the first
+  start. On this machine it found only `user:abc-123` (a hash with only
+  `lastAccess`, outside `users:index`, left by the stray `lastAccess`
+  writes from before the 2026-10-05 changes); that one key was removed after its content was saved, and the
+  five profiles of the volume passed the audit unchanged.
+
+#### Verified
+
+- On the stack (WSL2, 2026-10-11): `scripts/test-auth.sh` 225 PASS, 0 FAIL
+  with the edge on the bridge and 225/0 with the edge on the host network
+  (`docker-compose.ssdp.yml`, 0 edge restarts), each with the audit empty
+  at the start and at the end; `scripts/test-dev-host.sh` 66/0;
+  `test-template.sh` 13/0; `test-consolidacao.sh`, `test-fase0.sh` and
+  `test-bcast-shutdown.sh` ok; `infra/redis/test/run.sh tudo` ok (static,
+  functions, contract, image); final audit empty.
+- Unit: tv3ws `npm test` 77/77 and `tsc --noEmit` ok; aop `npm test`
+  28/28; the edge image build runs `generate.test.js` and the plugin
+  `go test`.
+- Pop-ups: headless Chrome 154 driven over CDP opened the graphics layer of
+  the rebuilt AoP, which connected to the broker; a PIN (`0042`) and a QR
+  code published on the two topics were drawn in `#popup`. No negative
+  control with the previous image (overwritten by the build).
+
+### 2026-10-10 (10/10, second round, third batch: P4 implemented)
+
+P4, decided by Luis on 2026-10-10 ("functions + audit"): every write the
+project's code makes to the Redis key families in scope goes through a Redis
+function that validates the schema and writes atomically. Redis, Redis
+Functions and the schema are choices of this testbed, not of ABNT NBR
+25608; each rule names its source (Table 7, Table C.8, C.4.1.4.8, C.6.14.5,
+the broker's `schemas.json`, or the code). None of Joel's open points was
+decided here. Verified outside the stack; the stack run is in the
+2026-10-11 entry above.
+
+#### Added
+
+- infra `redis/esquema.json`: the single source of the schemas (families
+  `session:*`, `users:index`, `user:{id}`, `user:{id}:consent`,
+  `user:{id}:broadcaster-attrs:{scid}`, `client:{id}`, `clients:authorized`,
+  `clients:blocked`, `origins:associated`, `bind-context:{serviceId}`; rules
+  per field, member, item and key part; four cross-key invariants:
+  `perfil-indexado`, `perfil-dependentes`, `clientes-disjuntos`,
+  `autorizado-tem-registro`; the functions; what is out of scope and why).
+  Read by the library and by the tests.
+- infra `redis/funcoes.lua` + `redis/biblioteca.sh`: Redis function library
+  `tv30` (header, the schema embedded as a Lua string, the body). 16 write
+  functions, one per operation (`tv30_sessao_*`, `tv30_perfil_*`,
+  `tv30_atributos_emissora`, `tv30_cliente_*`, `tv30_origem*`,
+  `tv30_bind_*`), and two read-only ones (`tv30_auditoria`, `tv30_versao`).
+  Every function validates the resulting state, including the key types in
+  Redis, BEFORE writing, because Redis does not undo what a function already
+  wrote when it fails midway (checked on 7.4.11). Out-of-schema data returns
+  `TV30ESQUEMA <function>: <key> <field>: <reason>` and nothing is written.
+  The functions are called with `numkeys 0` and derive the key names
+  (`no-cluster`).
+- infra `redis/confere-imagem.sh`, run in the image build: a library that
+  does not load, an initial load outside the schema, or a non-empty audit
+  after the load fails the build.
+- infra `redis/test/`: `run.sh` (modes `funcoes`, `estatico`, `contrato`,
+  `imagem`, `tudo`; throwaway containers with their own names),
+  `funcoes.test.js` (26 tests on a real `redis:7-alpine`; refusal cases
+  GENERATED from `esquema.json`, 155 in this version, plus boundary
+  acceptances, atomicity, invariants and the audit), `escritas.js` +
+  `escritas.test.js` (static check: no service writes to a family in scope
+  outside the function adapter; JS/TS chains on the Redis client, Go
+  string literals, Python), `contrato.test.js` (the real adapters, the
+  tv3ws auth-manager and the AoP profile manager against the functions) and
+  `resp.js` (a minimal RESP client); `redis/README.md`.
+- tv3ws `src/redis-funcoes.ts` and aop `src/redis-funcoes.js`: the only
+  writers of the families in scope in each service
+  (`redis.call('FCALL', ...)`). `test/redis-escritas.test.*` in both run
+  the static check in `npm test`.
+- infra `edgegateway/plugin/escritas_test.go` (static check, also in the
+  image build) and `contrato_test.go` (the real `redisStore` against the
+  functions; runs only with `TV30_REDIS_TESTE`, from `run.sh contrato`).
+
+#### Changed
+
+- infra `redis/entrypoint.sh`: loads the library at EVERY start with
+  `FUNCTION LOAD REPLACE`, before the initial load; exits with Redis's
+  message if it does not load. The healthcheck
+  (`redis/docker-compose.yml`) also requires the marker
+  `/tmp/tv30-redis-pronto`, created only after the library loaded in this
+  start and the load is applied. If the load is refused, `seed:done` is not
+  written and the container stays unhealthy, with the errors in the log.
+- infra `redis/emit_seed.py` and `mqtt-broker/infra/migrate_to_redis.py`
+  (`perfil_fcall_args`, shared): one `FCALL tv30_perfil_grava` per profile
+  instead of `SADD`/`DEL`/`HSET`/`SADD`.
+- tv3ws: the session mirrors, `session:current-service`, C.6.14.5 and the
+  client writes (authorize, block, token issue and rotation, boot
+  inclusion) go through the functions; the `MULTI` transactions and the
+  `EVAL` script are gone. `session:current-service` gets `serviceId` as a
+  decimal integer or empty (`src/util/service-id.ts`, the same rule as the
+  C.6.3.1 answer).
+- aop: profile creation, eviction (one function now removes `users:index`,
+  `user:{id}`, `user:{id}:consent` and every
+  `user:{id}:broadcaster-attrs:*`), `lastAccess` and the associated origins
+  go through the functions. The form also validates the languages (IETF
+  RFC 5646 format) and the visibility list (400 before writing).
+- infra `edgegateway/plugin`: C.6.8.2/C.6.8.4 write through
+  `tv30_bind_registra`/`tv30_bind_remove` (`fcall` in `redis.go`; no more
+  `RPUSH`/`LREM`). A schema refusal answers 404 `{"error":200}` with
+  `escrita recusada pelo esquema do Redis (...)` instead of "redis
+  indisponivel".
+- `scripts/test-auth.sh`: when the script plays a service in Redis (the
+  current service mirror, the associated origin, blocking a client) it
+  writes through the functions. Direct writes only where no service
+  operation exists (unblocking; removing the test data). At the end it
+  undoes what it seeded and requires an empty audit (FAIL otherwise, with a
+  warning at the start if the audit already had findings).
+  `scripts/test-consolidacao.sh` shows the library version and the audit.
+
+#### Fixed
+
+- Initial load wrote booleans as `"False"`/`"True"` (Python `str()`). The AoP
+  writes `"false"`/`"true"`, and the C.6.14.1 filter compares text, so
+  `closedCaptioning eq false` missed the seeded profiles. Now `"false"`.
+- `docs/modelo-redis.md` said `closedCaptioningLanguage` is required when
+  `closedCaptioning = true`; Table 7 says optional.
+
+#### Known limits
+
+- Writes by hand through `redis-cli` or the commander are still possible.
+  Redis applies the caller's ACL inside the function, so it cannot allow
+  writes only through the functions. The audit
+  (`redis-cli FCALL_RO tv30_auditoria 0`) shows what is outside the schema.
+- Volumes from before P4 may hold out-of-schema data. A copy of the stack's
+  volume on 2026-10-10 had `user:abc-123`, a hash with only `lastAccess`
+  from 2026-09-25, outside `users:index`. `docker compose down -v` starts
+  clean.
+- Table 7 asks for a UUID `id` and a file path `avatar`; the testbed does
+  not. Recorded in `esquema.json` (`divergencias`), not enforced. PENDENTE
+  (Joel).
+
 ### 2026-10-10 (10/10, second round, second batch)
 
 Second batch of the 2026-10-10 round: decisions by Luis on 2026-10-10 on

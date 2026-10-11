@@ -1,9 +1,13 @@
 ---
-title: "Plano: consolidação de containers"
-nav_order: 10
+title: "Plano de consolidação de containers"
+parent: Histórico
+nav_order: 3
 ---
 
 # Plano de mudança — consolidação de containers
+
+{: .historico }
+> Plano de 19/09/2026, executado em 20/09 (fases 0 a 4). Registra o arranjo de antes (11 containers contínuos) e as decisões V1 a V13 daquela data. Depois dele, o `tv3ws-ssdp` entrou e saiu (opção B da L6, de 04 a 09/10), a borda passou a anunciar o SSDP em rede do host, e a política de portas mudou em alguns pontos (o bcast, por exemplo, voltou a ter porta fixa, `BCAST_PORT`, padrão 8081). **O estado atual está em [Arquitetura](arquitetura.md).**
 
 > **Status: fases 0–4 EXECUTADAS (20/09/2026)** — renome R1 concluído
 > (tv3ws em toda a cadeia: submodule, service, container, imagem,
@@ -86,7 +90,7 @@ V5 build · V6 1 UI/2 specs · V7 sem bind-token nesta etapa ·
 com exceções (§3) · V11 investigar SSDP antes · V12 fase 3 · V13 fase 4.
 
 **Overrides a alinhar com o orientador:**
-1. *Seed dentro do redis* contraria a restrição da vacina "o job de
+1. *Seed dentro do redis* contraria a restrição do documento interno de requisitos "o job de
    inicialização continua sendo unidade própria" — justificativa: padrão
    idiomático (Postgres init), elimina o defeito 1 (dependência de rede
    na partida) e o healthcheck preserva a ordem de subida.
