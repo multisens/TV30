@@ -59,7 +59,7 @@ docker compose up -d
 ```
 
 - **Sem o `.env`, o receptor não sobe.** O `aop`, o `tv3ws`, o `bcast` e o `sysctl-init` estão no perfil `linux`, e o `mosquitto` no perfil `mqtt` (`docker-compose.yml` e `infra/docker-compose.yml`). Sem `COMPOSE_PROFILES=mqtt,linux`, que vem do `.env.example`, sobem só o `redis`, a borda e as tarefas de subida, e `http://localhost:8080` não responde.
-- **O submódulo `bcast` usa URL SSH** (`.gitmodules`: `git@github.com:multisens/BcastService.git`). Sem chave SSH cadastrada no GitHub, o clone desse submódulo falha.
+- **Os quatro submódulos vêm por HTTPS**, sem chave SSH no GitHub. Até 11/10, o `bcast` usava URL SSH no `.gitmodules` (`git@github.com:multisens/BcastService.git`), e sem a chave o clone dele falhava; o Luís decidiu trocar por HTTPS em 11/10 (C5). Num clone feito antes, rode `git submodule sync --recursive && git submodule update --init --recursive` ([Instalação]({{ site.baseurl }}/instalacao#submódulos)).
 - **Imagens:** o `.env.example` aponta para as imagens publicadas no Docker Hub (`DOCKERHUB_NS=labmultisens`, `IMAGE_TAG=latest`). O CI de cada submódulo publica a `latest` a cada push na `main`, então ela pode estar atrás do código do seu clone. Para rodar o que está no clone, use `docker compose up -d --build`.
 
 Depois de subir:
@@ -68,9 +68,12 @@ Depois de subir:
 |---|---|
 | AoP (interface do receptor) | `http://localhost:8080` (`AOP_PUBLIC_PORT`) |
 | APIs, superfície interna | `http://localhost:44642` (por exemplo, `/health` e `/manifest`) |
-| APIs, superfície externa | `http://localhost:44643` (ainda HTTP; o TLS está pendente) |
+| APIs, superfície externa | porta dinâmica: `docker compose port edgegateway 44643` (ainda HTTP; o TLS está pendente) |
 | Documentação Swagger das duas superfícies | porta dinâmica: `docker port edgegateway 8085` |
+| bcast (apps de emissora e mídia, direto) | porta dinâmica: `docker compose port bcast 8081` |
 | Redis Commander | porta dinâmica: `docker port redis 18081`; pede login (usuário e senha padrão na seção [*Interface administrativa do Redis*](https://github.com/multisens/TV30/blob/main/README.md#interface-administrativa-do-redis) do `README.md` da raiz). A conexão com o banco (6379) segue sem senha |
+
+Desde 11/10 (C1, decisão do Luís), só ficam fixas no host a 44642, a do AoP (8080), a 1883, a 6379 e a faixa 45000–45199 dos WebSockets de remote-device. As outras saem numa porta livre que o Docker escolhe, e a tabela acima diz como achá-las; `docker compose ps` mostra todas. A página da TV fala MQTT pelo próprio AoP, em `ws://localhost:8080/mqtt`.
 
 ---
 

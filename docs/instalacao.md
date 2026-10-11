@@ -9,8 +9,7 @@ nav_order: 1
 ## Pré-requisitos
 
 - **Docker + Docker Compose v2**
-- **Git** com suporte a submódulos
-- **Chave SSH cadastrada no GitHub**, para o submódulo `bcast` (ver *URL SSH do bcast*, em [Submódulos](#submódulos))
+- **Git** com suporte a submódulos. Chave SSH no GitHub não é mais necessária: desde 11/10 (C5, decisão do Luís) os quatro submódulos vêm por HTTPS (ver [Submódulos](#submódulos))
 - **Node.js**, só para rodar os testes de unidade ou um módulo fora do Docker ([Como testar]({{ site.baseurl }}/como-testar), [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local))
 
 ---
@@ -38,7 +37,7 @@ Com o `.env.example`, o compose usa as imagens publicadas no Docker Hub (`DOCKER
 ### O que não vem no clone
 
 - **Os segmentos de vídeo do bcast.** Os `.ts`, `.m3u8` e `.mp4` de `bcast/public/` estão no `bcast/.gitignore`; das pastas `bcast/public/hls/<nome>/`, o repositório só traz o `events.json`. Os segmentos são preparados fora da stack, a partir de um vídeo, com `bcast/scripts/ffmpeg-hls.sh` ou `ffmpeg-dash.sh` (precisam de FFmpeg). A `bcast/public/` é montada no container (`docker-compose.yml`), e o que estiver nela é servido sem rebuild.
-- **O HTTPS do tv3ws.** A superfície externa da borda (44643) repassa ao HTTPS do tv3ws (`https://tv3ws:44653`), que só sobe com `HTTPS_KEY` e `HTTPS_CERT` no `tv3ws/.env` (o `tv3ws/.env.example` os traz vazios). Sem eles, as rotas que a borda repassa pela 44643 respondem 404 `{"error":200}`; a 44642 funciona normalmente. O passo a passo para gerar o certificado está na seção [*(Opcional) Habilitando HTTPS no tv3ws*](https://github.com/multisens/TV30/blob/main/README.md#opcional-habilitando-https-no-tv3ws) do `README.md` da raiz.
+- **O HTTPS do tv3ws.** A superfície externa da borda (44643 no container; no host, numa porta escolhida pelo Docker, ver [Portas](#portas)) repassa ao HTTPS do tv3ws (`https://tv3ws:44653`), que só sobe com `HTTPS_KEY` e `HTTPS_CERT` no `tv3ws/.env` (o `tv3ws/.env.example` os traz vazios). Sem eles, as rotas que a borda repassa pela 44643 respondem 404 `{"error":200}`; a 44642 funciona normalmente. O passo a passo para gerar o certificado está na seção [*(Opcional) Habilitando HTTPS no tv3ws*](https://github.com/multisens/TV30/blob/main/README.md#opcional-habilitando-https-no-tv3ws) do `README.md` da raiz.
 
 ### Descoberta SSDP (opcional)
 
@@ -46,11 +45,13 @@ Para que outro aparelho da rede encontre o receptor por SSDP (C.3.4), ligue o ov
 
 ```bash
 COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml
-SSDP_ADVERTISE_HOST=192.168.0.12   # IP desta máquina na rede local
+SSDP_ADVERTISE_HOST=192.168.0.12   # IP desta máquina na rede local (obrigatório)
 #SSDP_INTERFACE=wlan0              # só se a interface escolhida sozinha estiver errada
 ```
 
-Depois, `docker compose up -d`, e libere a UDP 1900 e a TCP 44642 no firewall. Com o override, a borda ocupa a 44642, a 44643 e a 8085 direto no host, e um erro de configuração do anúncio (UDP 1900 ocupada sem `SO_REUSEADDR`, `SSDP_INTERFACE` inexistente) derruba a borda inteira até o `restart` trazê-la de volta; a falta de rede não a derruba, e o anunciante espera e tenta de novo (morre-inteiro decidido pelo Luís em 09/10, revisto por ele em 10/10). Sem o override, nada é anunciado, e o cliente chega pelo IP (`http://<IP>:44642/manifest`). Quem usava o perfil `ssdp` (opção B) remove o container antigo com `docker rm -f tv3ws-ssdp`; o perfil deixou de existir. O passo a passo da verificação, com um segundo aparelho, está em [Descoberta SSDP]({{ site.baseurl }}/ssdp#o-que-exige-rede-doméstica-e-um-segundo-dispositivo).
+O `SSDP_ADVERTISE_HOST` é obrigatório com o override (B2, decisão do Luís em 11/10): sem ele, o `tv30-preflight` para a subida com a mensagem `ERRO: o anuncio SSDP esta ligado (docker-compose.ssdp.yml) e falta SSDP_ADVERTISE_HOST`, e a borda não sobe. O `LOCATION` anunciado é esse valor, fixo: numa troca de rede, atualize o `.env` e rode `docker compose up -d` de novo.
+
+Depois, `docker compose up -d`, e libere a UDP 1900 e a TCP 44642 no firewall. Com o override, a borda ocupa a 44642, a 44643 e a 8085 direto no host, fixas nesse modo, e um erro de configuração do anúncio (UDP 1900 ocupada sem `SO_REUSEADDR`, `SSDP_INTERFACE` inexistente) derruba a borda inteira até o `restart` trazê-la de volta; a falta de rede não a derruba, e o anunciante espera e tenta de novo (morre-inteiro decidido pelo Luís em 09/10, revisto por ele em 10/10). Sem o override, nada é anunciado, e o cliente chega pelo IP (`http://<IP>:44642/manifest`). Quem usava o perfil `ssdp` (opção B) remove o container antigo com `docker rm -f tv3ws-ssdp`; o perfil deixou de existir. O passo a passo da verificação, com um segundo aparelho, está em [Descoberta SSDP]({{ site.baseurl }}/ssdp#o-que-exige-rede-doméstica-e-um-segundo-dispositivo).
 
 ---
 
@@ -92,9 +93,10 @@ Dentro do WSL:
 ```bash
 cd /mnt/d/ProjCEFET/TV30   # ou onde clonou
 cp .env.example .env       # ativa profiles "linux" e "mqtt"
-# (edite .env e defina MQTT_WS_PORT=9003 se a 9001 estiver ocupada no host)
 docker compose up -d
 ```
+
+Até 11/10, com a 9001 e a 9002 ocupadas pelo Hyper-V, era preciso definir `MQTT_WS_PORT=9003` no `.env`. Não é mais: a página da TV conecta no MQTT pelo próprio AoP (`ws://localhost:8080/mqtt`), e a 9001 do Mosquitto sai numa porta que o Docker escolhe (C1, decisão do Luís em 11/10; ver [Portas](#portas)).
 
 > **Descoberta SSDP no WSL2:** deixe o `COMPOSE_FILE` do `.env` comentado. Anunciado em rede do host, o anúncio não sai da máquina: chega ao próprio Windows e não chega aos outros aparelhos da rede (medido em 03 e 04/10 com um anunciante descartável em modo host; com a borda anunciando, não medido; [Medições da descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao)). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte (não medido). Nesses ambientes, o cliente chega ao receptor pelo IP, sem a etapa de descoberta.
 
@@ -109,19 +111,28 @@ O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla
 | `COMPOSE_PROFILES` | `mqtt,linux` | Liga o broker, o AoP, o tv3ws, o bcast e o `sysctl-init`. Sem ela, o receptor não sobe |
 | `COMPOSE_FILE` | comentada | `docker-compose.yml:docker-compose.ssdp.yml` liga a descoberta SSDP (só Linux nativo; [Descoberta SSDP]({{ site.baseurl }}/ssdp)) |
 | `DOCKERHUB_NS`, `IMAGE_TAG` | `labmultisens`, `latest` | Nome e tag das imagens (ver *Imagens publicadas ou código do clone*, acima) |
-| `MQTT_WS_PORT` | `9001` | Porta do WebSocket do broker no host, que o navegador da tela do AoP usa. No Windows com a 9001 e a 9002 ocupadas pelo Hyper-V, `9003` |
-| `BCAST_PORT` | `8081` | Porta do bcast no host (dentro do container continua 8081) |
-| `AOP_PUBLIC_PORT` | comentada (padrão `8080`) | Porta do AoP no host e das origens das aplicações de emissora |
+| `EDGE_EXT_PUBLISH`, `BCAST_PUBLISH`, `MQTT_WS_PUBLISH` | comentadas (padrões `44643`, `8081` e `9001`) | O que vai em `ports` para a superfície externa da borda, o bcast e o WebSocket do Mosquitto. Só o número (o padrão) = a porta do container numa porta de host escolhida pelo Docker; `host:container` fixa (ver [Portas](#portas)) |
+| `AOP_PUBLIC_PORT` | comentada (padrão `8080`) | Porta do AoP no host, fixa, e das origens das aplicações de emissora; por ela passa também o MQTT por WebSocket da página da TV (`/mqtt`) |
 | `APPS_DOMAIN` | comentada (padrão `apps.localhost`) | Domínio dos hosts próprios das aplicações de emissora. `*.localhost` só resolve para a própria máquina de quem abre a tela do AoP |
 | `EDGE_VARIANT` | `linux` | Onde a borda procura o tv3ws: `linux` (container) ou `windows` (o tv3ws no host; [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local)) |
 | `JWT_SECRET`, `JWT_ISSUER` | comentadas | Segredo e emissor do access token, o mesmo valor para o tv3ws e a borda. Sem elas, valem os padrões de desenvolvimento do compose; troque fora do laboratório |
 | `AUTH_ENFORCE` | comentada (padrão `warn`) | `warn` só avisa; `enforce` recusa a credencial inválida ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)) |
 | `REDIS_COMMANDER_USER`, `REDIS_COMMANDER_PASSWORD` | comentadas (padrões `admin` e `tv30-redis-admin`) | Login da interface do redis-commander. A conexão com o banco (6379) segue sem senha |
 | `SERVER_URL` | `localhost` | Host que aparelhos externos usam para abrir os WebSockets de remote-device; numa rede de verdade, o IP desta máquina |
-| `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Host e interface do anúncio SSDP |
+| `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Host e interface do anúncio SSDP. O `SSDP_ADVERTISE_HOST` é obrigatório com o `docker-compose.ssdp.yml` (B2) |
 | `WEBMEDIA_REMOTE_MEDIA_PATH`, `WEBMEDIA_REMOTE_USERFILES_PATH` | comentadas | Caminhos no dispositivo remoto do demo webmedia |
 
-No Windows com o Hyper-V ocupando a 9001 e a 9002, basta trocar no `.env` o `MQTT_WS_PORT` para `9003`; o resto fica como no `.env.example`.
+Saíram do `.env.example` em 11/10 o `BCAST_PORT` e o `MQTT_WS_PORT`: o compose não os lê mais, e um `.env` antigo com eles não muda nada (o `BCAST_PUBLISH` e o `MQTT_WS_PUBLISH` fazem o papel de antes, agora com porta aleatória por padrão).
+
+### Portas
+
+Política decidida pelo Luís em 11/10 (C1, opção b). A norma só fixa a 44642 (C.3.4); o resto é decisão do projeto.
+
+| Fixas no host | Escolhidas pelo Docker a cada criação do container |
+|---|---|
+| 44642 (superfície interna da borda), a do AoP (8080, `AOP_PUBLIC_PORT`), 1883 (MQTT), 6379 (Redis), 45000–45199 (WebSockets de remote-device) e, com o `docker-compose.ssdp.yml`, a 44643 e a 8085 da borda | a 44643 da borda na bridge, a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação da borda e a 18081 do redis-commander |
+
+Para achar a porta de host de uma delas, na raiz do clone: `docker compose port <serviço> <porta do container>`, por exemplo `docker compose port edgegateway 44643`, `docker compose port bcast 8081` ou `docker compose port mosquitto 9001`; ou `docker compose ps`, que mostra todas. Para fixar uma delas, defina no `.env` `EDGE_EXT_PUBLISH`, `BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` como `host:container` (por exemplo, `BCAST_PUBLISH=8081:8081`) e recrie o serviço (`docker compose up -d <serviço>`).
 
 ---
 
@@ -142,7 +153,11 @@ git clone --recurse-submodules https://github.com/multisens/TV30.git
 >
 > ou clone de novo.
 
-> **URL SSH do bcast:** o `.gitmodules` aponta o submódulo `bcast` para `git@github.com:multisens/BcastService.git`. Sem chave SSH cadastrada no GitHub, o clone desse submódulo falha (a troca da URL ainda não foi decidida).
+> **URL do bcast por HTTPS (C5, decisão do Luís em 11/10):** o `.gitmodules` aponta o submódulo `bcast` para `https://github.com/multisens/BcastService.git`, como os outros três, e o clone não pede chave SSH. Até 11/10 a URL era SSH (`git@github.com:multisens/BcastService.git`), e sem chave cadastrada no GitHub o clone desse submódulo falhava. Num clone feito antes, o `git pull` traz o `.gitmodules` novo, mas a URL antiga fica no `.git/config`; atualize com
+>
+> ```bash
+> git submodule sync --recursive && git submodule update --init --recursive
+> ```
 
 ### Atualizar todos para o último commit
 

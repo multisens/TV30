@@ -9,7 +9,9 @@
 #
 # Como ligar (no .env da raiz):
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml
-#   SSDP_ADVERTISE_HOST=<IP da maquina na LAN>
+#   SSDP_ADVERTISE_HOST=<IP da maquina na LAN>   (OBRIGATORIO: B2, decisao do
+#     Luis em 11/10; sem ele o preflight para a subida com a mensagem, e o
+#     anunciante da borda sairia com erro de configuracao)
 #
 # O que muda em relacao a stack padrao:
 #   - a borda sai da ginga_net: fala com o tv3ws e com o Redis por 127.0.0.1
@@ -18,7 +20,8 @@
 #     delas; nao ficam alcancaveis pela LAN — a porta direta do item 8 segue
 #     fechada para a rede);
 #   - as portas da borda (44642, 44643 e a 8085 da documentacao) ficam
-#     direto no host; a 8085 deixa de ser dinamica;
+#     direto no host, fixas: na bridge, a 44643 e a 8085 saem numa porta
+#     livre qualquer (C1, Luis 11/10), mas aqui a 44643 vai no anuncio;
 #   - falha do anuncio (morre-inteiro decidido pelo Luis em 09/10, revisto
 #     por ele em 10/10): erro de configuracao (UDP 1900 ocupada sem
 #     SO_REUSEADDR, SSDP_INTERFACE inexistente, porta invalida) derruba a
@@ -37,6 +40,7 @@ services:
       SSDP_ENABLED: "true"
       # O LOCATION daqui e o Server-BaseURL do /manifest (tv3ws) saem do mesmo
       # host: os dois servicos leem SSDP_ADVERTISE_HOST dos mesmos arquivos.
+      # Desde 11/10 (B2) o anunciante da borda nao cai mais no SERVER_URL.
       SERVER_URL: ${SERVER_URL:-localhost}
     env_file:
       # SSDP_ADVERTISE_HOST, SSDP_INTERFACE, EDGE_HTTP_PORT/EDGE_HTTPS_PORT e
@@ -55,3 +59,10 @@ services:
     environment:
       # liga no preflight as checagens da borda em rede do host
       SSDP_EDGE: "true"
+    env_file:
+      # os mesmos arquivos da borda, na mesma ordem: o preflight confere o
+      # SSDP_ADVERTISE_HOST (B2) com o valor que a borda vai usar
+      - path: ./tv3ws/.env
+        required: false
+      - path: ./.env
+        required: false

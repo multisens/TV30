@@ -9,7 +9,7 @@
 #      windows: backends em host.docker.internal:44654/44655), aop, bcast;
 #      o tv3ws do host anuncia o SSDP sozinho (a borda, na bridge, nao anuncia)
 #   2  aop no host   | containers: redis, mosquitto, edgegateway (variante
-#      linux), tv3ws, bcast (BCAST_HOSTNAME=localhost, BCAST_PORT=8081)
+#      linux), tv3ws, bcast (BCAST_HOSTNAME=localhost, BCAST_PUBLISH=8081:8081)
 #   3  bcast no host | containers: redis, mosquitto, edgegateway (variante
 #      linux), tv3ws, aop (alcanca o host por host.docker.internal)
 #   4  tv3ws, aop e bcast no host AO MESMO TEMPO | containers: redis,
@@ -64,9 +64,14 @@
 #
 # Portas no host: 44654/44655 e 45000-45199 (tv3ws, cenarios 1 e 4), 8080
 # (aop, 2 e 4), 8081 (bcast, 3 e 4) e 8090 (componente, 5). Nenhuma colide
-# com a infra (6379, 1883, 9001, 44642/44643); 8080, 8081 e 45000-45199 sao
-# as mesmas do container do modulo, que o cenario para antes. O script
-# confere 44654, 8080, 8081 e 8090 livres antes de subir o processo.
+# com as fixas da infra (6379, 1883, 44642); 8080, 8081 e 45000-45199 sao as
+# mesmas do container do modulo, que o cenario para antes. O script confere
+# 44654, 8080, 8081 e 8090 livres antes de subir o processo. Desde a decisao
+# do Luis em 11/10 (C1), a 9001 do mosquitto (MQTT por WebSocket), a 8081 do
+# bcast em container e a 44643 da borda na bridge sao publicadas sem porta
+# fixa: o Docker escolhe uma livre. O aop do host recebe a porta publicada da
+# 9001 (porta_ws_mqtt), porque atende o MQTT da pagina da TV em /mqtt e o
+# repassa ao mosquitto; o cenario 2 fixa a 8081 do bcast (BCAST_PUBLISH).
 #
 # Uso: ./scripts/test-dev-host.sh [--cenario N[,N...]] [--build] [-h]
 #   --cenario  1, 2, 3, 4 e/ou 5 (padrao: todos, em ordem)
@@ -78,9 +83,10 @@
 #                    a mesma base de infra/dockerfiles/*.Dockerfile)
 #   DEVHOST_TIMEOUT  segundos para o modulo responder (padrao 300; inclui o
 #                    npm ci no modo docker)
-#   JWT_SECRET, JWT_ISSUER, MQTT_WS_PORT, SERVER_URL: shell > .env da raiz >
-#                    padrao do compose. O JWT_SECRET vale para a borda e para
-#                    o tv3ws do host (os dois precisam do mesmo segredo).
+#   JWT_SECRET, JWT_ISSUER, SERVER_URL: shell > .env da raiz > padrao do
+#                    compose. O JWT_SECRET vale para a borda e para o tv3ws do
+#                    host (os dois precisam do mesmo segredo). A porta do MQTT
+#                    por WebSocket do aop do host sai do Docker (porta_ws_mqtt).
 #   Proxy/registro npm (HTTP_PROXY, HTTPS_PROXY, NO_PROXY,
 #   NPM_CONFIG_REGISTRY, NPM_CONFIG_STRICT_SSL) sao repassados ao container.
 #
@@ -143,7 +149,9 @@ cfg() {
 # MESMO valor — a borda valida o accessToken que o tv3ws assina.
 JWT_SECRET=$(cfg JWT_SECRET tv30-dev-secret-nao-usar-em-producao); export JWT_SECRET
 JWT_ISSUER=$(cfg JWT_ISSUER GenericIssuer); export JWT_ISSUER
-MQTT_WS_PORT_CFG=$(cfg MQTT_WS_PORT 9001)
+# porta do host em que o Docker publicou a 9001 do mosquitto (C1, Luis 11/10:
+# sem porta fixa); vazia se o broker nao estiver de pe
+porta_ws_mqtt() { docker port mqtt-broker 9001/tcp 2>/dev/null | head -1 | sed 's/.*://'; }
 SERVER_URL_CFG=$(cfg SERVER_URL localhost)
 
 TIMEOUT=${DEVHOST_TIMEOUT:-300}
@@ -463,8 +471,11 @@ checar_redis_mqtt() { checar_redis_host; checar_mqtt_host; }
 # selecionado no catalogo, o caso do cenario 1), 404 {"error":300}; valem os
 # dois. O que se prova aqui e o caminho borda -> tv3ws do host. NAO prova o
 # JWT_SECRET compartilhado: em warn (padrao) a borda repassa mesmo com token
-# invalido; o que diz se a borda aceitou o token e o X-TV30-Auth-Warn (ausente
-# = aceito), registrado como info por checar_borda_tv3ws_host. Nao se publica aop/currentService retido
+# invalido. O X-TV30-Auth-Warn, registrado como info por
+# checar_borda_tv3ws_host, diz o que a borda acharia do token em enforce:
+# desde a E6 (decisao do Luis em 11/10) o sub deste token de teste
+# (tv30-devhost-teste) nao esta em clients:authorized, entao o esperado e 107
+# mesmo com o JWT_SECRET certo. Nao se publica aop/currentService retido
 # para forcar o 200: o topico e da plataforma (o aop o publica e o le, no
 # container ou no host), e o valor ficaria no broker depois do teste.
 checar_current_service_host() { # checar_current_service_host <token>
@@ -500,7 +511,7 @@ checar_borda_tv3ws_host() {
     checar_current_service_host "$tk"
     h=$(curl -s -m 5 -o /dev/null -D - -H "Authorization: Bearer $tk" \
           http://127.0.0.1:44642/tv3/current-service 2>/dev/null | tr -d '\r' | grep -i '^X-TV30-Auth-Warn:' || true)
-    info "X-TV30-Auth-Warn com token valido: ${h:-ausente}"
+    info "X-TV30-Auth-Warn com token valido de cliente fora de clients:authorized (E6; esperado 107): ${h:-ausente}"
   else
     falha "nao consegui gerar o accessToken de teste no ambiente do modulo"
   fi
@@ -561,6 +572,19 @@ checar_origem_app() {
   fi
   HOST_APP=${o#http://}
   ok "aop gravou a origem propria da app em origins:associated (P1.3): $o"
+}
+
+# checar_mqtt_ws_aop <descricao>: o aop do host atende o MQTT da pagina da TV
+# por WebSocket em /mqtt (C1, decisao do Luis em 11/10) e repassa ao mosquitto
+# na porta que o Docker publicou (porta_ws_mqtt). 101 = o handshake foi ate o
+# broker; porta vazia ou errada daria 502.
+checar_mqtt_ws_aop() {
+  local r
+  r=$(curl -s -i -N --max-time 3 -H "Connection: Upgrade" -H "Upgrade: websocket" \
+        -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+        -H "Sec-WebSocket-Protocol: mqtt" http://127.0.0.1:8080/mqtt 2>/dev/null | head -1 | tr -d '\r')
+  if printf '%s' "$r" | grep -q ' 101'; then ok "$1 (porta publicada da 9001: $(porta_ws_mqtt))"
+  else falha "$1 — resposta: ${r:-nenhuma} (porta publicada da 9001: '$(porta_ws_mqtt)')"; fi
 }
 
 # checar_app_aberta <descricao>: a app responde no host proprio, com o prefixo
@@ -639,10 +663,11 @@ cenario_2() {
   parar aop || return
   # O bcast anuncia bcastEntryPackageUrl = http://BCAST_HOSTNAME:8081 (porta
   # INTERNA). Para o aop do host, isso e localhost:8081 publicado pelo
-  # container — por isso BCAST_PORT=8081 aqui.
-  BCAST_HOSTNAME=localhost BCAST_PORT=8081 subir linux $INFRA tv3ws bcast || return
+  # container — por isso a 8081 publicada FIXA aqui (BCAST_PUBLISH; no padrao,
+  # desde 11/10, ela sai numa porta livre qualquer).
+  BCAST_HOSTNAME=localhost BCAST_PUBLISH=8081:8081 subir linux $INFRA tv3ws bcast || return
   porta_livre 8080 || { falha "porta 8080 ja ocupada no host"; return; }
-  host_start aop PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$MQTT_WS_PORT_CFG" \
+  host_start aop PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$(porta_ws_mqtt)" \
     USER_DATA_PATH="$(dir_userfiles)" REDIS_HOST=127.0.0.1 REDIS_PORT=6379 || return
   esperar_modulo "aop no host servindo 8080" \
     http://127.0.0.1:8080/appcat 'HTTP_STATUS=200' || { host_stop; return; }
@@ -653,6 +678,7 @@ cenario_2() {
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
   abrir_users_test
   checar_origem_app && checar_app_aberta "aop do host -> bcast em container"
+  checar_mqtt_ws_aop "aop do host -> mosquitto em container pelo WebSocket /mqtt"
   fechar_users_test
   checar_http "borda (linux) 44642 /health -> tv3ws em container" \
     http://127.0.0.1:44642/health '"status":"ok"' 30 || diag_container tv3ws
@@ -717,7 +743,7 @@ cenario_4() {
   esperar_modulo "bcast no host servindo 8081" \
     http://127.0.0.1:8081/users-test 'Trocar Usu' || return
 
-  host_start aop PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$MQTT_WS_PORT_CFG" \
+  host_start aop PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$(porta_ws_mqtt)" \
     USER_DATA_PATH="$ud" REDIS_HOST=127.0.0.1 REDIS_PORT=6379 || return
   esperar_modulo "aop no host servindo 8080" \
     http://127.0.0.1:8080/appcat 'HTTP_STATUS=200' || return
@@ -746,6 +772,7 @@ cenario_4() {
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
   abrir_users_test
   checar_origem_app && checar_app_aberta "aop do host -> bcast do host"
+  checar_mqtt_ws_aop "aop do host -> mosquitto em container pelo WebSocket /mqtt"
 
   # provas negativas: cada resposta vinha do processo do host
   host_usar bcast && host_stop

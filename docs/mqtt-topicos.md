@@ -6,7 +6,7 @@ nav_order: 4
 
 # Tópicos MQTT
 
-O Mosquitto leva a **sinalização e os eventos** entre os serviços. Não é o único canal interno: o AoP, o tv3ws e a borda leem e escrevem no Redis diretamente, e o AoP faz proxy HTTP direto ao bcast (ver [Arquitetura]({{ site.baseurl }}/arquitetura)). O cliente no navegador acessa o broker via WebSocket na porta `MQTT_WS_PORT` (padrão 9001; no Windows costuma ser 9003).
+O Mosquitto leva a **sinalização e os eventos** entre os serviços. Não é o único canal interno: o AoP, o tv3ws e a borda leem e escrevem no Redis diretamente, e o AoP faz proxy HTTP direto ao bcast (ver [Arquitetura]({{ site.baseurl }}/arquitetura)). O cliente no navegador, a camada gráfica do AoP (`aop/src/modules/graphic-overlays/view.ejs`, `clientId` `rp-display`), acessa o broker por WebSocket **pelo próprio AoP**: conecta em `ws(s)://<host da página>/mqtt`, na porta do AoP, e o AoP repassa a conexão ao WebSocket do Mosquitto, na 9001 interna da `ginga_net` (`aop/src/mqtt-ws.js`; C1, decisão do Luís em 11/10). O repasse só existe no host do AoP; num host de app, o `/mqtt` responde 404, e a app de emissora não alcança o broker pela origem dela. Até 11/10, a página conectava direto na porta `MQTT_WS_PORT` do host (padrão 9001; no Windows, 9003), que deixou de ser fixa: a 9001 do Mosquitto sai numa porta de host escolhida pelo Docker (`docker compose port mosquitto 9001`), útil só para depurar com um cliente MQTT de fora.
 
 ---
 
@@ -16,7 +16,7 @@ Publicadores, consumidores e flag de retenção conferidos nas chamadas `publish
 
 | Tópico | Publicado por | Consumido por | Retain | Significado |
 |--------|--------------|---------------|--------|-------------|
-| `aop/currentUser` | AoP; tv3ws (C.6.14.4) | AoP, tv3ws | sim | Id do usuário corrente. Ao receber, o tv3ws grava `session:current-user`, e o AoP grava o `lastAccess` do perfil (D-0510-5) |
+| `aop/currentUser` | AoP; tv3ws (C.6.14.4) | AoP, tv3ws | sim | Id do usuário corrente. Ao receber, o tv3ws grava `session:current-user`, e o AoP grava o `lastAccess` do perfil (D-0510-5). Desde 11/10 (F-3), os ids de perfil são UUID; o esquema do tópico no broker continua texto de até 64 caracteres |
 | `aop/currentService` | AoP | tv3ws, AoP | sim | Id do serviço DTV ativo (`urn:tv30:service:...`) |
 | `aop/display/layers/rxgui` | AoP | front do AoP | não | Camada GUI ativa |
 | `aop/display/layers/video/url` | AoP | front do AoP | não | URL do stream de vídeo |

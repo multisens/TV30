@@ -19,8 +19,10 @@ Esta página resume o comportamento atual. O detalhe, com cada caso, está no RE
 
 | Superfície | Porta | Rotas | Backend no tv3ws (variante `linux`) |
 |---|---|---|---|
-| interna | 44642, fixa pela C.3.4 (`Server-BaseURL`) | todas as 27 da tabela | `http://tv3ws:44652` |
-| externa | 44643 (`Server-SecureBaseURL`); ainda HTTP, porque o TLS na borda está pendente (L3) | 25: só as que admitem o cliente não local | `https://tv3ws:44653` |
+| interna | 44642, fixa pela C.3.4 (`Server-BaseURL`) | todas as 26 da tabela | `http://tv3ws:44652` |
+| externa | 44643 no container (`Server-SecureBaseURL`); ainda HTTP, porque o TLS na borda está pendente (L3). Na bridge, desde 11/10 (C1), numa porta de host escolhida pelo Docker (`docker compose port edgegateway 44643`; `EDGE_EXT_PUBLISH` fixa); no modo SSDP, a 44643 do host | 24: só as que admitem o cliente não local | `https://tv3ws:44653` |
+
+Até 11/10 eram 27 e 25 rotas: a A4 (decisão do Luís em 11/10) tirou da tabela `POST /tv3/{serviceContextId}/users`, que não existe na norma, e a borda responde 100 a ela.
 
 - **Uma tabela de rotas só.** O `infra/edgegateway/routes.json` declara método, caminho, política (`auth`, `classes`) e, quando a rota implementa uma API da norma, a linha da Tabela C.2 (`api`). O `generate.js` gera dela, no build da imagem, as configurações do KrakenD das duas superfícies (variantes `linux`, `windows` e `host`), os dois OpenAPI e a tabela de rotas do plugin.
 - **Superfície derivada das classes** (P1.9, decisão do Luís em 10/10). A externa só recebe as rotas que admitem `non-local` (`SURFACE_RULES`, no `generate.js`); rota sem `classes` fica nas duas. Hoje saem da externa `POST` e `DELETE /tv3/bind-context`, que só o local associado usa; lá, elas respondem 100, como um caminho não declarado.
@@ -37,11 +39,12 @@ O plugin avalia cada requisição em quatro etapas, nesta ordem, e a primeira qu
 |---|---|---|---|
 | 1 | Rota | 100 | Método e caminho declarados para a superfície. Caminho não declarado não chega ao KrakenD |
 | 2 | Classe | 106 | A classe vem do claim `class` do access token. Sem `Authorization`, um `Origin` presente em `origins:associated` faz do cliente um local associado. A rota lista as classes que admite (`classes`) |
-| 3 | Access token | 107 | `Authorization: Bearer <jwt>`, HS256 com o `JWT_SECRET`, `exp` obrigatório e válido, `nbf` se houver, `iss` igual ao `JWT_ISSUER`. Cliente cujo `sub` está em `clients:blocked` também recebe 107 (C.4.2.2) |
+| 3 | Access token | 107 | `Authorization: Bearer <jwt>`, HS256 com o `JWT_SECRET`, `exp` obrigatório e válido, `nbf` se houver, `iss` igual ao `JWT_ISSUER`. Cliente cujo `sub` está em `clients:blocked` também recebe 107 (C.4.2.2); desde 11/10 (E6, decisão do Luís), também o `sub` fora de `clients:authorized` e o token sem `sub` |
 | 4 | Bind-token | 104 / 108 | Só nas rotas `token+bind`. Sem o cabeçalho `bind-token`, 104. O token tem de ser assinado por uma chave registrada (C.6.8.2) para o **serviço corrente** (`session:current-service-id`); se não for, 108 |
 
 - **O local associado** (o `Origin` em `origins:associated`, sem `Authorization`) usa as rotas que o admitem sem access token e sem bind-token, como diz a C.4.1.1. Desde o P1.3 (decisão do Luís em 10/10), o AoP grava ali a origem própria de cada app de emissora em execução, `http://<app>.apps.localhost:8080` ([Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos) e [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis)). O risco do `Origin` forjado fora do navegador foi aceito pelo Luís em 03/10 (L1).
-- **Token com `class` `local-associated`** dispensa o bind-token.
+- **Token com `class` `local-associated`** dispensa o bind-token, mas não as consultas a `clients:blocked` e a `clients:authorized`.
+- **`clients:authorized` (E6, decisão do Luís em 11/10).** O tv3ws grava no conjunto o cliente que o espectador autoriza no pop-up e, no boot, os `client:{id}` anteriores a ele que não estão bloqueados; o bloqueio o tira dali. A borda exige o `sub` nele em toda rota que pede token. Um cliente desbloqueado à mão (`SREM clients:blocked`) fica fora dos dois conjuntos e continua recusado, até voltar a `clients:authorized` (a tela de gerenciamento da C.4.2.2, que faria isso, não existe; E5). Até 11/10, a borda conferia só o bloqueio.
 - **Falha do Redis** durante a decisão dá o código 200 ("Platform resource unavailable").
 
 As políticas de cada rota (`auth` = `none`, `token` ou `token+bind`, e `classes`) estão na tabela da [página das APIs]({{ site.baseurl }}/apis-tv3ws#endpoints-declarados-na-borda) e no README do plugin. O critério do `token+bind` é o campo "Security requirements" = *shall* da tabela de cada API na norma.
@@ -63,7 +66,7 @@ Para ligar o `enforce`: `AUTH_ENFORCE=enforce` no `.env` da raiz e `docker compo
 Desde a reunião de 05/10 com o Joel, três grupos de rota passam pela mesma decisão de credencial e são respondidos pelo próprio plugin, sem repasse ao tv3ws:
 
 - **C.6.8** (`POST`, `GET` e `DELETE /tv3/bind-context`; D-0510-2, `bindcontext.go`): o registro, a consulta e a revogação das chaves de bind-token da emissora, guardadas em `bind-context:{serviceId}`. É a única escrita da borda no Redis.
-- **C.6.7.8 e C.6.7.9** (`GET /tv3/api-info/{apiId}` e `GET /tv3/api-info`; D-0510-3, `apiinfo.go`): a lista de APIs implementadas na superfície, tirada do campo `api` das rotas dela no `routes.json`. São 20 APIs na interna e 18 na externa.
+- **C.6.7.8 e C.6.7.9** (`GET /tv3/api-info/{apiId}` e `GET /tv3/api-info`; D-0510-3, `apiinfo.go`): a lista de APIs implementadas na superfície, tirada do campo `api` das rotas dela no `routes.json`. São 20 APIs na interna e 18 na externa. Cada superfície lista só o que oferece (F-2), um id da Tabela C.2 não implementado dá 101 (E1) e, sem `subsystem`, a lista traz todas (E3): as três escolhas foram mantidas pelo Luís em 11/10.
 
 Nessas rotas, a borda também negocia a versão (`Accept-Version`), com as mesmas regras do tv3ws (`negotiateVersion`, em `edge.go`).
 
@@ -86,8 +89,9 @@ O que a norma deixa em aberto, ou que o projeto ainda não decidiu, tem um compo
 - **L3:** sem TLS na 44643, o 106 por protocolo ao não local (C.4.1.6) não é aplicado por ninguém;
 - **L4:** o 106 ao associado em `/authorize` e `/token` depende do `Origin` e só bloqueia em `enforce`;
 - **L5:** o relógio do bind-token é o do host, e não o System Time Fragment;
-- **L7:** liberar os recursos compartilhados ao revogar uma chave (C.4.4) não está implementado;
-- **E6:** a borda recusa o `sub` em `clients:blocked`, mas não exige a presença em `clients:authorized`.
+- **L7:** liberar os recursos compartilhados ao revogar uma chave (C.4.4) não está implementado; em 11/10, o Luís pediu uma proposta de desenho para levar ao Joel (A10, [Proposta: recursos compartilhados (C.4.4)]({{ site.baseurl }}/proposta-c44-recursos-compartilhados)).
+
+A E6 (exigir `clients:authorized`), que estava nesta lista, foi decidida pelo Luís em 11/10: a borda exige (acima).
 
 ---
 

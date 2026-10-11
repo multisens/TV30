@@ -178,10 +178,11 @@ services:
       # inocuo no deploy padrao.
       - "host.docker.internal:host-gateway"
     ports:
-      # Porta publica do AoP no host (AOP_PUBLIC_PORT, padrao 8080). A mesma
-      # variavel vai para o container (environment, abaixo), porque o AoP
-      # monta com ela a origem de cada aplicacao (P1.3); dentro do container a
-      # porta continua 8080.
+      # Porta publica do AoP no host (AOP_PUBLIC_PORT, padrao 8080), FIXA (C1,
+      # decisao do Luis em 11/10). A mesma variavel vai para o container
+      # (environment, abaixo), porque o AoP monta com ela a origem de cada
+      # aplicacao (P1.3); dentro do container a porta continua 8080. Por ela
+      # passa tambem o MQTT por WebSocket da pagina da TV (/mqtt, C1).
       - "${AOP_PUBLIC_PORT:-8080}:8080"
     environment:
       PORT: 8080
@@ -196,12 +197,17 @@ services:
       APPS_DOMAIN: ${APPS_DOMAIN:-apps.localhost}
       AOP_PUBLIC_PORT: ${AOP_PUBLIC_PORT:-8080}
       MQTT_HOST: mosquitto
-      # O browser do overlay conecta ws://<host da pagina>:${MQTT_WS_PORT}/mqtt
-      # (graphic-overlays/view.ejs), entao tem que bater com a porta que o
-      # Mosquitto publica no host: ${MQTT_WS_PORT:-9001} no docker-compose.yml
-      # da infra. Mesma variavel e mesmo default dos dois lados (.env da raiz;
-      # 9003 em Windows+WSL com 9001/9002 ocupadas, ver .env.example).
-      MQTT_WS_PORT: ${MQTT_WS_PORT:-9001}
+      # MQTT por WebSocket da pagina da TV (C1, decisao do Luis em 11/10): a
+      # pagina conecta em ws://<host da pagina>/mqtt, na porta do proprio AoP
+      # (graphic-overlays/view.ejs), e o AoP repassa o upgrade a
+      # ws://${MQTT_HOST}:${MQTT_WS_PORT} (aop/src/mqtt-ws.js). Aqui 9001 e a
+      # porta INTERNA do mosquitto na ginga_net, fixa; a porta de host dele
+      # (MQTT_WS_PUBLISH no infra/docker-compose.yml) sai aleatoria e o
+      # navegador nao a usa. Antes, MQTT_WS_PORT do .env da raiz era a porta
+      # publicada do mosquitto que a pagina usava (9003 em Windows+WSL); o
+      # compose nao a le mais. So com o AoP no host (desenvolvimento) ela
+      # volta a ser a publicada: docker compose port mosquitto 9001.
+      MQTT_WS_PORT: "9001"
       USER_DATA_PATH: /user-files
       # A plataforma le perfis e escreve a lista de origens associadas
       # DIRETO no Redis (P1) — nao passa mais pela porta HTTP do tv3ws.
@@ -223,10 +229,16 @@ services:
     container_name: bcast
     networks: [ginga_net]
     ports:
-      # Default 8081 no host. Se a porta estiver ocupada, sobrescreva
-      # BCAST_PORT no .env (a porta DENTRO do container continua 8081 — o
-      # AoP usa o DNS interno "bcast:8081" e nao depende disso).
-      - "${BCAST_PORT:-8081}:8081"
+      # Porta de host ALEATORIA por padrao (C1, decisao do Luis em 11/10): o
+      # Docker escolhe uma livre (docker compose port bcast 8081 mostra qual).
+      # BCAST_PUBLISH e o valor que vai aqui: so o numero (padrao 8081) = porta
+      # do container com porta de host aleatoria; host:container = fixa (ex.:
+      # BCAST_PUBLISH=8081:8081, o que o desenvolvimento com o aop no HOST
+      # precisa, ver BCAST_HOSTNAME abaixo). A porta DENTRO do container
+      # continua 8081, e o AoP usa o DNS interno "bcast:8081", que nao depende
+      # disso. BCAST_PUBLISH substitui o BCAST_PORT de antes (porta de host
+      # fixa, padrao 8081), que o compose nao le mais.
+      - "${BCAST_PUBLISH:-8081}"
     environment:
       PORT: 8081
       MQTT_HOST: mosquitto
@@ -234,7 +246,8 @@ services:
       # pra esse host — em Docker precisa ser o service-name (resolve via
       # ginga_net DNS), nao localhost. Override so pro desenvolvimento com o
       # aop no HOST (BCAST_HOSTNAME=localhost: o aop do host alcanca a porta
-      # publicada 8081) — ver docs/dev-local.md.
+      # publicada, que entao tem de ser a 8081 fixa: BCAST_PUBLISH=8081:8081)
+      # — ver docs/dev-local.md.
       BCAST_HOSTNAME: ${BCAST_HOSTNAME:-bcast}
       # IDs fixos: cada restart re-publica no MESMO topico, sobrescrevendo o
       # anterior em vez de criar tópicos orfaos retidos no broker.
