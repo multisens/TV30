@@ -164,7 +164,7 @@ E suba a stack de novo.
 
 ## App de emissora não abre na camada gráfica, ou abre e não responde às teclas
 
-Desde o P1.3 (decisão do Luís em 10/10), o AoP abre cada app de emissora num nome de host próprio, na porta dele: `http://<rótulo>.apps.localhost:8080/<bcastEntryPointUrl>` (`aop/src/app-hosts.js`). O `<rótulo>` sai do `appId` da BALD. Para ver o endereço da app em execução, que é a origem gravada pelo AoP:
+Desde o P1.3 (decisão do Luís em 10/10), o AoP abre cada app de emissora num nome de host próprio, na porta dele. Desde 11/10 (decisão do Luís), a URL leva o prefixo do caminho antigo: `http://<rótulo>.apps.localhost:8080/graphicsAppProxy<bcastEntryPointUrl>` (`aop/src/app-hosts.js`). O `<rótulo>` sai do `appId` da BALD, fixo por app desde 11/10: o users-test, por exemplo, abre em `http://urn-tv30-app-users-test.apps.localhost:8080/graphicsAppProxy/users-test`. No host do próprio AoP, `/graphicsAppProxy/...` redireciona (302) para o host da app em execução. Para ver o endereço da app em execução, que é a origem gravada pelo AoP:
 
 ```bash
 docker exec redis redis-cli HGETALL origins:associated
@@ -175,11 +175,12 @@ docker logs aop --tail 50 | grep '\[apps\]'
 |---|---|---|
 | A app não carrega com a tela do AoP aberta de **outra máquina** | `*.localhost` resolve para a máquina de quem abre a página, e não para a do AoP | Defina `APPS_DOMAIN` no `.env` da raiz com um domínio resolvível na rede, com `*.<domínio>` apontando para a máquina do AoP (DNS curinga), e recrie o AoP (`docker compose up -d aop`) |
 | A app não carrega, e o AoP está publicado noutra porta do host | A origem da app usa `AOP_PUBLIC_PORT` (padrão 8080), e não a porta pela qual o navegador chegou | Mude a porta pelo `AOP_PUBLIC_PORT` do `.env` da raiz, que troca a porta publicada e a origem juntas |
-| `nenhuma aplicacao em execucao em <host>` (404) | Nenhuma app em execução tem esse rótulo: a app foi encerrada, ou foi relançada com outro rótulo (o bcast sorteia o `appId` a cada partida), e a página antiga ficou aberta | Abra a app de novo pelo catálogo do AoP |
+| `nenhuma aplicacao em execucao em <host>` (404) | Nenhuma app em execução tem esse rótulo: a app foi encerrada, ou trocada por outra, e a página antiga ficou aberta. Com o `appId` trocado no bcast (`EDUPLAY_APP_ID`, `UFF_APP_ID`, `USERS_TEST_APP_ID`, `WEBMEDIA_APP_ID`), o rótulo também muda. Até 11/10, o bcast sorteava o `appId` a cada partida, e o rótulo mudava a cada reinício dele | Abra a app de novo pelo catálogo do AoP |
+| `nenhuma aplicacao em execucao na camada grafica` (404), em `/graphicsAppProxy/...` no host do AoP | Nenhuma app em execução para onde redirecionar | Abra a app pelo catálogo do AoP |
 | `Bad Gateway: aplicacao fora do ar` (502) | O AoP não alcança o `bcastEntryPackageUrl` da app (bcast parado, ou `BCAST_HOSTNAME` errado no dev-host) | `docker logs aop` mostra a falha do proxy (`[apps] falha no proxy ...`); confira o bcast |
 | O AoP não sobe: `[boot] APPS_DOMAIN invalido` ou `AOP_PUBLIC_PORT invalida` | Valor fora do formato (rótulos `[a-z0-9-]` separados por ponto; porta inteira de 1 a 65535) | Corrija o `.env` da raiz |
 | A app abre, mas não recebe teclas, `timeupdate` nem `stream_event` | Com a app em outra origem, o AoP entrega os eventos por `postMessage`, e a app não inclui a ponte `bcast/public/js/aop-bridge.js`; ou a imagem do bcast é anterior a 10/10 | Inclua `<script src="js/aop-bridge.js"></script>` na app (ver `bcast/README.md`); reconstrua o bcast junto com o AoP |
-| As chamadas da app às APIs levam `X-TV30-Auth-Warn: 107` | A app foi aberta pelo caminho antigo `/graphicsAppProxy`, na origem do AoP, que não grava origem associada; ou a origem não está em `origins:associated` | Abra a app pelo AoP (catálogo e tela cheia), não pelo caminho antigo |
+| As chamadas da app às APIs levam `X-TV30-Auth-Warn: 107` | A origem da app não está em `origins:associated`: a app foi encerrada (ESC) ou trocada, e a página ficou aberta; ou a gravação no Redis falhou (log do AoP). Com uma imagem do AoP anterior a 11/10, a app aberta pelo caminho antigo `/graphicsAppProxy` ficava na origem do AoP, que não é gravada | Abra a app pelo AoP (catálogo e tela cheia); reconstrua o AoP se a imagem for anterior a 11/10 |
 
 O QtWebEngine não foi testado com os nomes `*.apps.localhost`; o Firefox 154 (Linux) e o Chrome 154 (Windows) foram conferidos em 10/10.
 

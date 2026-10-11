@@ -27,9 +27,10 @@
 #      Express do tv3ws: 200, ou 404 {error:300} sem servico em uso); depois
 #      de matar o processo do host a borda deixa de responder (prova negativa)
 #   2  aop no host servindo 8080, recebendo o BAMT do bcast por MQTT e
-#      alcancando o bcast em container pelo proxy HTTP: pelo host proprio da
-#      aplicacao (<rotulo>.apps.localhost, P1.3, a origem que o aop grava em
-#      origins:associated) e pelo caminho antigo /graphicsAppProxy
+#      alcancando o bcast em container pelo proxy HTTP do host proprio da
+#      aplicacao (<rotulo>.apps.localhost:8080/graphicsAppProxy/..., P1.3, a
+#      origem que o aop grava em origins:associated); o caminho antigo no host
+#      do aop redireciona (302) para ele
 #   3  bcast no host publicando a sinalizacao (bcastEntryPackageUrl com
 #      host.docker.internal) e o aop em container alcancando o bcast do host
 #      pelo proxy HTTP; depois de matar o processo do host o proxy falha
@@ -523,10 +524,11 @@ checar_bald() { # checar_bald <host:porta>
 # Abre o app users-test do bcast pelo fluxo real do aop: selecao no catalogo
 # (assina a sinalizacao do servico) e tela cheia (startApp -> alvo do proxy =
 # bcastEntryPackageUrl da BALD). Desde o P1.3 (decisao do Luis em 10/10) a
-# camada grafica abre a app no host proprio dela, <rotulo>.apps.localhost:8080
-# (aop/src/app-hosts.js), e o aop grava essa origem em origins:associated; o
-# caminho antigo /graphicsAppProxy/... continua indo ao bcast, sem registrar
-# origem. Fechar = ESC (/keydown/27: encerra a camada grafica e remove a
+# camada grafica abre a app no host proprio dela, e o aop grava essa origem em
+# origins:associated. Desde 11/10 (decisoes do Luis) a URL mantem o prefixo:
+# <rotulo>.apps.localhost:8080/graphicsAppProxy/<caminho> (aop/src/app-hosts.js;
+# o rotulo sai do appId, fixo por app: urn-tv30-app-users-test), e o
+# /graphicsAppProxy/... no host do proprio aop redireciona (302) para la. Fechar = ESC (/keydown/27: encerra a camada grafica e remove a
 # origem) e volta ao catalogo; so o catalogo deixaria a origem no Redis.
 SID_USERS_TEST="urn:tv30:service:users-test"
 abrir_users_test() {
@@ -559,6 +561,17 @@ checar_origem_app() {
   fi
   HOST_APP=${o#http://}
   ok "aop gravou a origem propria da app em origins:associated (P1.3): $o"
+}
+
+# checar_app_aberta <descricao>: a app responde no host proprio, com o prefixo
+# /graphicsAppProxy (a URL que a camada grafica abre), e o caminho antigo no
+# host do aop redireciona (302) para essa mesma URL. Depende de HOST_APP.
+checar_app_aberta() {
+  [ -n "$HOST_APP" ] || return 1
+  checar_http "$1 (host proprio da app, P1.3)" \
+    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10 -H "Host: $HOST_APP"
+  checar_http "caminho antigo no host do aop -> 302 para o host da app" \
+    http://127.0.0.1:8080/graphicsAppProxy/users-test "ocation: http://$HOST_APP/graphicsAppProxy/users-test" 5 -D -
 }
 
 # Componente do cenario 5 (exemplo de templates/componente/index.js): nome
@@ -639,10 +652,7 @@ cenario_2() {
   checar_http "aop do host recebeu o BAMT do bcast em container (MQTT)" \
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
   abrir_users_test
-  checar_origem_app && checar_http "aop do host -> bcast em container (host proprio da app, P1.3)" \
-    http://127.0.0.1:8080/users-test 'Trocar Usu' 10 -H "Host: $HOST_APP"
-  checar_http "aop do host -> bcast em container (caminho antigo /graphicsAppProxy)" \
-    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10
+  checar_origem_app && checar_app_aberta "aop do host -> bcast em container"
   fechar_users_test
   checar_http "borda (linux) 44642 /health -> tv3ws em container" \
     http://127.0.0.1:44642/health '"status":"ok"' 30 || diag_container tv3ws
@@ -669,15 +679,10 @@ cenario_3() {
   checar_http "aop em container recebeu o BAMT do bcast no host (MQTT)" \
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
   abrir_users_test
-  checar_origem_app && checar_http "aop em container -> bcast no host (host proprio da app, P1.3)" \
-    http://127.0.0.1:8080/users-test 'Trocar Usu' 10 -H "Host: $HOST_APP"
-  checar_http "aop em container -> bcast no host (proxy HTTP via host.docker.internal)" \
-    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10
+  checar_origem_app && checar_app_aberta "aop em container -> bcast no host (via host.docker.internal)"
   host_stop
-  [ -n "$HOST_APP" ] && checar_http_nao "sem o bcast do host o host proprio da app falha (resposta vinha do host)" \
-    http://127.0.0.1:8080/users-test 'Trocar Usu' 5 -H "Host: $HOST_APP"
-  checar_http_nao "sem o bcast do host o proxy do aop falha (resposta vinha do host)" \
-    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 5
+  [ -n "$HOST_APP" ] && checar_http_nao "sem o bcast do host o proxy do aop falha (resposta vinha do host)" \
+    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 5 -H "Host: $HOST_APP"
   fechar_users_test
 }
 
@@ -740,15 +745,12 @@ cenario_4() {
   checar_http "aop do host recebeu o BAMT do bcast do host (MQTT)" \
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
   abrir_users_test
-  checar_origem_app && checar_http "aop do host -> bcast do host (host proprio da app, P1.3)" \
-    http://127.0.0.1:8080/users-test 'Trocar Usu' 10 -H "Host: $HOST_APP"
-  checar_http "aop do host -> bcast do host (proxy HTTP /graphicsAppProxy)" \
-    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10
+  checar_origem_app && checar_app_aberta "aop do host -> bcast do host"
 
   # provas negativas: cada resposta vinha do processo do host
   host_usar bcast && host_stop
-  checar_http_nao "sem o bcast do host o proxy do aop do host falha (resposta vinha do bcast do host)" \
-    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 5
+  [ -n "$HOST_APP" ] && checar_http_nao "sem o bcast do host o proxy do aop do host falha (resposta vinha do bcast do host)" \
+    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 5 -H "Host: $HOST_APP"
   fechar_users_test
   host_usar tv3ws && host_stop
   checar_http_nao "sem o tv3ws do host a borda para de responder /health (resposta vinha do host)" \

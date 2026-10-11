@@ -27,8 +27,8 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
   AoP (aop/)              ← UI do receptor; dono dos perfis no Redis; atende
                             o host próprio de cada app (<app>.apps.localhost,
                             P1.3) e grava a origem dela em origins:associated
-        ↓ HTTP (proxy: host próprio da app; /videoStreamProxy;
-                /graphicsAppProxy, caminho antigo)
+        ↓ HTTP (proxy: host próprio da app, <app>.apps.localhost:8080/
+                graphicsAppProxy/...; /videoStreamProxy)
   bcast (bcast/)          ← sinalização (BAMT/ESG/BALD) por MQTT; apps de
                             serviço e mídia por HTTP
 
@@ -42,7 +42,7 @@ Cliente (app de emissora, app local autônomo, dispositivo remoto)
 
 - **Sinalização e eventos** passam pelo MQTT.
 - **Armazenamento:** o AoP e o tv3ws leem e escrevem no Redis diretamente. A borda lê dele o que a decisão de credencial precisa e, desde a reunião de 05/10, escreve as chaves da C.6.8 (`bind-context:*`). Quem escreve cada família de chave está em [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis).
-- **HTTP direto:** o AoP faz proxy HTTP para o bcast (`aop/src/server.js`): as aplicações vêm do `bcastEntryPackageUrl` que o bcast anuncia na BALD de cada serviço, e o vídeo, do primeiro `initialMediaURLs` do BAM, que chega pela BAMT (`/videoStreamProxy`; `aop/src/modules/bootstrap-application/service.js`). Desde o P1.3 (decisão do Luís em 10/10), cada aplicação de emissora é servida num nome de host próprio, na porta do AoP (`http://<app>.apps.localhost:8080`; `aop/src/app-hosts.js`), para que o navegador mande o `Origin` dela, que o AoP grava em `origins:associated` enquanto ela roda. A camada gráfica entrega teclas e eventos do vídeo à aplicação por `postMessage` (ponte `bcast/public/js/aop-bridge.js`). O caminho antigo `/graphicsAppProxy`, na origem do AoP, continua para scripts de teste e não grava origem.
+- **HTTP direto:** o AoP faz proxy HTTP para o bcast (`aop/src/server.js`): as aplicações vêm do `bcastEntryPackageUrl` que o bcast anuncia na BALD de cada serviço, e o vídeo, do primeiro `initialMediaURLs` do BAM, que chega pela BAMT (`/videoStreamProxy`; `aop/src/modules/bootstrap-application/service.js`). Desde o P1.3 (decisão do Luís em 10/10), cada aplicação de emissora é servida num nome de host próprio, na porta do AoP (origem `http://<app>.apps.localhost:8080`; `aop/src/app-hosts.js`), para que o navegador mande o `Origin` dela, que o AoP grava em `origins:associated` enquanto ela roda. O `<app>` sai do `appId` da BALD, fixo por app desde 11/10 (`urn-tv30-app-users-test`, por exemplo). Desde 11/10 (decisão do Luís), a URL que a camada gráfica abre mantém o prefixo do caminho antigo, `http://<app>.apps.localhost:8080/graphicsAppProxy<bcastEntryPointUrl>`, e o `/graphicsAppProxy/...` no host do próprio AoP redireciona (302) para o host da app; até 11/10, servia a app na origem do AoP, sem gravar origem. A camada gráfica entrega teclas e eventos do vídeo à aplicação por `postMessage` (ponte `bcast/public/js/aop-bridge.js`).
 
 A versão anterior desta página dizia que "todos os serviços se comunicam via MQTT". Isso não corresponde ao código. Clientes das APIs entram **só pela borda**: as portas de API do tv3ws (44652/44653) não são publicadas no host (com o override do SSDP, abaixo, são publicadas só em `127.0.0.1`, para a borda). A exceção são os WebSockets de remote-device: o tv3ws publica a faixa 45000–45199, e o aparelho remoto os abre direto, sem passar pela borda.
 
