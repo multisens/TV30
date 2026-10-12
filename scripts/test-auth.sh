@@ -835,6 +835,11 @@ if [ "$(rc SISMEMBER clients:authorized "$CLIENT")" = 1 ] && [ "$(rc SISMEMBER c
 else
   fail "autorizado: authorized=$(rc SISMEMBER clients:authorized "$CLIENT") blocked=$(rc SISMEMBER clients:blocked "$CLIENT") (esperado 1 e 0)"
 fi
+# Parametro vazio conta como ausente (correcao de 12/10: antes, refresh-token=
+# vazio emitia credencial nova e invalidava o refresh token legitimo): 105 do
+# tv3ws (Tabela C.4), e o refresh token legitimo continua valendo logo abaixo
+expect_err "GET /tv3/token com refresh-token vazio" 105 tv3ws GET "$H_INT/tv3/token?clientid=$CLIENT&refresh-token="
+expect_err "GET /tv3/token com challenge-response vazio" 105 tv3ws GET "$H_INT/tv3/token?clientid=$CLIENT&challenge-response="
 req GET "$H_INT/tv3/token?clientid=$CLIENT&refresh-token=$RT"
 AT=$(json_str accessToken)
 [ -n "$AT" ] && pass "GET /tv3/token -> accessToken" || fail "GET /tv3/token -> sem accessToken: status=$ST corpo=$(short)"
@@ -1189,6 +1194,9 @@ for PM in qrcode kex; do
   pair "$PM" "$NCID" || { info "$S pareamento incompleto: uso, renovacao e reuso deste cliente pulados"; continue; }
   NL_REUSE_KEY=${NL_CPUB:-}   # chave ECDH do cliente usada no pareamento (kex)
   NL_TOK=(-H "Authorization: Bearer $NL_AT")
+  # o desafio e descartado no sucesso (correcao de 12/10: antes, a mesma
+  # resposta ao desafio emitia credencial de novo): 102 do tv3ws (Tabela C.4)
+  expect_err "$S [44642] challenge-response repetido (desafio ja usado)" 102 tv3ws GET "$H_INT/tv3/token?clientid=$NCID&challenge-response=$NL_CR"
   if [ "$(rc SISMEMBER clients:authorized "$NCID")" = 1 ]; then
     pass "$S clientid em clients:authorized depois do pareamento (D-0510-4)"
   else
@@ -1207,6 +1215,12 @@ for PM in qrcode kex; do
   # codigo exato fica com o Joel (F-1).
   expect_err "$S [44642] GET /tv3/remote-device/devices/x (C.6.15.5, so cliente local)" 106 borda GET "$H_INT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
   expect_err "$S [44643] GET /tv3/remote-device/devices/x (fora da externa, P1.9)" 100 borda GET "$H_EXT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
+  # rotas 2.1 do ponto de entrada local (C.6.15.6 e C.6.15.7 da proposta 2.1;
+  # "a local client application"): a mesma regra, decisao do Luis em 12/10
+  for M in GET DELETE; do
+    expect_err "$S [44642] $M /tv3/remote-device/device/x (2.1, so cliente local)" 106 borda $M "$H_INT/tv3/remote-device/device/x" "${NL_TOK[@]}"
+    expect_err "$S [44643] $M /tv3/remote-device/device/x (2.1, fora da externa)" 100 borda $M "$H_EXT/tv3/remote-device/device/x" "${NL_TOK[@]}"
+  done
   expect_err "$S [44642] renovacao por HTTP com refresh-token" 106 tv3ws GET "$H_INT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
   if ! ext_skip "$H_EXT" "$S [44643] renovacao com refresh-token"; then
     req GET "$H_EXT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
@@ -1226,6 +1240,7 @@ for PM in qrcode kex; do
 done
 
 expect_pass "[44642] GET /tv3/remote-device/devices/x (C.6.15.5) pelo cliente local" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}"
+expect_pass "[44642] GET /tv3/remote-device/device/x (2.1) pelo cliente local" GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}"
 
 echo; echo "-- rota nao declarada e preflight CORS --"
 for H in "$H_INT" "$H_EXT"; do

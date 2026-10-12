@@ -233,13 +233,13 @@ O QtWebEngine não foi testado com os nomes `*.apps.localhost`; o Firefox 154 (L
 
 ## `POST` ou `DELETE /tv3/bind-context` dá 100 na 44643
 
-É a regra da P1.9 (decisão do Luís em 10/10): a superfície externa (44643) só expõe as rotas que admitem o cliente não local, e essas duas são só do local associado. Use a superfície interna (44642). O `GET /tv3/bind-context` existe nas duas. Na 44643, a C.6.7.9 lista 17 APIs, e não 20, e a C.6.7.8 dá 101 para `tv3ws-bind-context-register`, `tv3ws-bind-context-remove` e, desde 12/10, `tv3ws-remotedevice-communication` (cada superfície lista só o que oferece; F-2, decisão do Luís em 11/10). Hoje, a interna tem 26 rotas e a externa, 23 (`infra/edgegateway/routes.json`, regra em `generate.js`).
+É a regra da P1.9 (decisão do Luís em 10/10): a superfície externa (44643) só expõe as rotas que admitem o cliente não local, e essas duas são só do local associado. Use a superfície interna (44642). O `GET /tv3/bind-context` existe nas duas. Na 44643, a C.6.7.9 lista 17 APIs, e não 20, e a C.6.7.8 dá 101 para `tv3ws-bind-context-register`, `tv3ws-bind-context-remove` e, desde 12/10, `tv3ws-remotedevice-communication` (cada superfície lista só o que oferece; F-2, decisão do Luís em 11/10). Hoje, a interna tem 26 rotas e a externa, 21 (`infra/edgegateway/routes.json`, regra em `generate.js`).
 
-## `GET /tv3/remote-device/devices/{classId}` dá 100 na 44643 ou 106 na 44642
+## `GET /tv3/remote-device/devices/{classId}` ou `/tv3/remote-device/device/{handle}` dá 100 na 44643 ou 106 na 44642
 
-Desde 12/10 (decisão do Luís), a C.6.15.5 é só do cliente local: a rota tem as `classes` `local-associated` e `local-autonomous` no `infra/edgegateway/routes.json`. Pela regra da P1.9, ela sai da 44643, onde responde 404 `{"error":100}` nos dois modos, e a API `tv3ws-remotedevice-communication` sai da lista da C.6.7.9 ali. Na 44642, o cliente não local recebe o 106 da regra de classe da borda (`rota nao disponivel para ...`, `infra/edgegateway/plugin/handler.go`): em `enforce`, 404 `{"error":106}`; em `warn`, a requisição passa com `X-TV30-Auth-Warn: 106`. Chame-a de um cliente local, pela 44642.
+Desde 12/10 (decisão do Luís), a C.6.15.5 é só do cliente local: a rota tem as `classes` `local-associated` e `local-autonomous` no `infra/edgegateway/routes.json`. Desde a tarde de 12/10 (segunda decisão do Luís), as rotas 2.1 `GET` e `DELETE /tv3/remote-device/device/{handle}` também, e o que segue vale para as três, menos a lista da C.6.7.9: as rotas 2.1 não têm API nela. Pela regra da P1.9, as três saem da 44643, onde respondem 404 `{"error":100}` nos dois modos, e a API da C.6.15.5, `tv3ws-remotedevice-communication`, sai da lista da C.6.7.9 ali. Na 44642, o cliente não local recebe o 106 da regra de classe da borda (`rota nao disponivel para ...`, `infra/edgegateway/plugin/handler.go`): em `enforce`, 404 `{"error":106}`; em `warn`, a requisição passa com `X-TV30-Auth-Warn: 106`. Chame-as de um cliente local, pela 44642.
 
-O código exato ainda não está decidido: a Tabela C.78 (p. 339; p. 357 do PDF) pede 107 ao não local, e a C.4.1.8 (p. 206-207; p. 224-225 do PDF) fala em 106 para o não local que chama uma API de uso exclusivo do cliente local. Fica com o Joel, na F-1 ([Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes), seção F).
+O código exato ainda não está decidido: a Tabela C.78 (p. 339; p. 357 do PDF) pede 107 ao não local, e a C.4.1.8 (p. 206-207; p. 224-225 do PDF) fala em 106 para o não local que chama uma API de uso exclusivo do cliente local. Fica com o Joel, na F-1 ([Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes), seção F); se as rotas 2.1 entram nela é a G3 (*Achados de 12/10*, na mesma página).
 
 ## `POST /tv3/<scid>/users` dá 100
 
@@ -271,6 +271,26 @@ Desde 11/10 (C1, decisão do Luís), a camada gráfica do AoP conecta em `ws(s):
 | `upgrade WebSocket so em /mqtt` (404) | Pedido de WebSocket noutro caminho | Use o caminho `/mqtt` |
 | O AoP não sobe: `[boot] MQTT_WS_PORT invalida` ou `MQTT_HOST invalido para o MQTT por WebSocket` | Porta fora de 1 a 65535, ou `MQTT_HOST` com porta ou caminho | Corrija a variável; o `MQTT_HOST` é só o nome ou IP do broker |
 | A página tenta `ws://<host>:9001/mqtt` | Imagem do AoP anterior a 11/10, que ainda conecta direto na porta do Mosquitto no host, e essa porta não é mais fixa | Reconstrua o AoP (`docker compose build aop && docker compose up -d aop`) |
+
+## O QR code ou o PIN do pareamento some antes da hora, ou fica na tela
+
+Desde 12/10 (correção; C.4.3.2 e C.4.3.3), o pop-up do QR code e o do PIN ficam na tela até o fim do pareamento, o `GET /tv3/token` com a resposta ao desafio aceita. Nessa hora o tv3ws publica `{"close":true}` no mesmo tópico, e a camada gráfica fecha o pop-up. O pop-up também tem uma trava de 120 s, escolhida pelo projeto ([APIs do tv3ws]({{ site.baseurl }}/apis-tv3ws)).
+
+| Sintoma | Causa provável | O que fazer |
+|---|---|---|
+| Some cerca de 1 s depois de aparecer | Imagem do tv3ws anterior a 12/10, que manda o pop-up com prazo de 1000 ms | Reconstrua o tv3ws (`docker compose build tv3ws && docker compose up -d tv3ws`) |
+| Some antes do fim do pareamento | A trava de 120 s acabou; ou outro pop-up tomou o lugar dele (o sim/não ou o pareamento de outro cliente): a camada gráfica tem um pop-up só (G2 de [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes)) | Se o cliente já leu o código, o pareamento continua valendo: o challenge não expira. Se não leu, repita o `/tv3/authorize` com `clientid` novo (o antigo dá 101) |
+| Fica na tela depois do `/tv3/token` | O `/tv3/token` não concluiu o pareamento: falhou (102, por exemplo, com o desafio errado, que deixa a tentativa aberta) ou foi uma renovação por `refresh-token`; ou o tv3ws reiniciou entre o `/authorize` e o `/token` e perdeu o pareamento (o `/token` dá 102); ou o pop-up na tela é de outro cliente | A trava de 120 s o fecha. No fim do pareamento, o log do tv3ws mostra `Closing QRCode popup` ou `Closing PIN popup` |
+
+## `errors/<client_id>`: `INVALID_JSON` num payload que parece JSON, ou mensagem com `"truncated":true`
+
+Desde 12/10, o plugin do broker lê o payload inteiro e monta a mensagem de erro sempre como JSON válido ([Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos), *Plugin C do Mosquitto*; detalhes em `infra/docs/09-schema-validation.md`).
+
+- **`INVALID_JSON` num payload que começa como JSON:** o plugin só aceita exatamente um texto JSON. Sobra depois do valor (`{"value":1}lixo`, `{"a":1}{"b":2}`), NUL em qualquer posição (um terminador de string C contado no comprimento, por exemplo), comentário, aspas simples e vírgula sobrando dão `INVALID_JSON`; espaço, tab, CR e LF em volta do valor passam. Até 12/10, a sobra passava e era entregue. Mande só o JSON.
+- **Texto recusado num tópico de string** (`aop/currentUser`, `aop/currentService` e as camadas `rxgui`, `graphics` e `video/url`): o payload que não é texto JSON vale inteiro como string; o que é JSON (`42`, `true`, `{"id":"x"}`) vale como esse valor e falha no `type`. De 11/10 a 12/10, um UUID que começa com dígito era recusado em `aop/currentUser` (`Expected type 'string', got 'int'`): reconstrua o broker (`docker compose build mosquitto && docker compose up -d mosquitto`).
+- **`"truncated":true`:** a mensagem tem no máximo 2047 bytes, e cada campo tem um teto em bytes já escapados (`topic` 512, `details` 768, `client_id` 256; o payload fica com o resto). O campo que não coube foi cortado entre caracteres inteiros, e o payload completo não está na mensagem; o `topic` e o `details` dizem qual foi a recusa.
+- **`�` no payload da mensagem:** era um byte que não formava UTF-8 válido no payload recusado.
+- **A mensagem não chega em `errors/<meu client_id>`:** no tópico, `+`, `#`, `/` e controles do `client_id` viram `_`. Assine `errors/#`; o campo `client_id` da mensagem traz o original.
 
 ---
 

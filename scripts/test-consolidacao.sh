@@ -81,7 +81,8 @@ docker run --rm --network ginga_net alpine:3 sh -c '
 # A antiga POST /tv3/users (so na interna) saiu da tabela de rotas (infra
 # 8d5949d). Desde a P1.9 (Luis, 10/10) a 44643 so expoe as rotas que admitem
 # o cliente nao local (POST e DELETE /tv3/bind-context e, desde 12/10, GET
-# /tv3/remote-device/devices/{classId} so existem na 44642;
+# /tv3/remote-device/devices/{classId} e GET/DELETE
+# /tv3/remote-device/device/{handle} so existem na 44642;
 # scripts/test-auth.sh cobre). Rota existente equivalente nas duas (POST com
 # corpo JSON): POST /tv3/current-service/users (C.6.14.1), que tem de chegar
 # ao tv3ws pelas duas portas. Caminho NAO
