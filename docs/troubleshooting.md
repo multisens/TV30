@@ -40,15 +40,15 @@ sudo systemctl reset-failed docker.socket docker.service
 sudo systemctl restart docker.socket docker.service
 ```
 
-O one-shot `preflight` do compose imprime, antes da subida, quem esta
-segurando cada porta do stack — se a subida falhar por bind, a causa ja
-esta nomeada no inicio do log.
+O one-shot `preflight` do compose imprime, antes da subida, quem está
+segurando cada porta fixa que ele confere (lista abaixo). Se a subida falhar
+por bind, a causa já está nomeada no início do log.
 
 ### Quais portas podem estar presas (C1, decisão do Luís em 11/10)
 
-Só as portas **fixas** do host podem colidir com outro processo: a 44642 (norma, C.3.4), a do AoP (8080, `AOP_PUBLIC_PORT`), a 1883, a 6379 e a faixa 45000–45199, que o compose publica inteira para o tv3ws; com o `docker-compose.ssdp.yml`, também a 44643 e a 8085 da borda, em rede do host. O `preflight` confere a 44642 (bloqueia a subida se um processo nativo a ocupa) e avisa se a 1883, a 6379 ou a do AoP estão ocupadas; no modo SSDP, também a 44643, a 8085 e a 44652/44653. A faixa 45000–45199 não entra na checagem.
+Só as portas **fixas** do host podem colidir com outro processo: a 44642 (norma, C.3.4), a 44643 da borda, a do AoP (8080, `AOP_PUBLIC_PORT`), a 1883, a 6379 e a faixa 45000–45199, que o compose publica inteira para o tv3ws; com o `docker-compose.ssdp.yml`, também a 8085 da borda, em rede do host. A 44643 é fixa por padrão também na bridge desde 12/10 (decisão do Luís, que revê a C1 nesse ponto; `EDGE_EXT_PUBLISH`, padrão `44643:44643`). O `preflight` confere a 44642 (bloqueia a subida se um processo nativo a ocupa) e avisa se a 1883, a 6379, a 44643 ou a do AoP estão ocupadas; no modo SSDP, também a 8085 e a 44652/44653 (`scripts/preflight.sh`, `PORTS_WARN`). A faixa 45000–45199 não entra na checagem.
 
-As outras portas saem numa porta livre que o Docker escolhe, e não colidem: a 44643 da borda na bridge, a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação e a 18081 do redis-commander. Até 11/10, a 44643, a 8081 e a 9001 eram fixas, e daí vinha o conselho, que caiu, de trocar `MQTT_WS_PORT` para 9003 no Windows com o Hyper-V ocupando a 9001 e a 9002. Se você fixou uma delas no `.env` (`EDGE_EXT_PUBLISH`, `BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` com `host:container`), ela volta a poder colidir.
+As outras portas saem numa porta livre que o Docker escolhe, e não colidem: a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação na bridge e a 18081 do redis-commander. Até 11/10, a 44643, a 8081 e a 9001 eram fixas, e daí vinha o conselho de trocar `MQTT_WS_PORT` para 9003 no Windows com o Hyper-V ocupando a 9001 e a 9002; de 11/10 a 12/10, a 44643 saía numa porta livre na bridge. Hoje a 9003 vale só como opção para quem roda o AoP fora do Docker no Windows (*AoP fora do Docker no Windows*, abaixo). Se você fixou uma das portas livres no `.env` (`BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` com `host:container`), ela volta a poder colidir; `EDGE_EXT_PUBLISH=44643`, só o número, faz o contrário com a 44643, que passa a sair numa porta livre.
 
 ### Onde está a porta de um serviço
 
@@ -56,7 +56,7 @@ A porta escolhida pelo Docker pode mudar quando o container é recriado. Na raiz
 
 ```bash
 docker compose ps                          # todas, na coluna PORTS
-docker compose port edgegateway 44643      # superficie externa da borda
+docker compose port edgegateway 44643      # superficie externa (44643, salvo EDGE_EXT_PUBLISH)
 docker compose port bcast 8081             # bcast
 docker compose port mosquitto 9001         # MQTT por WebSocket
 docker port edgegateway 8085               # documentacao Swagger
@@ -65,7 +65,7 @@ docker port redis 18081                    # redis-commander
 
 O `docker compose port` usa o nome do serviço (`mosquitto`, `edgegateway`); o `docker port`, o do container (`mqtt-broker`, `edgegateway`). A resposta vem como endereço e porta, por exemplo `0.0.0.0:32768` (o `docker port` pode trazer também a linha do IPv6, `[::]:32768`).
 
-O `/manifest` e o OpenAPI da superfície externa, na documentação Swagger, continuam dizendo 44643 na bridge, que ali não é a porta de host da externa (`KNOWN-ISSUES.md`). Para usar a 44643 de verdade, `EDGE_EXT_PUBLISH=44643:44643` no `.env` da raiz e `docker compose up -d edgegateway`.
+O `/manifest` (`Server-SecureBaseURL`, `tv3ws/src/ssdp-config.ts`) e o OpenAPI da superfície externa, na documentação Swagger (`servers: http://localhost:44643`, `infra/edgegateway/generate.js`), dizem 44643. Com o padrão (`EDGE_EXT_PUBLISH=44643:44643`, desde 12/10), essa é a porta de host da externa. Com `EDGE_EXT_PUBLISH=44643` (só o número), o Docker escolhe outra, e os dois deixam de valer. Com outra porta fixa (`X:44643`), defina também `EDGE_HTTPS_PORT=X` no `.env` da raiz, para o `/manifest` anunciá-la; o OpenAPI continua dizendo 44643. Depois de mudar o `.env`, recrie a borda e o tv3ws (`docker compose up -d edgegateway tv3ws`).
 
 ### `preflight`: "a porta 44642 esta ocupada (-)" com a stack de pé
 
@@ -93,7 +93,7 @@ Defina-o no `.env` da raiz (ou no `tv3ws/.env`; o da raiz prevalece). Um valor s
 
 O antigo container de carga `redis-seed`, que rodava `pip install redis` na partida e falhava sem rede, não existe mais. Desde a consolidação do armazenamento (fase 3), a carga inicial vem na própria imagem `tv30-redis`: o seed é gerado no build (estágio `seedgen` do `infra/redis/Dockerfile`, em Python só com a biblioteca padrão) e aplicado pelo `infra/redis/entrypoint.sh` com `redis-cli --pipe`. A partida não instala nada nem precisa de rede.
 
-O healthcheck do `redis` só passa depois da carga (chave `seed:done`, testada a cada 2 s, até 30 vezes; `infra/redis/docker-compose.yml`). O `tv3ws` e o `edgegateway` dependem dele com `condition: service_healthy`; o broker não depende do Redis. Para ver em que ponto a carga está: `docker logs redis`, que registra `[redis] aplicando carga inicial (redis-cli --pipe)...` e `[redis] carga concluida`, ou `[redis] carga ja aplicada (seed:done presente) — mantida`.
+O healthcheck do `redis` só passa depois da carga (chave `seed:done`, testada a cada 2 s, até 30 vezes; `infra/redis/docker-compose.yml`). O `tv3ws` e o `edgegateway` dependem dele com `condition: service_healthy`; o broker não depende do Redis. Para ver em que ponto a carga está: `docker logs redis`, que registra `[redis] aplicando carga inicial pelas funcoes (redis-cli --pipe)...` e `[redis] carga concluida (<n> perfil(is))`, ou `[redis] carga ja aplicada (seed:done presente) — mantida`.
 
 O seed sai do template `infra/user-files-template/userData.json` no build. Uma mudança no template só entra com a imagem reconstruída e, mesmo assim, só num volume `redis_data` que ainda não tenha `seed:done`: o entrypoint não reaplica a carga num volume já semeado.
 
@@ -110,7 +110,7 @@ TV30ESQUEMA tv30_perfil_grava: user:0b6e3c1a-7f2d-4e8b-9a5c-3d1f2e4a6b8c campo p
 - **Veio de uma escrita do código:** o serviço montou um dado que o esquema não aceita. Compare a mensagem com a regra no `infra/redis/esquema.json` (o campo `fonte` diz de onde ela veio) e corrija quem grava, não a regra. Mudar a regra é decisão e vai registrada.
 - **Veio de um script ou de uma chamada à mão (`FCALL`):** os argumentos estão fora do esquema. Os formatos de cada função estão em `infra/redis/README.md`.
 - **`ERR Function not found`:** o Redis está sem a biblioteca. Pode ser uma imagem anterior ao P4 ou um Redis que não é o da stack. Reconstrua com `docker compose build redis && docker compose up -d redis`.
-- **`deve ser UUID no formato da RFC 9562` na criação de perfil:** desde 11/10 (F-3, decisão do Luís), o esquema (versão 2) exige o id do perfil em UUID, em minúsculas. O AoP novo gera `crypto.randomUUID()`; um AoP de imagem anterior ainda gera `user_<epoch-ms>`, e a criação responde 404 `{"error":200}`. Reconstrua o AoP com o Redis (`docker compose build aop redis`). Num volume de antes, ver *Auditoria do Redis com achados*, abaixo.
+- **`deve ser UUID no formato da RFC 9562` na criação de perfil:** desde 11/10 (F-3, decisão do Luís), o esquema exige o id do perfil em UUID, em minúsculas. Desde 12/10 (versão 3 do esquema, decisão do Luís), o UUID é estrito, e a mensagem diz qual parte falhou: `versao do UUID deve ser de 1 a 8`, `variante do UUID deve ser a da RFC 9562` (primeiro dígito do quarto grupo em `8`, `9`, `a` ou `b`), `UUID nulo` ou `UUID maximo` (`infra/redis/funcoes.lua`, `motivoUuid`). O AoP novo gera `crypto.randomUUID()` (versão 4, válido); um AoP de imagem anterior a 11/10 ainda gera `user_<epoch-ms>`, e a criação responde 404 `{"error":200}`. Reconstrua o AoP com o Redis (`docker compose build aop redis`). Num volume de antes, ver *Auditoria do Redis com achados*, abaixo.
 
 ## Auditoria do Redis com achados
 
@@ -121,7 +121,7 @@ docker exec redis redis-cli FCALL_RO tv30_auditoria 0
 Cada achado é `[chave, familia, motivo]`, e a auditoria vazia é o estado esperado. O `scripts/test-auth.sh` dá FAIL se ela não terminar vazia e avisa no começo se já havia achados antes da suíte. Causas comuns:
 
 - **Volume de antes do P4.** A carga antiga gravava os booleanos como `"False"`/`"True"`, e o `lastAccess` avulso de antes de 05/10 deixava hashes `user:{id}` só com `lastAccess`, fora de `users:index` (por exemplo, `user:abc-123`). Para começar limpo, use `docker compose down -v`, que apaga o volume e com ele os perfis criados. A outra saída é corrigir ou apagar as chaves apontadas.
-- **Volume de antes de 11/10 (F-3): `{id} da chave: deve ser UUID ...`.** O esquema versão 2 exige o id do perfil em UUID, sem compatibilidade com os ids antigos (decisão do Luís). Todo perfil criado antes (`user_<epoch-ms>`) e o da carga antiga (`c3167a18-5dc5`) aparecem em `users:index`, `user:{id}`, `user:{id}:consent` e `user:{id}:broadcaster-attrs:*`. A carga não roda de novo num volume já semeado (`seed:done`), então o perfil novo da carga (`c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`) não entra. Saída: `docker compose down -v`, que apaga os perfis criados e também os retidos do broker. Para conferir a versão carregada: `docker exec redis redis-cli FCALL_RO tv30_versao 0` (tem de dar `2`).
+- **Volume de antes de 11/10 (F-3): `{id} da chave: deve ser UUID ...`.** O esquema exige o id do perfil em UUID desde a versão 2 (11/10), e em UUID estrito desde a versão 3 (12/10), sem compatibilidade com os ids antigos (decisões do Luís). Todo perfil criado antes de 11/10 (`user_<epoch-ms>`) e o da carga antiga (`c3167a18-5dc5`) aparecem em `users:index`, `user:{id}`, `user:{id}:consent` e `user:{id}:broadcaster-attrs:*`. A carga não roda de novo num volume já semeado (`seed:done`), então o perfil novo da carga (`c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`) não entra. Saída: `docker compose down -v`, que apaga os perfis criados e também os retidos do broker. Um id que passou na versão 2 (de 11 a 12/10) sem ser UUID estrito aparece com o motivo da versão 3 (`versao do UUID ...`, `variante do UUID ...`, `UUID nulo` ou `UUID maximo`); os do AoP (`crypto.randomUUID()`) e o da carga atual passam. Para conferir a versão carregada: `docker exec redis redis-cli FCALL_RO tv30_versao 0` (tem de dar `3` desde 12/10; `infra/redis/esquema.json`).
 - **Escrita à mão** pelo `redis-cli` ou pelo Redis Commander, que não passa pelas funções. Grave pela função (`FCALL <funcao> 0 ...`, exemplos em [Modelo de dados Redis](modelo-redis.md)) ou desfaça a escrita.
 - **`chave sem familia no esquema`:** a chave tem um prefixo do alcance (`user:`, `session:`, `client:`...) mas não é de nenhuma família, como a antiga `user:{id}:profile`. Se ninguém a usa, apague.
 
@@ -163,6 +163,15 @@ vmIdleTimeout=86400000   # 24h
 
 E mantenha um processo leve rodando no WSL (qualquer terminal aberto).
 
+### AoP fora do Docker no Windows: porta do WebSocket do Mosquitto
+
+O AoP rodando no Windows, fora do Docker (caso que o `scripts/test-dev-host.sh` não cobre; [Limites]({{ site.baseurl }}/dev-local#limites)), repassa o `/mqtt` da página da TV para `ws://${MQTT_HOST}:${MQTT_WS_PORT}`, e o `MQTT_WS_PORT` tem de ser a porta de host da 9001 do Mosquitto (`aop/src/mqtt-ws.js`). Por padrão, essa porta é escolhida pelo Docker e muda quando o container é recriado. Uma opção (dica do Luís em 12/10, não regra) é fixá-la na 9003, a porta que o `.env` usava até 11/10, quando o motivo registrado era a 9001 e a 9002 ocupadas pelo Hyper-V (detalhe em [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local#aop-fora-do-docker-no-windows-opção)):
+
+- no `.env` da raiz: `MQTT_WS_PUBLISH=9003:9001`, e `docker compose up -d mosquitto`;
+- no `aop/.env`: `MQTT_WS_PORT=9003`.
+
+Sem a opção, use a porta do momento: `docker compose port mosquitto 9001`. Com o `MQTT_WS_PORT` errado, o `/mqtt` responde 502 (*A página da TV não conecta no MQTT*, abaixo).
+
 ### Portas não voltam após `docker compose down`
 
 **Sintoma:** `localhost:XXXX` continua respondendo "connection reset" mesmo após os containers pararem.
@@ -190,10 +199,11 @@ E suba a stack de novo.
    dos2unix infra/dockerfiles/entrypoint-user-files.sh
    ```
 
-2. Force LF nesse tipo de arquivo via `.gitattributes` na raiz:
+2. Confira a regra de LF no `.gitattributes`. A raiz e o `infra/` já a têm (`*.sh text eol=lf`; no `infra/`, também `*.Dockerfile` e `Dockerfile`). O aop, o bcast e o tv3ws não têm `.gitattributes`; um script novo de container num deles precisa da mesma linha:
    ```
    *.sh   text eol=lf
    ```
+   Um arquivo commitado com CRLF antes da regra continua assim no repositório até `git add --renormalize .` e um commit.
 
 3. Rebuild a imagem.
 
@@ -217,13 +227,19 @@ docker logs aop --tail 50 | grep '\[apps\]'
 | `Bad Gateway: aplicacao fora do ar` (502) | O AoP não alcança o `bcastEntryPackageUrl` da app (bcast parado, ou `BCAST_HOSTNAME` errado no dev-host) | `docker logs aop` mostra a falha do proxy (`[apps] falha no proxy ...`); confira o bcast |
 | O AoP não sobe: `[boot] APPS_DOMAIN invalido` ou `AOP_PUBLIC_PORT invalida` | Valor fora do formato (rótulos `[a-z0-9-]` separados por ponto; porta inteira de 1 a 65535) | Corrija o `.env` da raiz |
 | A app abre, mas não recebe teclas, `timeupdate` nem `stream_event` | Com a app em outra origem, o AoP entrega os eventos por `postMessage`, e a app não inclui a ponte `bcast/public/js/aop-bridge.js`; ou a imagem do bcast é anterior a 10/10 | Inclua `<script src="js/aop-bridge.js"></script>` na app (ver `bcast/README.md`); reconstrua o bcast junto com o AoP |
-| As chamadas da app às APIs levam `X-TV30-Auth-Warn: 107` | A origem da app não está em `origins:associated`: a app foi encerrada (ESC) ou trocada, e a página ficou aberta; ou a gravação no Redis falhou (log do AoP). Com uma imagem do AoP anterior a 11/10, a app aberta pelo caminho antigo `/graphicsAppProxy` ficava na origem do AoP, que não é gravada | Abra a app pelo AoP (catálogo e tela cheia); reconstrua o AoP se a imagem for anterior a 11/10 |
+| As chamadas da app às APIs levam `X-TV30-Auth-Warn: 107` (ou 106, nas rotas só do local associado, como `POST /tv3/bind-context`) | A origem da app não está em `origins:associated`: a app foi encerrada (ESC) ou trocada, e a página ficou aberta; ou a gravação no Redis falhou (log do AoP). Com uma imagem do AoP anterior a 11/10, a app aberta pelo caminho antigo `/graphicsAppProxy` ficava na origem do AoP, que não é gravada | Abra a app pelo AoP (catálogo e tela cheia); reconstrua o AoP se a imagem for anterior a 11/10 |
 
 O QtWebEngine não foi testado com os nomes `*.apps.localhost`; o Firefox 154 (Linux) e o Chrome 154 (Windows) foram conferidos em 10/10.
 
 ## `POST` ou `DELETE /tv3/bind-context` dá 100 na 44643
 
-É a regra da P1.9 (decisão do Luís em 10/10): a superfície externa (44643) só expõe as rotas que admitem o cliente não local, e essas duas são só do local associado. Use a superfície interna (44642). O `GET /tv3/bind-context` existe nas duas. Na 44643, a C.6.7.9 lista 18 APIs, e não 20, e a C.6.7.8 dá 101 para `tv3ws-bind-context-register` e `tv3ws-bind-context-remove` (cada superfície lista só o que oferece; F-2, decisão do Luís em 11/10).
+É a regra da P1.9 (decisão do Luís em 10/10): a superfície externa (44643) só expõe as rotas que admitem o cliente não local, e essas duas são só do local associado. Use a superfície interna (44642). O `GET /tv3/bind-context` existe nas duas. Na 44643, a C.6.7.9 lista 17 APIs, e não 20, e a C.6.7.8 dá 101 para `tv3ws-bind-context-register`, `tv3ws-bind-context-remove` e, desde 12/10, `tv3ws-remotedevice-communication` (cada superfície lista só o que oferece; F-2, decisão do Luís em 11/10). Hoje, a interna tem 26 rotas e a externa, 23 (`infra/edgegateway/routes.json`, regra em `generate.js`).
+
+## `GET /tv3/remote-device/devices/{classId}` dá 100 na 44643 ou 106 na 44642
+
+Desde 12/10 (decisão do Luís), a C.6.15.5 é só do cliente local: a rota tem as `classes` `local-associated` e `local-autonomous` no `infra/edgegateway/routes.json`. Pela regra da P1.9, ela sai da 44643, onde responde 404 `{"error":100}` nos dois modos, e a API `tv3ws-remotedevice-communication` sai da lista da C.6.7.9 ali. Na 44642, o cliente não local recebe o 106 da regra de classe da borda (`rota nao disponivel para ...`, `infra/edgegateway/plugin/handler.go`): em `enforce`, 404 `{"error":106}`; em `warn`, a requisição passa com `X-TV30-Auth-Warn: 106`. Chame-a de um cliente local, pela 44642.
+
+O código exato ainda não está decidido: a Tabela C.78 (p. 339; p. 357 do PDF) pede 107 ao não local, e a C.4.1.8 (p. 206-207; p. 224-225 do PDF) fala em 106 para o não local que chama uma API de uso exclusivo do cliente local. Fica com o Joel, na F-1 ([Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes), seção F).
 
 ## `POST /tv3/<scid>/users` dá 100
 
@@ -267,7 +283,7 @@ docker exec redis redis-cli HGETALL user:<id>              # id em UUID desde 11
 docker exec redis redis-cli GET session:current-user
 docker exec redis redis-cli HGETALL origins:associated   # origem da app em execucao -> servico
 docker exec redis redis-cli FCALL_RO tv30_auditoria 0    # chaves fora do esquema (P4); vazio = ok
-docker exec redis redis-cli FCALL_RO tv30_versao 0       # versao do esquema carregado (2 desde 11/10)
+docker exec redis redis-cli FCALL_RO tv30_versao 0       # versao do esquema carregado (3 desde 12/10)
 docker exec redis redis-cli SMEMBERS clients:authorized  # clientes que a borda aceita (E6)
 
 # MQTT

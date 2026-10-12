@@ -64,12 +64,13 @@
 #
 # Portas no host: 44654/44655 e 45000-45199 (tv3ws, cenarios 1 e 4), 8080
 # (aop, 2 e 4), 8081 (bcast, 3 e 4) e 8090 (componente, 5). Nenhuma colide
-# com as fixas da infra (6379, 1883, 44642); 8080, 8081 e 45000-45199 sao as
+# com as fixas da infra (6379, 1883, 44642, 44643); 8080, 8081 e 45000-45199 sao as
 # mesmas do container do modulo, que o cenario para antes. O script confere
 # 44654, 8080, 8081 e 8090 livres antes de subir o processo. Desde a decisao
-# do Luis em 11/10 (C1), a 9001 do mosquitto (MQTT por WebSocket), a 8081 do
-# bcast em container e a 44643 da borda na bridge sao publicadas sem porta
-# fixa: o Docker escolhe uma livre. O aop do host recebe a porta publicada da
+# do Luis em 11/10 (C1), a 9001 do mosquitto (MQTT por WebSocket) e a 8081 do
+# bcast em container sao publicadas sem porta fixa: o Docker escolhe uma
+# livre (a 44643 da borda tambem foi assim de 11/10 a 12/10, e voltou a ser
+# fixa). O aop do host recebe a porta publicada da
 # 9001 (porta_ws_mqtt), porque atende o MQTT da pagina da TV em /mqtt e o
 # repassa ao mosquitto; o cenario 2 fixa a 8081 do bcast (BCAST_PUBLISH).
 #

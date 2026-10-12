@@ -37,7 +37,7 @@ Com o `.env.example`, o compose usa as imagens publicadas no Docker Hub (`DOCKER
 ### O que não vem no clone
 
 - **Os segmentos de vídeo do bcast.** Os `.ts`, `.m3u8` e `.mp4` de `bcast/public/` estão no `bcast/.gitignore`; das pastas `bcast/public/hls/<nome>/`, o repositório só traz o `events.json`. Os segmentos são preparados fora da stack, a partir de um vídeo, com `bcast/scripts/ffmpeg-hls.sh` ou `ffmpeg-dash.sh` (precisam de FFmpeg). A `bcast/public/` é montada no container (`docker-compose.yml`), e o que estiver nela é servido sem rebuild.
-- **O HTTPS do tv3ws.** A superfície externa da borda (44643 no container; no host, numa porta escolhida pelo Docker, ver [Portas](#portas)) repassa ao HTTPS do tv3ws (`https://tv3ws:44653`), que só sobe com `HTTPS_KEY` e `HTTPS_CERT` no `tv3ws/.env` (o `tv3ws/.env.example` os traz vazios). Sem eles, as rotas que a borda repassa pela 44643 respondem 404 `{"error":200}`; a 44642 funciona normalmente. O passo a passo para gerar o certificado está na seção [*(Opcional) Habilitando HTTPS no tv3ws*](https://github.com/multisens/TV30/blob/main/README.md#opcional-habilitando-https-no-tv3ws) do `README.md` da raiz.
+- **O HTTPS do tv3ws.** A superfície externa da borda (44643, no container e no host; ver [Portas](#portas)) repassa ao HTTPS do tv3ws (`https://tv3ws:44653`), que só sobe com `HTTPS_KEY` e `HTTPS_CERT` no `tv3ws/.env` (o `tv3ws/.env.example` os traz vazios). Sem eles, as rotas que a borda repassa pela 44643 respondem 404 `{"error":200}`; a 44642 funciona normalmente. O passo a passo para gerar o certificado está na seção [*(Opcional) Habilitando HTTPS no tv3ws*](https://github.com/multisens/TV30/blob/main/README.md#opcional-habilitando-https-no-tv3ws) do `README.md` da raiz.
 
 ### Descoberta SSDP (opcional)
 
@@ -51,7 +51,7 @@ SSDP_ADVERTISE_HOST=192.168.0.12   # IP desta máquina na rede local (obrigatór
 
 O `SSDP_ADVERTISE_HOST` é obrigatório com o override (B2, decisão do Luís em 11/10): sem ele, o `tv30-preflight` para a subida com a mensagem `ERRO: o anuncio SSDP esta ligado (docker-compose.ssdp.yml) e falta SSDP_ADVERTISE_HOST`, e a borda não sobe. O `LOCATION` anunciado é esse valor, fixo: numa troca de rede, atualize o `.env` e rode `docker compose up -d` de novo.
 
-Depois, `docker compose up -d`, e libere a UDP 1900 e a TCP 44642 no firewall. Com o override, a borda ocupa a 44642, a 44643 e a 8085 direto no host, fixas nesse modo, e um erro de configuração do anúncio (UDP 1900 ocupada sem `SO_REUSEADDR`, `SSDP_INTERFACE` inexistente) derruba a borda inteira até o `restart` trazê-la de volta; a falta de rede não a derruba, e o anunciante espera e tenta de novo (morre-inteiro decidido pelo Luís em 09/10, revisto por ele em 10/10). Sem o override, nada é anunciado, e o cliente chega pelo IP (`http://<IP>:44642/manifest`). Quem usava o perfil `ssdp` (opção B) remove o container antigo com `docker rm -f tv3ws-ssdp`; o perfil deixou de existir. O passo a passo da verificação, com um segundo aparelho, está em [Descoberta SSDP]({{ site.baseurl }}/ssdp#o-que-exige-rede-doméstica-e-um-segundo-dispositivo).
+Depois, `docker compose up -d`, e libere a UDP 1900 e a TCP 44642 no firewall. Com o override, a borda ocupa a 44642, a 44643 e a 8085 direto no host (a 8085 só é fixa nesse modo), e um erro de configuração do anúncio (UDP 1900 ocupada sem `SO_REUSEADDR`, `SSDP_INTERFACE` inexistente) derruba a borda inteira até o `restart` trazê-la de volta; a falta de rede não a derruba, e o anunciante espera e tenta de novo (morre-inteiro decidido pelo Luís em 09/10, revisto por ele em 10/10). Sem o override, nada é anunciado, e o cliente chega pelo IP (`http://<IP>:44642/manifest`). Quem usava o perfil `ssdp` (opção B) remove o container antigo com `docker rm -f tv3ws-ssdp`; o perfil deixou de existir. O passo a passo da verificação, com um segundo aparelho, está em [Descoberta SSDP]({{ site.baseurl }}/ssdp#o-que-exige-rede-doméstica-e-um-segundo-dispositivo).
 
 ---
 
@@ -84,19 +84,19 @@ E reabra a distribuição.
 Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 8080 }
 ```
 
-Deve mostrar `127.0.0.1:8080` em LISTENING.
+Com a stack de pé, deve mostrar a porta 8080 em `127.0.0.1` (e em `::1`), com estado `Listen` (conferido em 12/10 nesta máquina do projeto).
 
 ### Subindo a stack
 
 Dentro do WSL:
 
 ```bash
-cd /mnt/d/ProjCEFET/TV30   # ou onde clonou
+cd /mnt/d/Proj_CEFET/TV30  # ou onde clonou
 cp .env.example .env       # ativa profiles "linux" e "mqtt"
 docker compose up -d
 ```
 
-Até 11/10, com a 9001 e a 9002 ocupadas pelo Hyper-V, era preciso definir `MQTT_WS_PORT=9003` no `.env`. Não é mais: a página da TV conecta no MQTT pelo próprio AoP (`ws://localhost:8080/mqtt`), e a 9001 do Mosquitto sai numa porta que o Docker escolhe (C1, decisão do Luís em 11/10; ver [Portas](#portas)).
+Até 11/10, com a 9001 e a 9002 ocupadas pelo Hyper-V, era preciso definir `MQTT_WS_PORT=9003` no `.env`. Não é mais: a página da TV conecta no MQTT pelo próprio AoP (`ws://localhost:8080/mqtt`), e a 9001 do Mosquitto sai numa porta que o Docker escolhe (C1, decisão do Luís em 11/10; ver [Portas](#portas)). Para quem roda o AoP fora do Docker no Windows, há uma opção, que não é regra, para fixá-la em 9003: [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local#aop-fora-do-docker-no-windows-opção).
 
 > **Descoberta SSDP no WSL2:** deixe o `COMPOSE_FILE` do `.env` comentado. Anunciado em rede do host, o anúncio não sai da máquina: chega ao próprio Windows e não chega aos outros aparelhos da rede (medido em 03 e 04/10 com um anunciante descartável em modo host; com a borda anunciando, não medido; [Medições da descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao)). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte (não medido). Nesses ambientes, o cliente chega ao receptor pelo IP, sem a etapa de descoberta.
 
@@ -111,7 +111,8 @@ O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla
 | `COMPOSE_PROFILES` | `mqtt,linux` | Liga o broker, o AoP, o tv3ws, o bcast e o `sysctl-init`. Sem ela, o receptor não sobe |
 | `COMPOSE_FILE` | comentada | `docker-compose.yml:docker-compose.ssdp.yml` liga a descoberta SSDP (só Linux nativo; [Descoberta SSDP]({{ site.baseurl }}/ssdp)) |
 | `DOCKERHUB_NS`, `IMAGE_TAG` | `labmultisens`, `latest` | Nome e tag das imagens (ver *Imagens publicadas ou código do clone*, acima) |
-| `EDGE_EXT_PUBLISH`, `BCAST_PUBLISH`, `MQTT_WS_PUBLISH` | comentadas (padrões `44643`, `8081` e `9001`) | O que vai em `ports` para a superfície externa da borda, o bcast e o WebSocket do Mosquitto. Só o número (o padrão) = a porta do container numa porta de host escolhida pelo Docker; `host:container` fixa (ver [Portas](#portas)) |
+| `EDGE_EXT_PUBLISH` | comentada (padrão `44643:44643`) | O que vai em `ports` para a superfície externa da borda. O padrão a fixa na 44643 do host desde 12/10; só o número (`44643`) a põe numa porta escolhida pelo Docker, que o `/manifest` não anuncia (ver [Portas](#portas)) |
+| `BCAST_PUBLISH`, `MQTT_WS_PUBLISH` | comentadas (padrões `8081` e `9001`) | O que vai em `ports` para o bcast e o WebSocket do Mosquitto. Só o número (o padrão) = a porta do container numa porta de host escolhida pelo Docker; `host:container` fixa (ver [Portas](#portas)) |
 | `AOP_PUBLIC_PORT` | comentada (padrão `8080`) | Porta do AoP no host, fixa, e das origens das aplicações de emissora; por ela passa também o MQTT por WebSocket da página da TV (`/mqtt`) |
 | `APPS_DOMAIN` | comentada (padrão `apps.localhost`) | Domínio dos hosts próprios das aplicações de emissora. `*.localhost` só resolve para a própria máquina de quem abre a tela do AoP |
 | `EDGE_VARIANT` | `linux` | Onde a borda procura o tv3ws: `linux` (container) ou `windows` (o tv3ws no host; [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local)) |
@@ -126,13 +127,15 @@ Saíram do `.env.example` em 11/10 o `BCAST_PORT` e o `MQTT_WS_PORT`: o compose 
 
 ### Portas
 
-Política decidida pelo Luís em 11/10 (C1, opção b). A norma só fixa a 44642 (C.3.4); o resto é decisão do projeto.
+Política decidida pelo Luís em 11/10 (C1, opção b) e revista por ele em 12/10 num ponto: a 44643 ficou fixa também na bridge. A norma só fixa a 44642 (C.3.4); o resto é decisão do projeto.
 
 | Fixas no host | Escolhidas pelo Docker a cada criação do container |
 |---|---|
-| 44642 (superfície interna da borda), a do AoP (8080, `AOP_PUBLIC_PORT`), 1883 (MQTT), 6379 (Redis), 45000–45199 (WebSockets de remote-device) e, com o `docker-compose.ssdp.yml`, a 44643 e a 8085 da borda | a 44643 da borda na bridge, a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação da borda e a 18081 do redis-commander |
+| 44642 (superfície interna da borda), 44643 (superfície externa da borda; na bridge, desde 12/10), a do AoP (8080, `AOP_PUBLIC_PORT`), 1883 (MQTT), 6379 (Redis), 45000–45199 (WebSockets de remote-device) e, com o `docker-compose.ssdp.yml`, a 8085 da borda | a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação da borda na bridge e a 18081 do redis-commander |
 
-Para achar a porta de host de uma delas, na raiz do clone: `docker compose port <serviço> <porta do container>`, por exemplo `docker compose port edgegateway 44643`, `docker compose port bcast 8081` ou `docker compose port mosquitto 9001`; ou `docker compose ps`, que mostra todas. Para fixar uma delas, defina no `.env` `EDGE_EXT_PUBLISH`, `BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` como `host:container` (por exemplo, `BCAST_PUBLISH=8081:8081`) e recrie o serviço (`docker compose up -d <serviço>`).
+Para achar a porta de host de uma delas, na raiz do clone: `docker compose port <serviço> <porta do container>`, por exemplo `docker compose port bcast 8081` ou `docker compose port mosquitto 9001`; ou `docker compose ps`, que mostra todas. Para fixar uma delas, defina no `.env` `BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` como `host:container` (por exemplo, `BCAST_PUBLISH=8081:8081`) e recrie o serviço (`docker compose up -d <serviço>`).
+
+A 44643 fica fixa porque o `/manifest` do tv3ws anuncia o `Server-SecureBaseURL` em `<host>:<EDGE_HTTPS_PORT>`, com padrão 44643 (`tv3ws/src/ssdp-config.ts`), e não sabe a porta de host que o Docker escolheria. O `EDGE_EXT_PUBLISH` (padrão `44643:44643`, `infra/docker-compose.yml`) muda isso: outra porta de host fixa (por exemplo, `EDGE_EXT_PUBLISH=44743:44643`) pede também `EDGE_HTTPS_PORT=44743` no `.env` da raiz, que o tv3ws lê pelo `env_file`, senão o `/manifest` anuncia a 44643; só o número (`EDGE_EXT_PUBLISH=44643`, o padrão de 11/10 a 12/10) põe a 44643 numa porta escolhida pelo Docker (`docker compose port edgegateway 44643`), que o `/manifest` não anuncia. Quanto às portas, o `tv30-preflight` avisa, sem bloquear, quando a 1883, a 6379, a 44643 ou a do AoP já estão ocupadas no host, e só para a subida quando a 44642 está ocupada por outro processo (`scripts/preflight.sh`).
 
 ---
 

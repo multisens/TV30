@@ -9,3 +9,7 @@ source "https://rubygems.org"
 #   bundle install && bundle exec jekyll build --baseurl /TV30
 gem "github-pages", "= 232", group: :jekyll_plugins
 gem "jekyll-remote-theme"
+# Só para o build local sair sem o aviso "To use retry middleware with
+# Faraday v2.0+, install `faraday-retry` gem" (do octokit, usado pelo
+# jekyll-github-metadata). Não muda o site gerado.
+gem "faraday-retry"

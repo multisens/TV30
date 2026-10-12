@@ -11,17 +11,18 @@ set -u
 # Politica de portas (C1, decisao do Luis em 11/10; antes, V10 do plano de
 # consolidacao):
 #   44642  — FIXA DA NORMA (C.3.4): ocupada = ERRO BLOQUEANTE
-#   fixas (aviso se ocupadas): 1883 (MQTT), 6379 (Redis), a do AoP
+#   fixas (aviso se ocupadas): 1883 (MQTT), 6379 (Redis), a 44643 (fixa
+#   tambem na bridge desde 12/10: o /manifest a anuncia), a do AoP
 #   (AOP_PUBLIC_PORT, padrao 8080; tambem a porta das apps de emissora em
 #   <app>.apps.localhost, P1.3); com a borda em rede do host (SSDP_EDGE), a
-#   44643 (vai no anuncio), a 8085 e as 44652/44653 do tv3ws em 127.0.0.1
+#   8085 e as 44652/44653 do tv3ws em 127.0.0.1
 #   sem porta fixa (o Docker escolhe uma livre; nao entram na checagem): a
-#   44643 na bridge, a 9001 do mosquitto, a 8081 do bcast, a 8085 na bridge e
-#   a 18081 do commander. A faixa 45000-45199 do remote-device fica de fora:
+#   9001 do mosquitto, a 8081 do bcast, a 8085 na bridge e a 18081 do
+#   commander. A faixa 45000-45199 do remote-device fica de fora:
 #   o tv3ws escolhe uma porta livre dentro dela.
-PORTS_WARN="1883 6379 ${AOP_PUBLIC_PORT:-8080}"
+PORTS_WARN="1883 6379 44643 ${AOP_PUBLIC_PORT:-8080}"
 if [ "${SSDP_EDGE:-}" = "true" ]; then
-  PORTS_WARN="$PORTS_WARN 44643 8085 44652 44653"
+  PORTS_WARN="$PORTS_WARN 8085 44652 44653"
 fi
 PORT_BLOCK="44642"
 WARN=0

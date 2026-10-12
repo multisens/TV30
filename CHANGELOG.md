@@ -5,7 +5,166 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> This file is a record. Each entry describes what changed, and what was
+> measured, on its date; a later entry may change or undo it, and older
+> entries are not rewritten. The current state is the code; `README.md`,
+> `ARCHITECTURE.md`, `KNOWN-ISSUES.md` and the site in `docs/` (outside its
+> history pages) describe it.
+
 ## Unreleased
+
+### 2026-10-12 (Luis's decisions)
+
+On 2026-10-12 Luis decided five points: (1) port 44643 is fixed on the
+bridge too, revising C1 of 2026-10-11 only there; (2) the profile id is a
+strict UUID (schema version 3); (3) C.6.15.5 (`GET
+/tv3/remote-device/devices/{classId}`) is for local clients only; (4) an
+audit of all the documentation against the code, and the documentation no
+longer calls anything a "source of truth" (the code is the arbiter); (5) a
+tip, an option and not a rule, for running the AoP outside Docker on
+Windows. The exact error code a non-local client gets from C.6.15.5 stays
+with Joel (F-1).
+
+#### Changed
+
+- infra `docker-compose.yml` (1): `EDGE_EXT_PUBLISH` defaults to
+  `44643:44643`, so the external surface is on host port 44643 on the bridge
+  too. The tv3ws `/manifest` announces `Server-SecureBaseURL: <host>:44643`
+  (`EDGE_HTTPS_PORT`, default 44643) and cannot know a port chosen by
+  Docker. The number alone (`EDGE_EXT_PUBLISH=44643`, the default from
+  2026-10-11 to 2026-10-12) still gives a free host port, which the
+  `/manifest` does not announce; another fixed host port needs the same
+  number in `EDGE_HTTPS_PORT`. `scripts/preflight.sh` warns when 44643 is
+  taken, on the bridge too.
+- infra `edgegateway/routes.json` (3): `GET
+  /tv3/remote-device/devices/{classId}` (C.6.15.5) gets `classes`
+  `local-associated` and `local-autonomous`. By the P1.9 rule it leaves the
+  external surface (100 there), and so does its API,
+  `tv3ws-remotedevice-communication`, which has only that route
+  (`GET /tv3/api-info/tv3ws-remotedevice-communication` is 101 on 44643). On
+  44642 a non-local client gets the 106 of the plugin's class rule in
+  `enforce` (in `warn`, only the warning; tv3ws does not check the class).
+  Counts: internal surface 26 routes and 20 APIs, external 23 routes and 17
+  APIs (were 24 and 18). `edgegateway/generate.js` marks the exact code as
+  `PENDENTE (Joel)` (F-1): Table C.78 lists 107 "If invoked from a non-local
+  client", and C.4.1.8 speaks of 106.
+- infra `redis/esquema.json` (version 3) and `redis/funcoes.lua` (2): the
+  profile id must be a strict UUID, with version 1 to 8 (first digit of the
+  third group) and the RFC 9562 variant (first digit of the fourth group 8,
+  9, a or b); the nil and max UUIDs are refused, and the refusal says which
+  part failed. The seed id (`c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`, version
+  4, variant 9) and the AoP ids (`crypto.randomUUID()`, version 4) stay
+  valid, so a volume from 2026-10-11 needs no recreation.
+- Tests: infra `edgegateway/generate.test.js` (C.6.15.5 only on the
+  internal surface, with its API; the new counts),
+  `edgegateway/plugin/surface_test.go` (a comment), redis
+  `test/funcoes.test.js` (version, variant, nil and max),
+  `test/contrato.test.js` and `test/run.sh` (strict UUID of the AoP ids and
+  of the seed); `scripts/test-auth.sh` (C.6.15.5 in `enforce`: 106 from the
+  edge on 44642 for a non-local client, 100 on 44643, a pass for the local
+  client on 44642, and 101 for its API info on 44643); comments in
+  `scripts/test-consolidacao.sh` and `scripts/test-dev-host.sh`.
+- Docs (4 and 5): `README.md`, `ARCHITECTURE.md`, `KNOWN-ISSUES.md`,
+  `.env.example`, `aop/.env.example`, `tv3ws/.env.example`,
+  `bcast/README.md`, `bcast/.env.example`, and a record notice on top of
+  this file and of `bcast/CHANGELOG.md`. Statements found wrong and fixed on
+  the way: the `README.md` told people to build the images of 2026-10-10 and
+  2026-10-11 locally, while the `latest` images on Docker Hub already carry
+  them (the same digest as the tags of the 2026-10-11 heads: aop `56bf693`,
+  tv3ws `21a32b8`, bcast `b5a343d`, infra `c4eb7a9`); it said the default HTTP-only tv3ws was enough for
+  local development, but without its HTTPS the routes the edge forwards on
+  44643 answer 404 `{"error":200}`; it counted two one-shots (there are
+  three, with `sysctl-init`), said `ARCHITECTURE.md` had the Redis schema
+  (it is in `docs/modelo-redis.md`), and said the Docker Hub edge image had
+  no SSDP announcer (it has since 2026-10-09); the Node badge said 23.11.0
+  (the images use `node:23-alpine`, 23.11.1). `ARCHITECTURE.md` said only
+  the AoP talks plain HTTP to another service (the edge forwards to tv3ws
+  too), that tv3ws only reads profiles (it writes the broadcaster attributes
+  of C.6.14.5, E4) and that bcast streams with FFmpeg (it serves HLS
+  segments prepared beforehand; the image has no FFmpeg), and its MQTT table
+  missed `video/event`. `bcast/README.md` said bcast runs under PM2 (it does
+  not) and missed `USERS_TEST_SID` and `EDUPLAY_LOGIC_PORT`;
+  `bcast/.env.example` put `bcastEntryPackageUrl` in the BAMT (it is in the
+  BALD). `aop/.env.example` and `bcast/.env.example` said the compose
+  overrides every variable (the images carry no `.env`; unset ones keep the
+  code default).
+- Docs, the rest of the audit (4 and 5): the whole `docs/` site (19 pages,
+  among them `decisoes-pendentes.md`, now with the decisions of 2026-10-12;
+  the `arquitetura.md` diagram redrawn; `faraday-retry` in `docs/Gemfile`,
+  which removes the last build warning) and `infra/` (`README.md`,
+  `ARCHITECTURE.md`, `docs/00` to `09` and their index, the plugin, Redis and
+  broker READMEs). `infra/docs/00`, `01` and `02` were redrawn for the
+  current state, with the diagrams up to 2026-10-02 kept at the end as
+  records; `06`, `07` and `08` were rewritten (they described `acl:*`,
+  `user:{id}:profile`, the broker reading Redis and a profile sync through
+  tv3ws, none of which exists, and old file names and lines); three mermaid
+  blocks in `03` and `05` did not parse. "Source of truth" is gone from the
+  docs and from code comments (`infra/redis/biblioteca.sh`, `esquema.json`,
+  `edgegateway/generate.js`, `tv3ws/src/redis-funcoes.ts`; `tv3ws/src/api/
+  user/service.ts` said "Redis is the single source of truth" for session
+  state, while tv3ws also keeps the current service in memory). The site
+  builds with 0 warnings and 0 broken internal links; the 21 mermaid blocks
+  of `infra/` parse.
+
+#### Decided (Luis, 2026-10-12)
+
+- (1) Port 44643 fixed by default on the bridge (`EDGE_EXT_PUBLISH`
+  `44643:44643`); the number alone gives a free host port, which the
+  `/manifest` does not announce. C1 of 2026-10-11 stands for the other
+  ports.
+- (2) Strict UUID for the profile id: version 1 to 8, RFC 9562 variant,
+  nil and max refused; schema version 3.
+- (3) C.6.15.5 only for local clients: 106 for a non-local client on 44642,
+  route out of 44643 (100). Table C.78 asks for 107 and C.4.1.8 speaks of
+  106; the exact code stays with Joel (F-1).
+- (4) This documentation audit; "source of truth" is no longer used for any
+  document (the code is the arbiter).
+- (5) For whoever runs the AoP outside Docker on Windows:
+  `MQTT_WS_PUBLISH=9003:9001` in the root `.env` and `MQTT_WS_PORT=9003` in
+  `aop/.env`. An option, not a rule; the arrangement is not covered by
+  `scripts/test-dev-host.sh`.
+
+#### Known limits
+
+- With `EDGE_EXT_PUBLISH` set to the number alone, or to another host port,
+  the external OpenAPI `servers` still says `http://localhost:44643`
+  (generated from `routes.json`), and so does the `/manifest` unless
+  `EDGE_HTTPS_PORT` is set to the same port (`KNOWN-ISSUES.md`).
+- Found while auditing, not changed (compose comments are code): the comment
+  in `docker-compose.ssdp.yml` still says that on the bridge 44643 goes to a
+  free host port, and the comment on `preflight` in the root
+  `docker-compose.yml` still says it blocks in one case only (since B2 it
+  also stops without `SSDP_ADVERTISE_HOST` in SSDP mode).
+
+#### Upgrading
+
+- `docker compose pull edgegateway redis`, or, until the CI publishes them,
+  `docker compose build edgegateway redis`. Mixing them with the images of
+  2026-10-11 breaks nothing by the code: the previous edge still serves
+  C.6.15.5 on 44643, and the previous Redis accepts a non-strict UUID.
+- A `.env` with `EDGE_EXT_PUBLISH=44643` (number alone) keeps the free host
+  port; remove it to get the fixed 44643.
+- Callers of `GET /tv3/remote-device/devices/{classId}` on 44643 now get 100:
+  it is for local clients, on 44642.
+
+#### Verified
+
+- On the stack (WSL2, 2026-10-12): `scripts/test-auth.sh` 233 PASS, 0 FAIL
+  on the bridge and 233/0 with the edge on the host network (non-local
+  client gets 106 on C.6.15.5 at 44642, 101 for its api-info at 44643, local
+  client forwarded); `scripts/test-dev-host.sh` 67/0; `test-template.sh`
+  13/0; `test-consolidacao.sh`, `test-fase0.sh`, `test-bcast-shutdown.sh` ok;
+  `infra/redis/test/run.sh tudo` ok (functions 28/28); audit empty; schema
+  version 3; 44643 published on 44643. Unit: tv3ws 78/78 and `tsc` ok,
+  `generate.test.js` 14/14, plugin `go test` 72 PASS.
+- Docs (2026-10-12): each statement of the files listed under Docs was
+  checked against the code (compose files, `routes.json` and `generate.js`,
+  the plugin, the Redis schema and functions, the aop, tv3ws and bcast
+  sources and Dockerfiles). Route and API counts computed from
+  `routes.json` with `generate.js`: 26 and 20 internal, 23 and 17 external;
+  `node --test edgegateway/generate.test.js` 14/14 (Node 20.8.1, Windows).
+  Docker Hub `latest` tags and digests read from the Docker Hub API; the
+  Node version of `node:23-alpine` read from the image.
 
 ### 2026-10-11 (Luis's decisions, second part)
 

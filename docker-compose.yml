@@ -18,9 +18,10 @@ include:
 services:
 
   # Diagnostico pre-subida: checa DNS e portas do stack e imprime avisos
-  # legiveis ANTES dos servicos subirem. So bloqueia num caso: a 44642 (fixa
-  # da norma, C.3.4) ocupada por outro processo -> exit 1, e a borda, que
-  # depende dele (service_completed_successfully), nao sobe. Roda com rede+pid do
+  # legiveis ANTES dos servicos subirem. So bloqueia em dois casos (exit 1, e
+  # a borda, que depende dele com service_completed_successfully, nao sobe):
+  # a 44642 (fixa da norma, C.3.4) ocupada por outro processo, e o anuncio
+  # SSDP ligado sem SSDP_ADVERTISE_HOST (B2, decisao do Luis em 11/10). Roda com rede+pid do
   # host para enxergar quem esta segurando cada porta.
   preflight:
     image: alpine:3

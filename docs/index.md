@@ -22,7 +22,7 @@ São três módulos do projeto, cada um num submódulo git, mais a infraestrutur
 
 **Infraestrutura de implementação** (escolha deste projeto, não exigida pela norma):
 
-- **Borda** (`edgegateway`, KrakenD): um container com as duas superfícies das APIs, a interna (44642) e a externa (44643). O plugin Go `tv30-auth` valida as credenciais (access token, bind-token e classe de cliente), em modo `warn` por padrão. Desde a reunião de 05/10 com o Joel, a borda é o único ponto que valida a credencial das requisições, e o plugin também responde as APIs C.6.8 (`/tv3/bind-context`) e C.6.7.8/C.6.7.9 (`/tv3/api-info`), sem repassá-las ao tv3ws.
+- **Borda** (`edgegateway`, KrakenD): um container com as duas superfícies das APIs, a interna (44642) e a externa (44643). O plugin Go `tv30-auth` valida as credenciais (access token, bind-token e classe de cliente), em modo `warn` por padrão. Desde a reunião de 05/10 com o Joel, a borda é o único ponto que confere o access token, o bind-token e a classe de cliente das requisições às APIs; o tv3ws só confere, na emissão do token (`/tv3/token`, C.6.1.3), o refresh token e a resposta ao desafio, e recusa com 106 a renovação por HTTP de um cliente não local. O plugin também responde as APIs C.6.8 (`/tv3/bind-context`) e C.6.7.8/C.6.7.9 (`/tv3/api-info`), sem repassá-las ao tv3ws.
 - **Mosquitto com plugin C**: o broker MQTT. O plugin valida o **esquema** das mensagens publicadas nos tópicos que têm esquema declarado. Ele não faz controle de acesso a tópicos nem consulta o Redis.
 - **Redis**: estado de sessão, perfis e credenciais. Parte do estado também vive em memória nos serviços, e o `userData.json` é só a carga inicial.
 
@@ -68,12 +68,12 @@ Depois de subir:
 |---|---|
 | AoP (interface do receptor) | `http://localhost:8080` (`AOP_PUBLIC_PORT`) |
 | APIs, superfície interna | `http://localhost:44642` (por exemplo, `/health` e `/manifest`) |
-| APIs, superfície externa | porta dinâmica: `docker compose port edgegateway 44643` (ainda HTTP; o TLS está pendente) |
+| APIs, superfície externa | `http://localhost:44643`, fixa desde 12/10 (ainda HTTP; o TLS está pendente). As rotas que a borda repassa ao tv3ws por ela precisam do HTTPS do tv3ws ([Instalação]({{ site.baseurl }}/instalacao#o-que-não-vem-no-clone)) |
 | Documentação Swagger das duas superfícies | porta dinâmica: `docker port edgegateway 8085` |
 | bcast (apps de emissora e mídia, direto) | porta dinâmica: `docker compose port bcast 8081` |
 | Redis Commander | porta dinâmica: `docker port redis 18081`; pede login (usuário e senha padrão na seção [*Interface administrativa do Redis*](https://github.com/multisens/TV30/blob/main/README.md#interface-administrativa-do-redis) do `README.md` da raiz). A conexão com o banco (6379) segue sem senha |
 
-Desde 11/10 (C1, decisão do Luís), só ficam fixas no host a 44642, a do AoP (8080), a 1883, a 6379 e a faixa 45000–45199 dos WebSockets de remote-device. As outras saem numa porta livre que o Docker escolhe, e a tabela acima diz como achá-las; `docker compose ps` mostra todas. A página da TV fala MQTT pelo próprio AoP, em `ws://localhost:8080/mqtt`.
+Ficam fixas no host a 44642, a 44643, a do AoP (8080), a 1883, a 6379 e a faixa 45000–45199 dos WebSockets de remote-device (C1, decisão do Luís em 11/10; a 44643 ficou fixa também na bridge em 12/10, também por decisão dele, porque o `/manifest` a anuncia). As outras saem numa porta livre que o Docker escolhe, e a tabela acima diz como achá-las; `docker compose ps` mostra todas. A página da TV fala MQTT pelo próprio AoP, em `ws://localhost:8080/mqtt`.
 
 ---
 

@@ -13,7 +13,7 @@ Desde a reunião de 05/10 com o Joel, dois grupos de APIs declarados na borda **
 O cliente das APIs não fala com o tv3ws diretamente. As portas 44652 e 44653 não são publicadas no host (com o override `docker-compose.ssdp.yml`, só em `127.0.0.1`, para a borda em rede do host), e todo acesso às APIs passa pela **borda** (`edgegateway`). A exceção são os WebSockets de remote-device: o tv3ws publica a faixa 45000–45199 no host, e o aparelho remoto abre direto a URL `ws://<SERVER_URL>:<porta>` que o registro devolve, sem passar pela borda.
 
 - superfície interna: `http://localhost:44642`, porta fixa da C.3.4, com todas as rotas da tabela abaixo (26);
-- superfície externa: a 44643 do container, ainda em HTTP, porque o TLS na borda está pendente. Desde a C1 (decisão do Luís em 11/10), na bridge ela sai numa porta de host escolhida pelo Docker (`docker compose port edgegateway 44643`; `EDGE_EXT_PUBLISH=44643:44643` fixa); com o `docker-compose.ssdp.yml`, é a própria 44643 do host. Desde a P1.9 (decisão do Luís em 10/10), ela só expõe as rotas que admitem o cliente não local (24): `POST` e `DELETE /tv3/bind-context`, só do local associado, não existem ali e respondem 100.
+- superfície externa: a 44643 do container, ainda em HTTP, porque o TLS na borda está pendente. Por padrão, ela é também a 44643 do host, na bridge e com o `docker-compose.ssdp.yml` (decisão do Luís em 12/10, que revê a C1 de 11/10 só nesse ponto; de 11/10 a 12/10, na bridge, a porta de host era escolhida pelo Docker). O valor que vai em `ports` é o `EDGE_EXT_PUBLISH`, padrão `44643:44643`: só o número (`EDGE_EXT_PUBLISH=44643`) deixa o Docker escolher a porta de host (`docker compose port edgegateway 44643`), que o `/manifest` não anuncia, e outra porta de host fixa (`X:44643`) pede `EDGE_HTTPS_PORT=X` no tv3ws, senão o `/manifest` anuncia a errada. Desde a P1.9 (decisão do Luís em 10/10), ela só expõe as rotas que admitem o cliente não local (23): `POST` e `DELETE /tv3/bind-context`, só do local associado, e, desde 12/10, `GET /tv3/remote-device/devices/{classId}` (C.6.15.5), só do cliente local, não existem ali e respondem 100.
 
 > Borda, mensageria e Redis são decisões de implementação do testbed, não da norma.
 
@@ -43,43 +43,44 @@ O cliente das APIs não fala com o tv3ws diretamente. As portas 44652 e 44653 n�
 
 ## Endpoints declarados na borda
 
-A tabela tem as 26 rotas do `infra/edgegateway/routes.json` (desde a A4, em 11/10; antes, 27). A coluna **bind-token** marca as APIs cujo campo "Security requirements" diz que o bind-token *shall* ser enviado. São 27 APIs na norma. Oito delas estão implementadas aqui, em 9 rotas (até 11/10, 10): a norma aceita `current-service` no lugar de `<service-context-id>` (C.3.5).
+A tabela tem as 26 rotas do `infra/edgegateway/routes.json` (desde a A4, em 11/10; antes, 27). As colunas **`auth`** e **`classes`** são a política de cada rota ali: `auth` = `none`, `token` ou `token+bind`, e `classes` = as classes de cliente que a rota admite ("todas" quando o campo falta). A coluna **bind-token** marca as APIs cujo campo "Security requirements" diz que o bind-token *shall* ser enviado. São 27 APIs na norma. Oito delas estão implementadas aqui, em 9 rotas (até 11/10, 10): a norma aceita `current-service` no lugar de `<service-context-id>` (C.3.5).
 
-| Método | Rota | Norma | bind-token |
-|--------|------|-------|-----------|
-| GET | `/health` | testbed (fora da norma) | |
-| GET | `/manifest` | resposta ao `LOCATION` do anúncio SSDP | |
-| GET | `/tv3/authorize` | C.6.1.2 | |
-| GET | `/tv3/token` | C.6.1.3 | |
-| GET | `/tv3/current-service` | C.6.3.1 | |
-| POST | `/tv3/bind-context` | C.6.8.2 (borda; só na 44642) | |
-| GET | `/tv3/bind-context` | C.6.8.3 (borda) | o próprio token é o objeto da API |
-| DELETE | `/tv3/bind-context` | C.6.8.4 (borda; só na 44642) | |
-| GET | `/tv3/api-info/{apiId}` | C.6.7.8 (borda) | |
-| GET | `/tv3/api-info` | C.6.7.9 (borda) | |
-| GET | `/tv3/current-service/apps/{appid}/files` | C.6.4.7 | shall |
-| POST | `/tv3/current-service/users` | C.6.14.1 | shall |
-| GET | `/tv3/current-service/users/{userid}` | C.6.14.2 | shall |
-| GET | `/tv3/{serviceContextId}/users/{userid}` | C.6.14.2 | shall |
-| GET | `/tv3/current-service/users/current-user` | C.6.14.3 | shall |
-| POST | `/tv3/current-service/users/current-user` | C.6.14.4 | shall |
-| POST | `/tv3/{serviceContextId}/users/{userid}` | C.6.14.5 | shall |
-| GET | `/tv3/current-service/users/files` | C.6.14.6 | shall |
-| POST | `/tv3/remote-device` | C.6.15.2 | |
-| DELETE | `/tv3/remote-device/{handle}` | C.6.15.3 | |
-| GET | `/tv3/remote-device/devices/{classId}` | C.6.15.5 (no `routes.json`, `tv3ws-remotedevice-communication`); ver nota | |
-| GET | `/tv3/remote-device/device/{handle}` | C.6.15, ver nota | |
-| DELETE | `/tv3/remote-device/device/{handle}` | C.6.15, ver nota | |
-| GET | `/tv3/sensory-effect-renderers` | C.6.16.1 | |
-| GET | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.2 | |
-| POST | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.3 | shall |
+| Método | Rota | Norma | `auth` | `classes` | bind-token |
+|--------|------|-------|--------|-----------|-----------|
+| GET | `/health` | testbed (fora da norma) | `none` | todas | |
+| GET | `/manifest` | resposta ao `LOCATION` do anúncio SSDP | `none` | todas | |
+| GET | `/tv3/authorize` | C.6.1.2 | `none` | `local-autonomous`, `non-local` | |
+| GET | `/tv3/token` | C.6.1.3 | `none` | `local-autonomous`, `non-local` | |
+| GET | `/tv3/current-service` | C.6.3.1 | `token` | todas | |
+| POST | `/tv3/bind-context` | C.6.8.2 (borda; só na 44642) | `none` | `local-associated` | |
+| GET | `/tv3/bind-context` | C.6.8.3 (borda) | `token` | `local-autonomous`, `non-local` | o próprio token é o objeto da API |
+| DELETE | `/tv3/bind-context` | C.6.8.4 (borda; só na 44642) | `none` | `local-associated` | |
+| GET | `/tv3/api-info/{apiId}` | C.6.7.8 (borda) | `token` | todas | |
+| GET | `/tv3/api-info` | C.6.7.9 (borda) | `token` | todas | |
+| GET | `/tv3/current-service/apps/{appid}/files` | C.6.4.7 | `token+bind` | todas | shall |
+| POST | `/tv3/current-service/users` | C.6.14.1 | `token+bind` | todas | shall |
+| GET | `/tv3/current-service/users/{userid}` | C.6.14.2 | `token+bind` | todas | shall |
+| GET | `/tv3/{serviceContextId}/users/{userid}` | C.6.14.2 | `token+bind` | todas | shall |
+| GET | `/tv3/current-service/users/current-user` | C.6.14.3 | `token+bind` | todas | shall |
+| POST | `/tv3/current-service/users/current-user` | C.6.14.4 | `token+bind` | todas | shall |
+| POST | `/tv3/{serviceContextId}/users/{userid}` | C.6.14.5 | `token+bind` | todas | shall |
+| GET | `/tv3/current-service/users/files` | C.6.14.6 | `token+bind` | todas | shall |
+| POST | `/tv3/remote-device` | C.6.15.2 | `token` | todas | |
+| DELETE | `/tv3/remote-device/{handle}` | C.6.15.3 | `token` | todas | |
+| GET | `/tv3/remote-device/devices/{classId}` | C.6.15.5 (no `routes.json`, `tv3ws-remotedevice-communication`; só na 44642, desde 12/10); ver nota | `token` | `local-associated`, `local-autonomous` | |
+| GET | `/tv3/remote-device/device/{handle}` | C.6.15, ver nota | `token` | todas | |
+| DELETE | `/tv3/remote-device/device/{handle}` | C.6.15, ver nota | `token` | todas | |
+| GET | `/tv3/sensory-effect-renderers` | C.6.16.1 | `token` | todas | |
+| GET | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.2 | `token` | todas | |
+| POST | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.3 | `token+bind` | todas | shall |
 
 **Notas:**
 
 - As rotas `/manifest` e `bind-context` entram na tabela de rotas na semana de 28/09; as de `api-info`, na rodada de 05/10.
 - **`POST /tv3/{serviceContextId}/users` saiu** (A4, decisão do Luís em 11/10). A rota não existe na norma, que só define `POST /tv3/current-service/users` (C.6.14.1), e estava na tabela como variante do testbed, com o mesmo handler no tv3ws e a política `token+bind`. Desde 11/10, a borda responde 100 a ela com qualquer scid, inclusive a constante e `Current-Service` com a caixa trocada. O tv3ws ainda monta o roteador de usuários em `/tv3/:serviceContextId/users` (`tv3ws/src/app.ts`), para as rotas `.../users/{userid}`, então o handler continua lá, mas nenhum cliente o alcança pela borda. A rota não tinha o campo `api`, e a lista da C.6.7.8 e da C.6.7.9 não mudou.
-- **"Só na 44642"** (P1.9, decisão do Luís em 10/10). A superfície externa só expõe as rotas que admitem o cliente não local. `POST` e `DELETE /tv3/bind-context` admitem só o local associado e, na 44643, respondem 404 `{"error":100}`, como um caminho não declarado. As demais rotas existem nas duas superfícies. A C.4.1.8 pede 106, e não 100, ao não local que chama por HTTPS uma API exclusiva do cliente local; enquanto a 44643 for HTTP, isso não se aplica ao pé da letra, e com TLS a escolha entre 100 e 106 está com o Joel ([`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes), seção F).
-- **Rotas "(borda)".** O plugin `tv30-auth` as responde depois da mesma decisão de credencial das demais, sem repasse ao tv3ws. A C.6.8 tem o mesmo contrato que o tv3ws implementava até 05/10, com uma diferença: o `POST` só aceita corpo JSON. A C.6.7.8 e a C.6.7.9 listam as APIs implementadas na superfície (o campo `api` das rotas dela no `routes.json`, com o id e a versão da Tabela C.2), todas na versão 2.0: 20 na interna e, desde a P1.9, 18 na externa, que não tem `tv3ws-bind-context-register` nem `tv3ws-bind-context-remove` e dá 101 a elas. Três escolhas dessas APIs foram mantidas pelo Luís em 11/10: cada superfície lista só as APIs que oferece (F-2); um id da Tabela C.2 que o testbed não implementa dá 101 (E1); e, sem `subsystem`, a C.6.7.9 lista todas (E3). Os detalhes e os comportamentos provisórios estão em `infra/edgegateway/plugin/README.md`, seção *APIs respondidas pela borda*.
+- **"Só na 44642"** (P1.9, decisão do Luís em 10/10). A superfície externa só expõe as rotas que admitem o cliente não local. `POST` e `DELETE /tv3/bind-context` admitem só o local associado e, desde 12/10, `GET /tv3/remote-device/devices/{classId}` admite só o cliente local (associado e autônomo); na 44643, as três respondem 404 `{"error":100}`, como um caminho não declarado. As demais rotas existem nas duas superfícies. A C.4.1.8 pede 106, e não 100, ao não local que chama por HTTPS uma API exclusiva do cliente local; enquanto a 44643 for HTTP, isso não se aplica ao pé da letra, e com TLS a escolha entre 100 e 106 está com o Joel ([`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes), seção F, F-1).
+- **C.6.15.5 só para o cliente local** (decisão do Luís em 12/10). A Tabela C.78 descreve a API como de uso do cliente local ("This API allows a local client application...", p. 339; p. 357 do PDF), e a rota ganhou as `classes` `local-associated` e `local-autonomous`. Na 44642, o não local identificado pelo access token (claim `class` = `non-local`) recebe o 106 da regra de classe da borda; em `warn`, só o aviso `X-TV30-Auth-Warn: 106`, e a requisição segue para o tv3ws. Sem access token válido e sem `Origin` associado, a borda não conhece a classe, a regra de classe deixa passar (o cliente pode ser o autônomo) e o erro é o 107 do access token (`allows`, em `infra/edgegateway/plugin/routes.go`). A Tabela C.78 pede 107 ("If invoked from a non-local client"), e a C.4.1.8 (p. 206-207; p. 224-225 do PDF) fala em 106: o código exato fica com o Joel, na F-1. As duas rotas por *handle* da 2.1 (abaixo) continuam sem `classes`, nas duas superfícies.
+- **Rotas "(borda)".** O plugin `tv30-auth` as responde depois da mesma decisão de credencial das demais, sem repasse ao tv3ws. A C.6.8 tem o mesmo contrato que o tv3ws implementava até 05/10, com uma diferença: o `POST` só aceita corpo JSON. A C.6.7.8 e a C.6.7.9 listam as APIs implementadas na superfície (o campo `api` das rotas dela no `routes.json`, com o id e a versão da Tabela C.2), todas na versão 2.0: 20 na interna e 17 na externa (18 de 10/10, P1.9, a 12/10), que não tem `tv3ws-bind-context-register`, `tv3ws-bind-context-remove` nem, desde 12/10, `tv3ws-remotedevice-communication` (a C.6.15.5, que só tem a rota da interna) e dá 101 a elas. Três escolhas dessas APIs foram mantidas pelo Luís em 11/10: cada superfície lista só as APIs que oferece (F-2); um id da Tabela C.2 que o testbed não implementa dá 101 (E1); e, sem `subsystem`, a C.6.7.9 lista todas (E3). Os detalhes e os comportamentos provisórios estão em `infra/edgegateway/plugin/README.md`, seção *APIs respondidas pela borda*.
 - **`GET /tv3/current-service`** (C.6.3.1, Tabela C.8, p. 222; p. 240 do PDF). O serviço em uso é o último valor de `aop/currentService`, que a plataforma publica ao selecionar um serviço e esvazia ao desfazer a seleção (`core.app.sid`, em `tv3ws/src/core.ts`).
   - Sem serviço em uso, a resposta é 404 `{"error":300}`, o erro da tabela para "If the DTV function is not in use in the receiver". O 302 (sem recepção do sinal) não é emitido, porque o testbed não tem estado de recepção.
   - Com serviço em uso, a resposta é 200 com `serviceContextId`, `transportStreamId` e `originalNetworkId`, mais `serviceName` quando é conhecido. O `serviceId` é inteiro, como na Tabela C.8, e fica de fora quando o testbed não o conhece. Hoje ele nunca é conhecido: não há SLT, e o tv3ws só o teria por `aop/services`, que nenhum módulo publica (L2, A6 de [`decisoes-pendentes.md`]({{ site.baseurl }}/decisoes-pendentes)). O `transportStreamId` e o `originalNetworkId` não estão na Tabela C.8.
@@ -161,7 +162,7 @@ O corpo aceita expressões de filtro (`and`, `or` e expressão simples):
 
 Os comparadores são `eq`, `neq`, `lt`, `lte`, `gt` e `gte`.
 
-Com um serviço corrente ativo (`session:current-service-id`), a listagem só traz usuários cujo `user:{id}:consent` contém esse serviço. Sem serviço ativo, a listagem responde 404 `{"error":300}` ("No DTV service currently in use"), porque a restrição de divulgação da C.6.14.1 vale sempre (`getUserList`, em `tv3ws/src/api/user/service.ts`). Conta como sem serviço ativo também o serviço corrente que nenhum perfil tem em `user:{id}:consent` (`resolveActiveService`, no mesmo arquivo), como o caso do users-test medido em 04/10, acima.
+Com um serviço corrente ativo (`session:current-service-id`), a listagem só traz usuários cujo `user:{id}:consent` contém esse serviço. Sem serviço ativo, a listagem responde 404 `{"error":300}` ("No DTV service currently in use"), porque a restrição de divulgação da C.6.14.1 vale sempre (`getUserList`, em `tv3ws/src/api/user/service.ts`). Conta como sem serviço ativo também o serviço corrente que nenhum dos perfis existentes tem em `user:{id}:consent` (`resolveActiveService`, no mesmo arquivo), como o caso do users-test medido em 04/10, acima. Sem nenhum perfil em `users:index`, o serviço corrente vale, e a lista sai vazia.
 
 Esse *consent* é a visibilidade do perfil por serviço guardada no Redis. Não é o consentimento da seção 8.8 da norma.
 
