@@ -13,6 +13,8 @@ nav_order: 1
 > Conferido de novo em 12/10, na auditoria da documentação, contra aop `56bf693`, bcast `b5a343d`, infra `6d8356e`, tv3ws `21a32b8`: as linhas que tinham mudado foram atualizadas (o `handler.go` da borda, com a E6, e o `generate.js` e o `funcoes.lua`, com as mudanças de 12/10), e o que se diz da C.6.15.5 segue a decisão do Luís em 12/10, que a deixou só para o cliente local (seções 3.2 e 8). As opções e a recomendação não mudaram.
 >
 > Conferido de novo na tarde de 12/10, com as correções do dia ainda sem commit: as rotas 2.1 de `/tv3/remote-device/device/{handle}` também ficaram só para o cliente local (segunda decisão do Luís em 12/10; seções 3.2 e 8), e as linhas que mudaram (`tv3ws/src/api/user/service.ts`, `tv3ws/src/api/client-identification/controller.ts` e `aop/src/modules/bootstrap-application/service.js`, seções 2 e 4) foram atualizadas. As opções e a recomendação não mudaram.
+>
+> Conferido de novo na noite de 12/10, com a G8 e a G9 (decisões do Luís) ainda sem commit: mudaram as linhas do `infra/redis/funcoes.lua` (seção 5.2), que ganhou a regra do avatar, e do `docker-compose.yml` da raiz (seção 3.1), e foram atualizadas; a do compose apontava, desde antes, para a linha do comentário, e não para a da faixa de portas. As opções e a recomendação não mudaram.
 
 ## Resumo
 
@@ -80,7 +82,7 @@ Aqui, recurso compartilhado é o que uma API abre para a app e deixa aberto depo
 - **Onde fica o estado:** na memória do tv3ws (`manager.ts:20-21`, os mapas `devices` e `devclasses`, mais o `http.Server` e o `WebSocketServer` de cada aparelho); no espelho do Redis (`manager.ts:32-42`: `remote-devices:index`, `remote-devices:class:{classe}` e `remote-device:{handle}`, com `deviceClass`, `supportedTypes` e `url`), limpo no boot (`manager.ts:24-30`, chamado em `src/server.ts:25`); e no retido MQTT `aop/devices/<classe>`, com a lista de *handles* (`manager.ts:87` e `110`).
 - **Dono registrado:** nenhum. Nem a memória nem o espelho guardam quem registrou.
 - **Como é liberado hoje:** pelo `DELETE` da C.6.15.3 (`controller.ts:31-42` → `manager.ts:94-112`); quando o WebSocket do aparelho fecha (`src/modules/remotedevice-manager/remote-device.ts:91-97`, escolha do testbed); e no reinício do tv3ws. O `terminate()` fecha o socket, a porta e o ponto de entrada local (`remote-device.ts:475-484`; `entry-point.ts:71-76`).
-- **Fora da borda:** o aparelho abre direto `ws://<SERVER_URL>:<porta>` (`remote-device.ts:317-320`), na faixa 45000–45199 que o tv3ws publica no host (`docker-compose.yml:96`; ver [APIs do tv3ws](apis-tv3ws.md)). Depois do registro, a conversa não passa pela borda, e bloquear o cliente na borda não fecha esse socket.
+- **Fora da borda:** o aparelho abre direto `ws://<SERVER_URL>:<porta>` (`remote-device.ts:317-320`), na faixa 45000–45199 que o tv3ws publica no host (`docker-compose.yml:99`; ver [APIs do tv3ws](apis-tv3ws.md)). Depois do registro, a conversa não passa pela borda, e bloquear o cliente na borda não fecha esse socket.
 
 ### 3.2 Ponto de entrada local (C.6.15.5 e a 2.1)
 
@@ -130,7 +132,7 @@ Em `warn`, a borda só repassaria o dono quando a credencial é válida. Reserva
 
 ### 5.2 Como o gatilho chega ao tv3ws
 
-Os três fatos já passam por funções do Redis (P4): `tv30_origem_remove` e `tv30_origens_limpa` no (a), `tv30_cliente_bloqueia` no (b), e mais a futura remoção do histórico (E5), e `tv30_bind_remove` no (c) (`infra/redis/funcoes.lua:661-671`, `701-712` e `727-734`).
+Os três fatos já passam por funções do Redis (P4): `tv30_origem_remove` e `tv30_origens_limpa` no (a), `tv30_cliente_bloqueia` no (b), e mais a futura remoção do histórico (E5), e `tv30_bind_remove` no (c) (`infra/redis/funcoes.lua:711-721`, `751-762` e `777-784`).
 
 | | Opção | A favor | Contra |
 |---|---|---|---|

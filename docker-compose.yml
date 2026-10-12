@@ -41,7 +41,9 @@ services:
     command: sh /preflight.sh
     restart: "no"
 
-  # Semeia ./user-files do template na primeira subida (idempotente).
+  # Semeia ./user-files do template: cria a pasta na primeira subida e, a cada
+  # up, copia do template os arquivos que faltam, sem sobrescrever nada (por
+  # exemplo o avatar da carga em thumbs/, G8, decisao do Luis em 12/10).
   # Elimina o pre-requisito manual de criar a pasta antes do compose up.
   userfiles-seed:
     image: alpine:3

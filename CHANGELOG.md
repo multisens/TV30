@@ -13,6 +13,204 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-12, evening: G8 and G9 (Luis's decisions)
+
+On the evening of 2026-10-12 Luis decided the two points of *Achados de
+12/10* that were his ("pode fazer as pendências minhas com as suas
+sugestões"): G8, the profile avatar as a file path, as Table 7 asks, and G9,
+notifying the viewer when a broadcaster writes attributes of the profile
+(C.6.14.5). Both were implemented the same evening and are marked in the
+code as `G8 (decisao do Luis em 12/10)` and `G9 (decisao do Luis em 12/10)`.
+
+#### Decided
+
+- G8 (Table 7, p. 63; p. 81 of the PDF: `avatar`, "Path indicating the file
+  with the graphical representation of the viewer profile", file path,
+  optional): the `avatar` field holds the NAME of a file inside the
+  thumbnails directory (`<USER_DATA_PATH>/thumbs` in the AoP, the same
+  `USER_THUMBS` of tv3ws: `./user-files/thumbs` at the root, a volume of
+  both), in the format `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(svg|png|jpg|jpeg|webp)$`
+  (no directory); absent, each screen shows its default avatar. The AoP
+  writes `<profile id>.svg` when it creates the profile and deletes it on
+  eviction (P3). Restricting the path to a name inside one directory is a
+  project decision; the standard only says "file path".
+- G9 (Table C.72, p. 332; p. 350 of the PDF, "Restrictions": "it is
+  necessary to notify the user that the application wants to change/add the
+  attribute"): read as a notice, not a request for confirmation; the testbed
+  notifies right after writing (the moment is a project choice).
+
+#### Changed
+
+- infra `redis/esquema.json` and `redis/funcoes.lua`: schema version 4
+  (`tv30_versao` 4). The `avatar` rule is the new type `nomeArquivo`
+  (`maxNome` 128, `extensoes`), checked in parts by `motivoNomeArquivo`,
+  whose message says what failed: the inline SVG first (`campo avatar: SVG
+  em linha nao serve`), then a directory, the extension (after the last
+  dot, lower case), the first character, the other characters and the
+  length. The `divergencias` list of `user:{id}` (the inline-SVG avatar)
+  left the schema; no divergence is registered now.
+- infra `user-files-template/`: the load profile has `avatar:
+  "c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg"`, and
+  `thumbs/c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg` has the SVG that was
+  inline before.
+- `scripts/seed-user-files.sh` (the `userfiles-seed` service; comment in the
+  root `docker-compose.yml`): on every `up`, besides creating `./user-files`,
+  it copies from the template every file that is missing there, without
+  overwriting anything (an existing file or link stays). Before, only
+  `userData.json`, and only when missing. Effect: a template file deleted
+  from `./user-files` comes back on the next `up`, for example the load
+  profile's avatar after that profile is evicted (a file no profile names,
+  which C.6.14.6 does not serve).
+- aop `src/modules/profile-manager/avatar.js` and `service.js`:
+  `createProfile` writes the form's SVG (checked as the screens checked it,
+  `<svg` at the start and an `<svg>` element, otherwise the default avatar;
+  `xmlns` added when missing) to `<USER_DATA_PATH>/thumbs/<id>.svg` before
+  the profile, without overwriting, and stores the file name in `avatar`; a
+  profile refused by the function deletes the file, and a failure writing
+  the file does not write the profile (404 `{"error":200}`). Eviction
+  deletes the profile's file after `tv30_perfil_remove` (a failure is only
+  logged). The screens (profile chooser, catalog, bootstrap application)
+  read the file and embed it as `<img src="data:...">` (`avatarDataUri`:
+  name in the format, real path inside the directory, regular file up to
+  1 MB; otherwise the default). The AoP does not serve the directory: a
+  route on its port would hand any profile's avatar without the restriction
+  of Table C.73, and an SVG opened as a document on the AoP's origin would
+  run its script. `src/html.js`: `svgDocument` and `imageHtml` split out of
+  `svgDataUri` and `svgImageHtml`. `.env.example`: the `USER_DATA_PATH`
+  comment.
+- tv3ws `GET /tv3/current-service/users/files` (C.6.14.6; Table C.73: the
+  Content-Type "shall be defined according to the MIME type of the file
+  (derived from its extension ...)"): `image/svg+xml`, `image/png`,
+  `image/jpeg` and `image/webp` by the extension, case-insensitive;
+  otherwise `application/octet-stream`. Before, only `.png`, `.jpg` and
+  `.jpeg` had a type, and the SVG went as `application/octet-stream`.
+  C.6.14.2 returns the `avatar` as stored (the file name).
+- tv3ws `POST /tv3/{serviceContextId}/users/{userid}` (C.6.14.5; G9): after
+  a successful write in which some value changed (`attributesChanged`:
+  writing the same value or removing a missing attribute does not count),
+  `notifyUserOfWrite` publishes, not retained, on
+  `aop/display/layers/popup/info`: `{"value": "A emissora <service>
+  atualizou os dados do perfil <nickname>.", "timeout": 5000}`. `<service>`
+  is the `serviceName` of the current service (`session:current-service`)
+  when the write is in its context; without a name, or with another scid,
+  the service id (nobody in this repository publishes `aop/services`, so on
+  the stack it is the id). Without a nickname, "...dados do perfil.". A
+  refused or failed write does not notify; a failure building or publishing
+  the notice is only logged, and the API still answers success. The
+  comparison uses the hash read before the write (for the quota), which is
+  not atomic with it.
+- aop `public/js/popup.js` (and a comment in `graphic-overlays/view.ejs`):
+  the graphics layer handles the `info` type: escaped text, no buttons (keys
+  go on to the page), closes itself on its `timeout` (5 s when absent, zero,
+  negative or not a number; `{"close":true}` does not close it), and never
+  takes a yes/no, QR code or PIN off the screen: with any pop-up open, the
+  notice waits in a queue and shows when the layer is free. With 3 notices
+  waiting, a new one is dropped and logged. A notice on screen that a
+  yes/no, QR code or PIN replaces goes back to the head of the queue and
+  shows whole later. The queue is for notices only; the rest of G2 stays
+  with Joel (`PENDENTE (Joel)`).
+- bcast `src/modules/users-test/app.ejs`: the avatar comes from C.6.14.6
+  through the edge (44642), by `fetch`, so the request carries the app's
+  `Origin`; it is shown as `<img src="blob:...">`, and no avatar, an error
+  answer, a network failure or a `Content-Type` that is not `image/...`
+  gives the page's default avatar (`bcast/CHANGELOG.md`).
+- The broker has no schema for the pop-up topics, and `popup/info` did not
+  get one (`infra/mqtt-broker/plugin/config/schemas.json`).
+- Tests: tv3ws `test/user-service.test.ts` (8 new: the Content-Type, the
+  avatar in C.6.14.2, the notice and when it does not go out); aop
+  `test/redis.test.js` (4 new: the file on creation, the default, the
+  refused profile, eviction), `test/popup.test.js` (9 new: the `info` type)
+  and `test/views-escape.test.js` (the avatar read from the file); infra
+  `redis/test/funcoes.test.js` (2 new: the rule against the contract regular
+  expression, and the volume from before G8), `contrato.test.js` (the AoP's
+  profile manager with a temporary `USER_DATA_PATH`) and `run.sh` (`imagem`:
+  the load avatar and the schema version).
+- Docs: `README.md`, `KNOWN-ISSUES.md`, `ARCHITECTURE.md`, the `docs/` site
+  (`decisoes-pendentes.md`, `glossario.md`, `arquitetura.md`,
+  `modelo-redis.md`, `apis-tv3ws.md`, `mqtt-topicos.md`,
+  `troubleshooting.md`, `como-testar.md` and the line references of
+  `proposta-c44-recursos-compartilhados.md`), `infra/README.md`,
+  `infra/redis/README.md`, `infra/docs/05`, `06`, `07` and `08`, and
+  `bcast/CHANGELOG.md`.
+
+#### Upgrading
+
+- `docker compose pull aop tv3ws bcast redis`, or, until the CI publishes
+  them, `docker compose build aop tv3ws bcast redis`. By the code: with an
+  older Redis the new services work (version 3 takes any text as avatar),
+  but its load, on a new volume, has the inline SVG, and the screens show
+  the default for that profile; with the new Redis and an older AoP,
+  profile creation answers 404 `{"error":200}` (the older AoP writes the
+  inline SVG); with an older AoP, the screens show the default avatar
+  instead of the file, and the notice does not appear (the page ignores the
+  unknown `info` type); with an older tv3ws there is no notice, and
+  C.6.14.6 sends the SVG as `application/octet-stream`, which the new
+  users-test replaces with the default; with an older bcast, users-test
+  shows the default.
+- Redis volume from before G8 (schema version 3): the profiles with the
+  inline SVG avatar (the AoP's and the load's) are outside the schema,
+  without compatibility (Luis's decision). The audit lists them (`campo
+  avatar: SVG em linha nao serve`), so `scripts/test-auth.sh` fails at its
+  final audit; choosing the profile (`lastAccess`), broadcaster attributes
+  and eviction keep working; rewriting the profile with the inline SVG is
+  refused; the screens show the default avatar. The load profile is fixed
+  with `docker exec redis redis-cli HSET
+  user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10 avatar
+  c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg` (the file reaches
+  `./user-files/thumbs` through `userfiles-seed` on `up`). A profile created
+  by the AoP before G8 has no file: drop the field (`HDEL user:<id>
+  avatar`; the screens show the default) or recreate the volume (`docker
+  compose down -v`, which also drops the created profiles and the broker's
+  retained messages).
+- An existing `./user-files` gets `thumbs/c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg`
+  on the next `up`; nothing already there is overwritten.
+
+#### Verified
+
+- On the stack (WSL2, 2026-10-12, evening), images rebuilt (Redis, tv3ws,
+  aop, bcast): `userfiles-seed` copied the seed avatar file; the audit
+  flagged only the seed profile (inline SVG, volume from before G8), fixed
+  with the `HSET` of the file name, then empty; C.6.14.6 through the edge
+  returned the avatar with `Content-Type: image/svg+xml`;
+  `scripts/test-auth.sh` 246/0 on the bridge and on the host network;
+  `scripts/test-dev-host.sh` 67/0; `test-template.sh` 13/0;
+  `test-consolidacao.sh`, `test-fase0.sh`, `test-bcast-shutdown.sh` and
+  `infra/redis/test/run.sh tudo` ok. Headless Chrome 154 on the real
+  graphics layer: the G9 notice shows its text literally and closes on its
+  own.
+
+- Unit, on the Windows machine with Node 20.8.1 (final code): tv3ws `npm
+  test` 123 PASS, 0 FAIL (115 before), and `npx tsc --noEmit` clean; aop
+  `npm test` 77 PASS, 0 FAIL (64 before); bcast `npx tsc --noEmit` clean. In
+  `node:20-alpine`, part of them again (aop 52, tv3ws 21, all PASS), for the
+  symbolic-link case Windows skips: a link out of the thumbnails directory
+  gives the default avatar, a link inside it is read.
+- Redis, in WSL2 with Docker (disposable containers, no stack):
+  `infra/redis/test/run.sh tudo` ok in the four modes (functions 30/30;
+  contract 4/4 plus the Go contract; image with schema version 4 and the
+  load avatar); a version-3 volume opened by the version-4 image, 11 PASS
+  (the audit lists the two inline-SVG profiles; last access, broadcaster
+  attributes and eviction keep working; rewriting is refused; the `HSET` of
+  the file name empties the audit). `scripts/seed-user-files.sh` in a
+  disposable `alpine:3`: 16 PASS (new install, install from before G8,
+  second run, existing file and broken link kept, deleted template file
+  back, subfolder and name with a space, read-only destination fails).
+- Mutations: 14 on the schema rule and its function, 2 on the seed script,
+  2 on the AoP's profile manager against the contract test, and 29 on the
+  AoP, the pop-up layer, tv3ws and users-test, all caught by the tests in
+  the end: the only survivor of the first run (a directory accepted as the
+  avatar file) was killed by a new case.
+- Chrome 154 headless, with doubles for the other services (no stack): the
+  AoP screens with the avatars read from the files (SVG and PNG) and the
+  default for a missing file, an inline SVG and no avatar, same box for all,
+  and the hostile SVG's script not run; the notice on screen, escaped,
+  closing on time, waiting for the yes/no answer and for the QR code to
+  close; users-test with the avatars from C.6.14.6 (one request per avatar,
+  all with the app's `Origin`) and the default for 305, a non-image answer,
+  an inline SVG and no avatar.
+- Docs: each statement of the files under Docs was checked against the code
+  of this entry.
+
 ### 2026-10-12, afternoon: defects found by the audit
 
 The documentation audit of the morning of 2026-10-12 read the code against

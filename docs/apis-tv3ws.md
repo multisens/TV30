@@ -177,6 +177,25 @@ Esse *consent* é a visibilidade do perfil por serviço guardada no Redis. Não 
 
 ---
 
+## Atributos de emissora e o aviso ao espectador (C.6.14.5)
+
+**`POST /tv3/{serviceContextId}/users/{userid}`** (C.6.14.5, Tabela C.72, p. 332; p. 350 do PDF). O corpo é um objeto de atributos; valor `""` remove o atributo. O tv3ws grava no hash `user:{id}:broadcaster-attrs:{scid}`, pela função `tv30_atributos_emissora` (`writeBroadcasterAttrs`, em `tv3ws/src/api/user/service.ts`), e responde o JSON dos atributos enviados. Corpo sem atributo, ou com `id`, `nickname`, `parentalControl` ou `maxContentRating`, dá 101; perfil inexistente, 305; perfil não visível no serviço, 405; `current-service` sem serviço em uso, 300; mais de 20 MB no hash resultante, 404 `{"error":200}`.
+
+**O aviso** (G9, decisão do Luís em 12/10, à noite). A Tabela C.72, em "Restrictions", diz que "it is necessary to notify the user that the application wants to change/add the attribute". A leitura do projeto: é aviso, e não pedido de confirmação. Depois de gravar, e só se algum valor mudou (gravar o mesmo valor ou remover um atributo que não existe não avisa), o tv3ws publica, sem retenção, em `aop/display/layers/popup/info`:
+
+```json
+{"value": "A emissora <serviço> atualizou os dados do perfil <apelido>.", "timeout": 5000}
+```
+
+- `<serviço>` é o `serviceName` do serviço corrente (o hash `session:current-service`, com os campos da Tabela C.8) quando a gravação é no contexto dele; sem nome, ou com outro `<service-context-id>`, o id do serviço da gravação. Nenhum módulo deste repositório publica `aop/services`, de onde o nome viria, então na stack o aviso traz o id (por exemplo, `urn:tv30:service:users-test`);
+- `<apelido>` é o `nickname` do perfil; sem ele, o texto termina em "...dados do perfil.";
+- gravação recusada ou que falha não avisa; falha ao montar ou publicar o aviso só vai para o log, e a resposta da API continua a de sucesso;
+- a mudança é medida contra o hash lido antes da gravação (o mesmo da conferência da quota), que não é atômico com ela: uma escrita concorrente no meio pode decidir o aviso pelo estado lido.
+
+A camada gráfica do AoP mostra o aviso por 5 s, escapado e sem botões, e não tira da tela um sim/não, QR code ou PIN aberto: ele espera numa fila e aparece quando a camada fica livre ([Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos)). Avisar depois de gravar, e não antes, é escolha do projeto.
+
+---
+
 ## Arquivos da aplicação e do perfil (C.6.4.7 e C.6.14.6)
 
 As duas rotas leem arquivos do disco do tv3ws a partir de um `path` que o cliente manda. Até 12/10, as duas faziam `path.join(<base>, <path>)` sem conferir o resultado: `GET /tv3/current-service/apps/<appId>/files?path=../package.json` devolvia o `package.json` do próprio tv3ws (medido em 12/10, fora da stack). Desde a correção de 12/10, o caminho é resolvido **dentro** de um diretório-base e não sai dele (`resolveInsideDir`, em `tv3ws/src/util/safe-path.ts`):
@@ -195,10 +214,12 @@ Caminho recusado e caminho inexistente têm a mesma resposta: o 305 de cada API.
 - Diretório, ou `path` omitido, vazio ou `/`: a estrutura de primeiro nível, em JSON, no formato da Tabela C.17, `{"files": [{"name", "size"}], "dirs": [{"name"}]}`. Antes, `path` omitido dava 105, e diretório, 404 `{"error":200}`. Escolhas da implementação, que a tabela não trata: arquivo comum vai em `files`, com o tamanho em bytes; link simbólico entra pelo destino, e só se o destino estiver dentro da base; outros tipos (socket, fifo) e nomes com barra invertida ficam de fora; a ordem é por nome.
 - Sem diretório da aplicação conhecido (`core.app.url` vazio: depois da troca de serviço ou de aplicação e antes de chegar o `.../path` da nova): 305. Marcado `PENDENTE (Joel)` em `tv3ws/src/api/aop-communication/app-files/service.ts`: a outra leitura da Tabela C.17 seria o 200 de recurso da plataforma indisponível.
 
-**`GET /tv3/current-service/users/files?path=<path>`** (C.6.14.6, Tabela C.73, p. 333; p. 351 do PDF). A base é o `USER_THUMBS` do tv3ws.
+**`GET /tv3/current-service/users/files?path=<path>`** (C.6.14.6, Tabela C.73, p. 333; p. 351 do PDF). A base é o `USER_THUMBS` do tv3ws, o diretório de miniaturas (`user-files/thumbs`, o mesmo em que o AoP grava o avatar de cada perfil desde a G8, decisão do Luís em 12/10, à noite).
 - Sem query: 105.
-- O arquivo só sai se o texto do `path` for igual ao campo `avatar` de algum perfil visível no serviço corrente (`checkConsent`, em `tv3ws/src/api/user/service.ts`). Basta um perfil visível com aquele `avatar`. Se ele só é o `avatar` de perfis que não são visíveis no serviço, a resposta é 405, o código da Tabela C.73 para "If the user has not granted access to the broadcaster corresponding to the informed service"; se não é o `avatar` de perfil nenhum, 305. Até 12/10, os dois casos davam 305. A visibilidade é o `user:{id}:consent` do testbed, e não o consentimento da seção 8.8.
-- Caminho fora de `USER_THUMBS` ou inexistente: 305 ("If a non-existent `<path>` is specified in the receiver"). Antes da correção, um caminho com `..` era lido onde quer que apontasse, desde que o mesmo texto estivesse no `avatar` de um perfil visível, e o avatar é gravado pela plataforma sem conferência de formato, a partir do corpo do `POST /profile/create` (`aop/src/modules/profile-manager/service.js`); o inexistente dava 404 `{"error":200}`.
+- O arquivo só sai se o texto do `path` for igual ao campo `avatar` de algum perfil visível no serviço corrente (`checkConsent`, em `tv3ws/src/api/user/service.ts`). Desde a G8, o `avatar` é o nome do arquivo (o AoP grava `<id do perfil>.svg`; a carga traz `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg`), e o `path` que o cliente manda é esse nome, como a C.6.14.2 o devolve. Basta um perfil visível com aquele `avatar`. Se ele só é o `avatar` de perfis que não são visíveis no serviço, a resposta é 405, o código da Tabela C.73 para "If the user has not granted access to the broadcaster corresponding to the informed service"; se não é o `avatar` de perfil nenhum, 305. Até 12/10, os dois casos davam 305. A visibilidade é o `user:{id}:consent` do testbed, e não o consentimento da seção 8.8.
+- Caminho fora de `USER_THUMBS` ou inexistente: 305 ("If a non-existent `<path>` is specified in the receiver"). Antes da correção, um caminho com `..` era lido onde quer que apontasse, desde que o mesmo texto estivesse no `avatar` de um perfil visível, e o avatar era gravado pela plataforma sem conferência de formato, a partir do corpo do `POST /profile/create` (`aop/src/modules/profile-manager/service.js`); o inexistente dava 404 `{"error":200}`. Desde a G8, o esquema do Redis confere o `avatar` (nome de arquivo sem diretório, com extensão `.svg`, `.png`, `.jpg`, `.jpeg` ou `.webp`), e o AoP grava o nome que ele mesmo gera; a conferência do caminho no tv3ws continua valendo para qualquer valor do campo.
+- `Content-Type` pela extensão do arquivo, como pede a Tabela C.73 ("derived from its extension, considering the MIME types supported by TV 3.0 AoP"): `image/svg+xml` (`.svg`), `image/png` (`.png`), `image/jpeg` (`.jpg`, `.jpeg`) e `image/webp` (`.webp`), sem diferença de caixa na extensão; outra extensão, `application/octet-stream` (`getMime`, em `tv3ws/src/api/user/service.ts`). Até a G8, só `.png`, `.jpg` e `.jpeg` tinham tipo, e o SVG saía como `application/octet-stream`. A resposta leva também `Content-Length` e `Content-Disposition: attachment`.
+- **Quem chama:** o users-test do bcast (`bcast/src/modules/users-test/app.ejs`), desde a G8, pede o avatar de cada perfil por esta API, na borda (44642), com `fetch`, para que o pedido leve o `Origin` da app e a borda a reconheça como associada; o conteúdo vira um `<img src="blob:...">`, e a falha (305, 405, rede ou `Content-Type` que não é `image/...`) mostra o avatar padrão da página. As telas do próprio AoP não passam por aqui: leem o arquivo do diretório e o embutem como `<img src="data:...">` (`aop/src/modules/profile-manager/avatar.js`).
 
 ---
 
