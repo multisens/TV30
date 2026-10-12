@@ -277,7 +277,7 @@ O P4 pede esquema declarado nos pontos de sinalização e de estado, com a escri
 **Decidido pelo Luís em 11/10: as seis escolhas da implementação do P4 ficam como foram feitas.** Até 11/10 estavam "A CONFIRMAR (Luís)": feitas na implementação, sem decisão, com o código e os testes seguindo cada uma. Não houve mudança de código.
 1. **Hash que já existe:** a função confere só os campos que grava; o que já estava fora do esquema não trava a escrita, e a auditoria o mostra. Registro novo ou regravado inteiro é conferido inteiro (`motivosHash` e `mergeHash`, em `infra/redis/funcoes.lua`).
 2. **Falha na partida do Redis:** biblioteca que não carrega encerra o container; carga inicial recusada pelo esquema deixa o container *unhealthy*, sem `seed:done` (`infra/redis/entrypoint.sh`).
-3. **Id do perfil (`idPerfil`):** de 1 a 64 caracteres, sem `:` (`infra/redis/esquema.json`), até o Joel decidir o UUID no `id` do perfil (item 1 do *PENDENTE (Joel)* acima).
+3. **Id do perfil (`idPerfil`):** valeu de 1 a 64 caracteres, sem `:`, só até o fim do dia: na segunda parte das decisões de 11/10 o Luís decidiu o UUID (F-3, item 1 do *PENDENTE (Joel)* acima, agora decidido), e o `infra/redis/esquema.json` (versão 2) passou a exigir UUID.
 4. **Formato da origem em `origins:associated`:** como o navegador manda no `Origin`: esquema e host em minúsculas, sem porta padrão e sem caminho. Origem fora desse formato é recusada.
 5. **Invariantes tiradas do código, e não da norma nem de decisão anterior** (`perfil-dependentes`, `autorizado-tem-registro`): valem, nas funções e na auditoria.
 6. **Formulário de perfil do AoP:** idiomas e lista de visibilidade fora do esquema respondem 400, com a mensagem, antes de gravar.
