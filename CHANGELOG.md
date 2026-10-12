@@ -13,6 +13,261 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-12, afternoon: defects found by the audit
+
+The documentation audit of the morning of 2026-10-12 read the code against
+the documents and found defects in the code itself. They were fixed in the
+afternoon, each one marked at its origin in the code. One more decision by
+Luis came with them: the 2.1 routes `GET` and `DELETE
+/tv3/remote-device/device/{handle}` are for local clients only, like
+C.6.15.5. Where a fix needed a behaviour that nobody has decided, the code
+has the minimum, marked `PENDENTE (Joel)`; those points and two for Luis are
+in `docs/decisoes-pendentes.md`, section *Achados de 12/10* (G1 to G9).
+
+#### Fixed
+
+- tv3ws and aop, pairing pop-up (C.4.3.2, C.4.3.3): the QR code and the PIN
+  stay on the TV screen until the end of pairing, the `GET /tv3/token` whose
+  `challenge-response` is accepted, and not 1 s as before. Right after that
+  response, tv3ws publishes `{"close":true}` on the same topic
+  (`aop/display/layers/popup/qrcode` or `.../pin`; `endPairing` in
+  `tv3ws/src/api/client-identification/service.ts`, `closeQRCodePopUp` and
+  `closePINPopUp` in `tv3ws/src/core.ts`), and the graphics layer closes the
+  open pop-up of that type (`handlePopupMessage` in
+  `aop/public/js/popup.js`). The pop-up is sent with a 120 s safety timeout
+  (`PAIRING_POPUP_TIMEOUT_MS`), a project choice (the standard sets no
+  timeout). A failed `/tv3/token` does not close it, and the end of pairing
+  of one client does not close the pop-up of another (tv3ws keeps the owner
+  of each pop-up in memory).
+- aop, the TV page: an invalid message on a pop-up topic is logged and
+  ignored; before, a JSON error escaped into the MQTT client and the page
+  stopped handling every later message (measured in Chrome 154). A new
+  pop-up replaces the one on screen with its own timeout (the timer of a
+  pop-up that left no longer closes the next one), and closing a pop-up
+  gives the keys back to the page (before, after "Sim"/"Não" the keys kept
+  going to the buttons of a closed pop-up).
+- infra `mqtt-broker` plugin: the message on `errors/<client_id>` is always
+  valid JSON and valid UTF-8 (`src/error_json.c`): RFC 8259 escaping, invalid
+  UTF-8 replaced by U+FFFD, the payload taken by its length (a NUL becomes
+  `\u0000`), at most 2047 bytes, per-field caps, cuts only between whole
+  units and an optional `"truncated":true`. Before, the fields went in
+  through `snprintf` without escaping (a quote in the payload gave invalid
+  JSON), and a message of 2048 bytes or more was not published (and its
+  buffer leaked). The topic replaces `+`, `#`, `/` and control characters of
+  the client id with `_` and is cut on a UTF-8 boundary, up to 255 bytes;
+  before, the cut could split a character and a `+` or `#` gave a wildcard
+  topic name.
+- infra `mqtt-broker` plugin: the validator reads the whole payload by its
+  length and accepts exactly one JSON text (`src/json_payload.c`, json-c in
+  strict mode): trailing data, NUL, comments, single quotes and trailing
+  commas are `INVALID_JSON`. Before, `{"value":1}lixo` and
+  `{"value":1}\0lixo` passed and were delivered. On `type: string` topics,
+  a payload that is not a JSON text is validated whole as a string. This
+  fixes a defect present since F-3 (2026-10-11): a profile UUID starting
+  with a digit, published on `aop/currentUser`, was read as a number and
+  refused (`Expected type 'string', got 'int'`): switching to a profile
+  whose id starts with a digit did not reach the subscribers of the topic.
+- infra `mqtt-broker` plugin, `src/response_time_tester.c`: the `id` of the
+  latency response is escaped, and the response buffer no longer leaks when
+  the response is not published.
+- tv3ws `GET /tv3/current-service/apps/{appid}/files` (C.6.4.7, Table C.17):
+  with `path` omitted, empty or `/`, or a directory, the answer is the
+  first-level listing `{"files": [{"name", "size"}], "dirs": [{"name"}]}`
+  of Table C.17 (before, 105 and 404 `{"error":200}`); a missing file is 305
+  (before, 404 `{"error":200}`).
+- tv3ws `core.ts`: changing the application clears the application
+  directory (`core.app.url`) until the new application's `.../path` arrives
+  (C.6.4.7 answers 305 meanwhile), and an empty message on
+  `aop/<sid>/currentApp` ends the current application. Before, the new
+  application served the previous one's directory, and the empty message
+  was ignored.
+- tv3ws `GET /tv3/current-service/users/files` (C.6.14.6, Table C.73): a
+  path that is only the avatar of profiles not visible in the current
+  service is 405 (before, 305); one visible profile is enough; a path that
+  is nobody's avatar stays 305, and a missing file is 305 (before, 404
+  `{"error":200}`).
+- tv3ws `GET /tv3/token`: a `challenge-response` that does not decrypt
+  (length or PKCS#7 padding) or comes as a list gets 102, like a wrong hash
+  (Table C.4); before, 404 `{"error":200}` from the exception, which also
+  told a padding error apart from a wrong hash.
+- tv3ws `GET /tv3/authorize`: `key=` empty with `pm=kex` is 105 (before, 404
+  `{"error":200}`).
+- infra `mqtt-broker/plugin/tests/test_all_validations.sh`: rewritten for
+  the current stack (it called the old `mosquitto-plugin` container and
+  waited for `errors/validation`); it now builds its own image and runs a
+  disposable broker.
+
+#### Security
+
+- tv3ws `/tv3/authorize` and `/tv3/token` (severe): an empty or blank query
+  parameter counts as missing (`queryParam` in
+  `client-identification/controller.ts`; Tables C.3 and C.4, 105). Before,
+  `GET /tv3/token?clientid=<authorized>&refresh-token=` (or an empty
+  `challenge-response=`) issued a new access token and refresh token
+  without checking anything, and the legitimate refresh token then got
+  101; a non-local client over HTTP skipped pairing and the HTTPS
+  requirement. `clientid=` empty on `/tv3/authorize` authorized the client
+  id `""`.
+- tv3ws `/tv3/token`: the challenge is single use. On the accepted
+  `challenge-response`, the pairing material (challenge, symmetric key, ECDH
+  pair) is taken from the client in the same synchronous step
+  (`takePairingMaterial` in `modules/auth-manager/client.ts`; Table C.4
+  allows discarding the key), so a repeated or concurrent answer gets 102.
+  Before, the same answer issued credentials again each time and rotated
+  the legitimate client's refresh token. If issuing fails after the check,
+  the material is restored and the attempt stays open.
+- tv3ws: refresh token and challenge comparisons in constant time
+  (`crypto.timingSafeEqual` over bytes, `safeEqual` in
+  `util/encryption.ts`). The challenge is compared as bytes; before, both
+  sides went through `.toString()` UTF-8, which loses bytes.
+- tv3ws, path traversal in C.6.4.7 and C.6.14.6: the requested path is
+  resolved inside the base directory and cannot leave it
+  (`util/safe-path.ts`: leading `/` optional, `..` that leaves the base,
+  backslash and NUL refused, symbolic links by their real target, empty base
+  refused), and a refused path is 305. Before,
+  `apps/<appId>/files?path=../package.json` returned tv3ws's own
+  `package.json` (measured), and C.6.14.6 read outside `USER_THUMBS` for a
+  path equal to some visible profile's avatar.
+- aop, HTML injection on the TV screen: the yes/no pop-up text (with the
+  client's `display-name`) and the PIN are escaped (`escapeHtml` in
+  `public/js/popup.js`). Before, a `display-name` with HTML ran script on
+  the TV, and the script could press the pop-up's own "Sim", authorizing
+  the client without the viewer (measured in Chrome 154).
+- aop, HTML injection in the catalog, the bootstrap application and the
+  profile chooser: `appName`, `globalServiceId` (BAM) and the profile
+  nickname are escaped, and the BAM icon and the avatars are shown as
+  `<img src="data:image/svg+xml;base64,...">` (`src/html.js`), where the SVG
+  runs no script and loads nothing. Before, script in them ran on the TV
+  (measured in Chrome 154).
+- aop, CSS injection in the bootstrap application: the BAM colors
+  (`backgroundColor`, `foregroundColor`) go into `<style>` only as
+  `#RRGGBB` (Table 6), and the ESG genre color only as `#RRGGBB` or
+  `#RRGGBBAA` (`cssHexColor` in `src/html.js`); otherwise the view default
+  (`#282828`, `#c8c8c8`, transparent genre). Before, `red; } body {
+  background: url(...) }` rewrote the page and loaded an external resource
+  (measured in Chrome 154).
+- aop: `selectService` and `selectProfile` send the id with
+  `encodeURIComponent`; before, `&`, `#`, `+` or `%` in it cut or changed
+  the id that reached `/select`.
+- bcast: the users-test avatar as `<img src="data:...">` and the eduplay quiz
+  messages and statistics as text (`bcast/CHANGELOG.md`).
+
+#### Changed
+
+- infra `edgegateway/routes.json` (Luis's decision, 2026-10-12, afternoon):
+  `GET` and `DELETE /tv3/remote-device/device/{handle}` (C.6.15.6 and
+  C.6.15.7 of Luis's 2.1 proposal to the Forum, outside Table C.2) get the
+  `classes` `local-associated` and `local-autonomous`, like C.6.15.5. They
+  leave the external surface (100 on 44643); on 44642 a non-local client
+  gets 106 from the edge in `enforce`. They have no `api` field, so the
+  C.6.7.8/C.6.7.9 lists do not change. Counts: internal 26 routes and 20
+  APIs, external 21 routes and 17 APIs. Whether their exact code joins F-1
+  stays with Joel (G3).
+- tv3ws `/tv3/authorize`: `pm=` empty counts as missing, and the client is
+  classified as local (before, 101).
+- aop: icons and avatars are `<img>` elements now; legitimate screens
+  differ in a few pixels from before (measured). An SVG without the SVG
+  namespace gets it added (three of the four bcast samples lack it); an SVG
+  that is not well-formed XML no longer shows (`PENDENTE (Joel)`, G7).
+- infra `mqtt-broker/infra/Dockerfile`: the plugin's C unit tests
+  (`tests/test_error_json.c`, `tests/test_json_payload.c`, each checked again
+  by Python's `json`) run in the image build, before the plugin is
+  compiled.
+- Tests: tv3ws `test/pairing-popup.test.ts` and `test/app-files.test.ts`
+  (new) and new cases in `client-identification.test.ts` and
+  `user-service.test.ts`; aop `test/popup.test.js` and
+  `test/views-escape.test.js` (new); infra `edgegateway/generate.test.js`
+  (the 2.1 routes; 15 tests) and the broker tests above, with
+  `tests/test_errors_json.sh` and its driver `tests/errors_json_driver.py`;
+  `scripts/test-auth.sh` (empty parameters, repeated challenge, the 2.1
+  routes) and a comment in `scripts/test-consolidacao.sh`.
+- Docs: `README.md`, `KNOWN-ISSUES.md`, `ARCHITECTURE.md`, the `docs/` site
+  (`apis-tv3ws.md`, `mqtt-topicos.md`, `como-testar.md`,
+  `decisoes-pendentes.md`, `troubleshooting.md`, `glossario.md`,
+  `proposta-c44-recursos-compartilhados.md`, `arquitetura.md`,
+  `borda-credenciais.md`, `modelo-redis.md`), `infra/README.md`,
+  `infra/docs/00`, `03`, `04`, `05`, `07`, `08` and `09`, the edge plugin and
+  broker READMEs and `bcast/CHANGELOG.md`.
+
+#### Pending (not decided)
+
+- Joel (`docs/decisoes-pendentes.md`, *Achados de 12/10*): G1, whether a
+  wrong challenge should end the pairing attempt; G2, one pop-up on the
+  graphics layer (another client's yes/no takes an ongoing pairing's QR code
+  off the screen) and a challenge that never expires; G3, whether the
+  non-local code on the 2.1 routes joins F-1; G4, the contract of
+  `aop/<sid>/currentApp` (no publisher in this repository); G5, the format
+  of the genre color (no table defines it); G6, 305 or 200 on C.6.4.7 with
+  no known application directory; G7, the SVG namespace tolerance.
+- Luis: G8, the avatar as inline SVG against the "file path" of Table 7;
+  G9, notifying the viewer on C.6.14.5 (Table C.72).
+- Rodrigo's component (P5): the retained node topics `.../user` and
+  `.../value`, and the topics tv3ws subscribes that nobody here publishes
+  (`aop/services`, `currentApp`, `path`, `doc/*`).
+
+#### Upgrading
+
+- `docker compose pull tv3ws aop bcast edgegateway mosquitto`, or, until the
+  CI publishes them, `docker compose build tv3ws aop bcast edgegateway
+  mosquitto`. By the code, with an older tv3ws the pop-up is back to about
+  1 s; with an older AoP and the new tv3ws, the page does not know the
+  closing message and reads it as opening an empty pop-up (not measured);
+  with an older broker, the id of a profile whose UUID starts with a digit
+  is refused on `aop/currentUser`; with an older edge, the 2.1 routes stay
+  on 44643 and open to non-local clients. Each older image also lacks its
+  security fixes.
+- Clients that publish JSON with trailing bytes (or a trailing NUL) on a
+  topic with a schema now get `INVALID_JSON`. Callers of the 2.1 routes on
+  44643 now get 100.
+
+#### Verified
+
+- On the stack (WSL2, 2026-10-12, afternoon), all images rebuilt (edge,
+  broker, Redis, tv3ws, aop, bcast): external surface with 21 of 26 routes;
+  `scripts/test-auth.sh` 246 PASS, 0 FAIL on the bridge and 246/0 with the
+  edge on the host network (empty parameter 105, repeated challenge 102,
+  2.1 routes 106 at 44642 and 100 at 44643); `scripts/test-dev-host.sh`
+  67/0; `test-template.sh` 13/0; `test-consolidacao.sh`, `test-fase0.sh`,
+  `test-bcast-shutdown.sh` and `infra/redis/test/run.sh tudo` ok; audit
+  empty. Headless Chrome 154: the QR code stays on screen and leaves on
+  `{"close":true}`; the PIN is drawn.
+
+- Unit, on the Windows machine with Node 20.8.1 (2026-10-12, afternoon,
+  final code): tv3ws `npm test` 115 PASS, 0 FAIL, and `npx tsc --noEmit`
+  clean; aop `npm test` 64 PASS, 0 FAIL; bcast `npx tsc --noEmit` clean;
+  `node --test edgegateway/generate.test.js` 15 PASS, 0 FAIL. In an
+  intermediate run (111 tests), `EADDRINUSE na porta sorteada`
+  (`multi-device.test.ts`) failed once and passed when run again; it draws
+  random ports.
+- Broker, in WSL2 with Docker: the unit tests in the image build
+  (`test_error_json` 144516 checks and 0 failures, 7877 messages checked
+  again by Python; `test_json_payload` 5242 checks and 0 failures, 2645 cases
+  checked by Python); on a disposable broker, `test_errors_json.sh` 494 PASS,
+  0 FAIL (the image of the previous commit: 204 PASS, 58 FAIL) and
+  `test_all_validations.sh` 118 PASS, 0 FAIL (previous commit: 61 PASS, 19
+  FAIL); 20,000 latency requests with a long id kept the broker's VmRSS
+  flat (before: +10 MB per 20,000).
+- Edge, on an isolated edge (own image tag and network, fake Redis and
+  tv3ws, no stack): the plugin registered 21 routes on the external surface
+  and 26 on the internal, with 17 and 20 APIs; `GET` and `DELETE
+  /tv3/remote-device/device/h1` gave 100 on 44643 in both modes, 106 to a
+  non-local client on 44642 in `enforce` and 107 without credentials;
+  `go vet`, `go test` (72 PASS, 1 SKIP) and the plugin build in
+  `krakend/builder:2.7.2`.
+- Chrome 154 headless, against the code before and after: the QR code
+  stays on screen and leaves with `{"close":true}`; invalid messages no
+  longer stop the page; the injected `display-name`, catalog, bootstrap,
+  profile, CSS and bcast payloads run before and do not run after, and the
+  legitimate screens still render.
+- Mutations: each fix was mutated and the tests run again; the mutations
+  that survived were checks covered by another check, or survivors predicted
+  beforehand.
+- Docs: each statement of the files under Docs was checked against the code
+  of this entry; route and API counts from `routes.json` with
+  `generate.js`; the 21 mermaid blocks of `infra/docs/` parse; the `docs/`
+  site builds (Jekyll in `ruby:3.3`) with no warning, and its 952 internal
+  links resolve.
+
 ### 2026-10-12 (Luis's decisions)
 
 On 2026-10-12 Luis decided five points: (1) port 44643 is fixed on the
