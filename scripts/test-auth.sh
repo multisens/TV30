@@ -8,7 +8,8 @@
 #   (no WSL desta maquina: wsl.exe -u root bash /mnt/d/.../scripts/test-auth.sh)
 #
 # Reuniao de 05/10 com o Joel: toda a validacao de credencial fica na borda e
-# o tv3ws fica "anonimo" (D-0510-1: sem 107 nem 106 por protocolo no tv3ws);
+# o tv3ws fica "anonimo" (D-0510-1: sem 107 no tv3ws, e o 106 por protocolo
+# so na renovacao do /token por HTTP, emissao de credencial);
 # a API C.6.8 (D-0510-2) e as APIs de informacao de API C.6.7.8/C.6.7.9
 # (D-0510-3) sao RESPONDIDAS pela borda (infra/edgegateway/plugin/
 # bindcontext.go e apiinfo.go), sem repasse ao tv3ws.
@@ -112,11 +113,11 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 H_INT=${H_INT:-http://localhost:44642}
-# C1 (decisao do Luis em 11/10): na bridge a 44643 e publicada sem porta fixa
-# no host (EDGE_EXT_PUBLISH; padrao: o Docker escolhe uma livre); no modo SSDP
-# (borda em rede do host) ela e a propria 44643. ext_url le a porta publicada
-# e e chamada de novo a cada recriacao da borda (edge_mode), porque a porta
-# sorteada muda. H_EXT no ambiente fixa o endereco e desliga a descoberta.
+# A 44643 e fixa por padrao, na bridge e no modo SSDP (decisao do Luis em
+# 12/10; de 11/10 a 12/10 ela saiu numa porta livre na bridge). Com
+# EDGE_EXT_PUBLISH=44643 (so o numero) o Docker escolhe uma porta livre: por
+# isso ext_url le a porta publicada e e chamada de novo a cada recriacao da
+# borda (edge_mode). H_EXT no ambiente fixa o endereco e desliga a descoberta.
 ext_url() {
   local p
   p=$(docker port edgegateway 44643/tcp 2>/dev/null | head -1 | sed 's/.*://')
@@ -1134,6 +1135,7 @@ else
   fail "[44643] GET /tv3/api-info -> status=$ST origem=$(origin_of) ids=$N (esperado ${API_EXT_N:-?} < $API_N) corpo=$(short)"
 fi
 expect_err "[44643] GET /tv3/api-info/tv3ws-bind-context-register (API so da 44642, P1.9)" 101 borda GET "$H_EXT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
+expect_err "[44643] GET /tv3/api-info/tv3ws-remotedevice-communication (C.6.15.5 so da 44642, Luis 12/10)" 101 borda GET "$H_EXT/tv3/api-info/tv3ws-remotedevice-communication" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info/tv3ws-bind-context-register" '^\{"receiverApi":\{"id":"tv3ws-bind-context-register","version":"2.0"\}\}$' GET "$H_INT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=ncl (subsistema conhecido, sem API)" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=ncl" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=nclua" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=nclua" "${TOK[@]}"
@@ -1199,6 +1201,12 @@ for PM in qrcode kex; do
     expect_pass "$S [44643] $CU com bind-token HS512" GET "$H_EXT$CU" "${NL_TOK[@]}" -H "bind-token: $BT_HS512"
   fi
   expect_pass "$S [44642] API fora de /authorize e /token por HTTP (sem 106 de ninguem, L3)" GET "$H_INT/tv3/current-service" "${NL_TOK[@]}"
+  # C.6.15.5 so para o cliente local (decisao do Luis em 12/10): a Tabela C.78
+  # pede 107 ao nao local; a borda responde 106 na 44642 (classe nao
+  # admitida) e 100 na 44643 (pela P1.9 a rota so existe na interna). O
+  # codigo exato fica com o Joel (F-1).
+  expect_err "$S [44642] GET /tv3/remote-device/devices/x (C.6.15.5, so cliente local)" 106 borda GET "$H_INT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
+  expect_err "$S [44643] GET /tv3/remote-device/devices/x (fora da externa, P1.9)" 100 borda GET "$H_EXT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
   expect_err "$S [44642] renovacao por HTTP com refresh-token" 106 tv3ws GET "$H_INT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
   if ! ext_skip "$H_EXT" "$S [44643] renovacao com refresh-token"; then
     req GET "$H_EXT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
@@ -1216,6 +1224,8 @@ for PM in qrcode kex; do
   expect_reuse "$S segundo /authorize do mesmo clientid (pm=$PM)" \
     "$H_INT/tv3/authorize?clientid=$NCID&display-name=tv30-test-nao-local&pm=$PM$RQ"
 done
+
+expect_pass "[44642] GET /tv3/remote-device/devices/x (C.6.15.5) pelo cliente local" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}"
 
 echo; echo "-- rota nao declarada e preflight CORS --"
 for H in "$H_INT" "$H_EXT"; do
