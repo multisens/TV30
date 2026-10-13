@@ -274,6 +274,13 @@ Desde 11/10 (C1, decisão do Luís), a camada gráfica do AoP conecta em `ws(s):
 | O AoP não sobe: `[boot] MQTT_WS_PORT invalida` ou `MQTT_HOST invalido para o MQTT por WebSocket` | Porta fora de 1 a 65535, ou `MQTT_HOST` com porta ou caminho | Corrija a variável; o `MQTT_HOST` é só o nome ou IP do broker |
 | A página tenta `ws://<host>:9001/mqtt` | Imagem do AoP anterior a 11/10, que ainda conecta direto na porta do Mosquitto no host, e essa porta não é mais fixa | Reconstrua o AoP (`docker compose build aop && docker compose up -d aop`) |
 
+## `GET /tv3/authorize` dá 103 (`Unable to ask for user authorization`)
+
+Desde a noite de 12/10 (decisão do Luís; G2 de [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes)), a TV atende um pedido de autorização de cada vez. Enquanto houver na tela o sim/não de outro pedido esperando resposta (até 10 s), ou o QR code ou o PIN de um pareamento (até o `/tv3/token` com o desafio resolvido, ou até a trava de 120 s), o `/tv3/authorize` responde 404 `{"error":103}` na hora, sem pop-up. É o que a C.4.2.3 manda ("so that the client can try again later"). Vale também para o mesmo `clientid` mandado duas vezes ao mesmo tempo.
+
+- **O que fazer:** tentar de novo depois. Se o pareamento de outro cliente ficou pela metade, a camada só libera no fim da trava de 120 s.
+- **No log do tv3ws:** `Camada grafica ocupada (<tipo> do cliente <id>): /tv3/authorize do cliente <id> recebe 103`.
+
 ## O QR code ou o PIN do pareamento some antes da hora, ou fica na tela
 
 Desde 12/10 (correção; C.4.3.2 e C.4.3.3), o pop-up do QR code e o do PIN ficam na tela até o fim do pareamento, o `GET /tv3/token` com a resposta ao desafio aceita. Nessa hora o tv3ws publica `{"close":true}` no mesmo tópico, e a camada gráfica fecha o pop-up. O pop-up também tem uma trava de 120 s, escolhida pelo projeto ([APIs do tv3ws]({{ site.baseurl }}/apis-tv3ws)).
@@ -281,7 +288,7 @@ Desde 12/10 (correção; C.4.3.2 e C.4.3.3), o pop-up do QR code e o do PIN fica
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
 | Some cerca de 1 s depois de aparecer | Imagem do tv3ws anterior a 12/10, que manda o pop-up com prazo de 1000 ms | Reconstrua o tv3ws (`docker compose build tv3ws && docker compose up -d tv3ws`) |
-| Some antes do fim do pareamento | A trava de 120 s acabou; ou outro pop-up tomou o lugar dele (o sim/não ou o pareamento de outro cliente): a camada gráfica tem um pop-up só (G2 de [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes)). O aviso da C.6.14.5 (`popup/info`, desde a G9) não toma o lugar: espera o QR code ou o PIN sair | Se o cliente já leu o código, o pareamento continua valendo: o challenge não expira. Se não leu, repita o `/tv3/authorize` com `clientid` novo (o antigo dá 101) |
+| Some antes do fim do pareamento | A trava de 120 s acabou. Desde a noite de 12/10, outro pedido de autorização não toma mais o lugar dele: recebe 103 (G2 de [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes)); com uma imagem do tv3ws anterior, o sim/não ou o pareamento de outro cliente o substituía. O aviso da C.6.14.5 (`popup/info`, desde a G9) não toma o lugar: espera o QR code ou o PIN sair | Se o cliente já leu o código, o pareamento continua valendo: o challenge não expira. Se não leu, repita o `/tv3/authorize` com `clientid` novo (o antigo dá 101) |
 | Fica na tela depois do `/tv3/token` | O `/tv3/token` não concluiu o pareamento: falhou (102, por exemplo, com o desafio errado, que deixa a tentativa aberta) ou foi uma renovação por `refresh-token`; ou o tv3ws reiniciou entre o `/authorize` e o `/token` e perdeu o pareamento (o `/token` dá 102); ou o pop-up na tela é de outro cliente | A trava de 120 s o fecha. No fim do pareamento, o log do tv3ws mostra `Closing QRCode popup` ou `Closing PIN popup` |
 
 ## `errors/<client_id>`: `INVALID_JSON` num payload que parece JSON, ou mensagem com `"truncated":true`

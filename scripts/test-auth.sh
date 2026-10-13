@@ -142,6 +142,8 @@ REUSE=$(uuid)    # local autonomo do caso de reuso de clientid (D-L2)
 NL_QR=$(uuid)    # nao local, pm=qrcode
 NL_KEX=$(uuid)   # nao local, pm=kex
 REDIS_CID=$(uuid) # /authorize com o redis congelado (D-0510-6): nunca autorizado
+C103=$(uuid)      # 103 com a camada grafica ocupada (Luis, 12/10): o pedido que espera o sim/nao
+C103B=$(uuid)     # e o outro cliente que chega nessa hora (recebe 103, nunca gravado)
 SVC_A="urn:tv30:test:auth-a-$RUN"
 SVC_B="urn:tv30:test:auth-b-$RUN"
 ASSOC="http://tv30-test-assoc-$RUN.invalid"     # origem "associada" simulada
@@ -287,9 +289,9 @@ restaura_redis() {
   # bind-context, entao nao ha funcao para isso. O que sobra (os conjuntos sem
   # os ids de teste) cumpre o esquema; a auditoria no fim confere.
   rc DEL "bind-context:$SVC_A" "bind-context:$SVC_B" "client:$CLIENT" "client:$REFUSED" \
-    "client:$REUSE" "client:$NL_QR" "client:$NL_KEX" "client:$REDIS_CID" >/dev/null
-  rc SREM clients:authorized "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" >/dev/null
-  rc SREM clients:blocked "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" >/dev/null
+    "client:$REUSE" "client:$NL_QR" "client:$NL_KEX" "client:$REDIS_CID" "client:$C103" "client:$C103B" >/dev/null
+  rc SREM clients:authorized "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" >/dev/null
+  rc SREM clients:blocked "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" >/dev/null
   echo "Redis restaurado (servico corrente='$(rc GET session:current-service-id)')"
 }
 
@@ -803,6 +805,47 @@ if [ "$(rc SISMEMBER clients:blocked "$REFUSED")" = 1 ] && [ "$(rc SISMEMBER cli
   pass "pop-up recusado: clientid em clients:blocked e fora de clients:authorized"
 else
   fail "pop-up recusado: blocked=$(rc SISMEMBER clients:blocked "$REFUSED") authorized=$(rc SISMEMBER clients:authorized "$REFUSED") (esperado 1 e 0)"
+fi
+
+# 103 com a camada grafica ocupada (decisao do Luis em 12/10, noite; C.4.2.3:
+# "If there is any restriction preventing the pop-up from being displayed at
+# that time, the implementation shall immediately send a response to the
+# request with error code 103"; Tabela C.3). Com o sim/nao de um pedido
+# esperando resposta, outro /tv3/authorize recebe 103 na hora, sem pop-up
+# novo, e o MESMO clientid tambem (ate 12/10, o segundo abria outro pop-up,
+# tomava a resposta e o primeiro acabava bloqueado; KNOWN-ISSUES.md). Depois
+# da resposta, o primeiro recebe o resultado dela.
+: >"$TMP/pop103"
+docker exec mqtt-broker mosquitto_sub -C 2 -W 10 -t "$POP/message" >"$TMP/pop103" 2>/dev/null &
+SUB103=$!
+sleep 1
+curl -s -m 25 -o "$TMP/b103" -w '%{http_code}' "$H_INT/tv3/authorize?clientid=$C103&display-name=tv30-test-103" >"$TMP/st103" 2>/dev/null &
+A103=$!
+for _ in $(seq 1 50); do [ -s "$TMP/pop103" ] && break; sleep 0.2; done
+if [ -s "$TMP/pop103" ]; then
+  expect_err "camada ocupada pelo sim/nao de outro pedido: /tv3/authorize de outro cliente" 103 tv3ws \
+    GET "$H_INT/tv3/authorize?clientid=$C103B&display-name=tv30-test-103"
+  expect_err "camada ocupada: o MESMO clientid ao mesmo tempo" 103 tv3ws \
+    GET "$H_INT/tv3/authorize?clientid=$C103&display-name=tv30-test-103"
+else
+  fail "camada ocupada: o sim/nao do primeiro pedido nao chegou em $POP/message"
+fi
+docker exec mqtt-broker mosquitto_pub -q 1 -t "$POP/response" -m false
+wait "$A103" 2>/dev/null
+if [ "$(cat "$TMP/st103")" = 404 ] && grep -q '"error":102' "$TMP/b103"; then
+  pass "camada ocupada: o primeiro pedido recebeu a resposta do espectador (recusa, 102)"
+else
+  fail "camada ocupada: o primeiro pedido -> status=$(cat "$TMP/st103") corpo=$(head -c 160 "$TMP/b103")"
+fi
+wait "$SUB103" 2>/dev/null
+N103=$(grep -c . "$TMP/pop103")
+if [ "$N103" = 1 ]; then pass "camada ocupada: um sim/nao so na tela (os dois 103 nao abriram pop-up)"
+else fail "camada ocupada: $N103 mensagens de sim/nao (esperada 1)"; fi
+if [ "$(rc SISMEMBER clients:blocked "$C103")" = 1 ] && [ "$(rc EXISTS "client:$C103B")" = 0 ] \
+   && [ "$(rc SISMEMBER clients:blocked "$C103B")" = 0 ]; then
+  pass "camada ocupada: so o primeiro pedido foi registrado (recusado); o do 103 nao"
+else
+  fail "camada ocupada: blocked($C103)=$(rc SISMEMBER clients:blocked "$C103") client:$C103B=$(rc EXISTS "client:$C103B") (esperado 1 e 0)"
 fi
 
 # ============================================================ ENFORCE =====
