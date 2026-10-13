@@ -13,6 +13,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-12, night: the 2 s edge limit kept; CORS answered by the plugin (Luis's decisions)
+
+Two open items of `KNOWN-ISSUES.md` that had no owner, decided by Luis on
+the night of 2026-10-12.
+
+#### Decided
+
+- The 2 s the edge waits for tv3ws (KrakenD's default; only
+  `GET /tv3/authorize` has its own 15 s, because of the authorization pop-up)
+  stay, now as a deliberate limit: a hung or stopped tv3ws gets the edge's
+  error 200 in 2 s instead of holding the client. No code change; the comment
+  in `infra/edgegateway/generate.js` and `KNOWN-ISSUES.md` say so.
+- CORS, option b: the `tv30-auth` plugin answers every `OPTIONS` itself with
+  the default values of C.4.1.9.3 (p. 207; p. 225 of the PDF), instead of
+  documenting the limitation (option a). KrakenD 2.7.2's CORS module
+  (`rs/cors` 1.11.0) refused a preflight whose `Access-Control-Request-Headers`
+  list was not in lexicographic order; that is deliberate in the library (the
+  Fetch standard makes browsers send it sorted) and `rs/cors` 1.11.1 keeps it.
+
+#### Changed
+
+- `infra/edgegateway/plugin/handler.go`: the preflight (`OPTIONS` with
+  `Access-Control-Request-Method`) is answered by the plugin on any path of the
+  surface and with the requested list in any order: 200, no body,
+  `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: *`,
+  `Access-Control-Allow-Headers` from `cors.allow_headers`,
+  `Access-Control-Max-Age: 43200` (`cors.max_age`, 12h) and `API-Version`.
+  On an undeclared path it passes too, as with the module, and the browser
+  then reads the request's 100. Every response also carries
+  `Access-Control-Expose-Headers` from `cors.expose_headers`
+  (`Content-Length, X-TV30-Auth-Warn`), which the module used to send; a
+  backend's own (the `/manifest` of tv3ws, B3) comes as a second line.
+- KrakenD's CORS module left the generated configs (`generate.js` no longer
+  writes `security/cors`): in krakend-ce 2.7.2 (`executor.go`) it wraps the
+  plugin, so it answered the preflight before the plugin saw it. The first
+  version of this change, with the module still configured, kept its 204 on
+  the stack. The `cors` block of `routes.json` keeps only what the plugin
+  reads (`allow_headers`, `expose_headers`, `max_age`); `generate.js` refuses
+  other fields, and the plugin refuses an invalid `cors_expose_headers` or
+  `cors_max_age` (dies whole, like the other config errors).
+- Tests: Go `TestPreflightRespondidoPelaBorda` and
+  `TestExposeHeadersEmTodaResposta`, config cases, `TestExternaMantemGetEOptions`
+  updated; `generate.test.js` +1 (16); `scripts/test-auth.sh` checks the
+  preflight with the list out of order, with spaces and on an undeclared path,
+  the `Max-Age`, and the `Expose-Headers` line on tv3ws and edge responses.
+- `scripts/test-dev-host.sh`, found while verifying: a run killed by SIGHUP
+  (the session closed from the Windows side) left its `tv30-devhost-bcast`
+  container up on the host network, holding 8081, and the next run failed
+  scenarios 2 to 4 with "porta 8081 ja ocupada". The script now traps HUP as
+  well as INT and TERM, and removes leftover `tv30-devhost-*` containers
+  (names only it uses) before starting.
+- Docs: `KNOWN-ISSUES.md` (2 s decided; CORS resolved), `docs/decisoes-pendentes.md`,
+  `docs/apis-tv3ws.md`, `infra/docs/04-pipeline-http.md`,
+  `infra/docs/05-autenticacao.md`, `infra/edgegateway/plugin/README.md`.
+
+#### Verified
+
+- Off the stack (Windows, Node 20.8.1, and WSL2 with Docker):
+  `node --test generate.test.js` 16 PASS, 0 FAIL; plugin Go tests in
+  `krakend/builder:2.7.2`: 73 PASS and 1 SKIP (the contract test), `gofmt`
+  clean, `go vet` ok. Mutations caught: the preflight sent back to the
+  router fails `TestPreflightRespondidoPelaBorda` and
+  `TestExternaMantemGetEOptions`; the `Expose-Headers` line removed fails
+  `TestExposeHeadersEmTodaResposta`.
+- On the stack (WSL2), edge image rebuilt: the first version, with KrakenD's
+  CORS module still configured, kept the module's 204 without the plugin's
+  headers, which led to the second. With it, by hand on 44642 and 44643, the
+  preflight with the list in order and out of order got 200 with ACAO `*`,
+  ACAM `*`, the ACAH list, `Expose-Headers` and `Max-Age: 43200`.
+  `scripts/test-auth.sh` 250 PASS, 0 FAIL on the bridge and 250/0 with the
+  edge on the host network; `scripts/test-dev-host.sh` 67/0 (the first run
+  gave 22 PASS and 3 FAIL, from the container left by an interrupted run;
+  the rerun, with the fix, removed it); `test-template.sh` 13/0;
+  `test-fase0.sh` ok; audit empty.
+- Headless Chrome 154, page at `http://localhost:8080`: `fetch` to the edge
+  with `Authorization`, `bind-token` and `Accept-Version` (GET, 44642), a JSON
+  POST (44643), an undeclared path (the 100 body readable) and a `DELETE`
+  with `key` all resolved, with `X-TV30-Auth-Warn` readable by the page.
+- Not run this time: `test-consolidacao.sh`, `test-bcast-shutdown.sh`,
+  `infra/redis/test/run.sh` (Redis, broker, bcast and tv3ws unchanged) and
+  the native Linux machine.
+
 ### 2026-10-12, night: H1 and H2 registered; stale B2 marker
 
 A check of every `PENDENTE (Joel)` marker in the code against

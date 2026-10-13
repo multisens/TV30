@@ -187,6 +187,17 @@ compose_env() { docker compose --profile mqtt --profile linux "$@"; }
 # do edgegateway; userfiles-seed cria ./user-files para o modulo do host).
 INFRA="redis mosquitto edgegateway userfiles-seed"
 
+# Restos de uma execucao interrompida (achado de 12/10, noite): o modulo do
+# host roda num container proprio, tv30-devhost-<modulo>, em rede do host. Se
+# a execucao anterior morreu sem restaurar, ele continua de pe e segura a
+# porta do modulo (a 8081, no caso do bcast), e os cenarios seguintes falham
+# com "porta ja ocupada". O nome e so deste script; sai antes de comecar.
+RESTOS=$(docker ps -aq --filter name='^tv30-devhost-' 2>/dev/null | tr '\n' ' ')
+if [ -n "${RESTOS// /}" ]; then
+  echo "removendo restos de uma execucao interrompida: $(docker ps -a --filter name='^tv30-devhost-' --format '{{.Names}}' | tr '\n' ' ')"
+  docker rm -f $RESTOS >/dev/null 2>&1
+fi
+
 # Servicos da stack que estavam rodando antes do teste (define a restauracao).
 ANTES=$(docker ps --filter label=com.docker.compose.project=tv30 \
           --format '{{.Label "com.docker.compose.service"}}' 2>/dev/null | sort -u | tr '\n' ' ')
@@ -851,7 +862,10 @@ restaurar() {
   fi
 }
 trap 'restaurar' EXIT
-trap 'echo; echo "interrompido"; exit 130' INT TERM
+# HUP tambem: fechar a sessao (o wsl.exe encerrado do lado do Windows, por
+# exemplo) mandava SIGHUP, que sem trap matava o script sem restaurar (achado
+# de 12/10, noite)
+trap 'echo; echo "interrompido"; exit 130' INT TERM HUP
 
 # ------------------------------------------------------------------ main ---
 

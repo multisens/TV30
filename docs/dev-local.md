@@ -38,7 +38,7 @@ No fim, se havia qualquer container do projeto `tv30` de pé antes do teste, res
 
 Outras variáveis do script: `DEVHOST_IMAGEM` (padrão `node:23-alpine`, a mesma base dos Dockerfiles em `infra/dockerfiles/`) e `DEVHOST_TIMEOUT` (padrão 300 s, contando o `npm ci` no modo docker). `JWT_SECRET`, `JWT_ISSUER` e `SERVER_URL` são lidos do shell, depois do `.env` da raiz, depois do padrão do compose. O `MQTT_WS_PORT` do aop do host não vem mais do `.env` (até 11/10, vinha): o script o tira do Docker, com a porta em que a 9001 do Mosquitto foi publicada (`porta_ws_mqtt`, C1). As variáveis de proxy e registro do npm (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `NPM_CONFIG_REGISTRY`, `NPM_CONFIG_STRICT_SSL`) são repassadas ao container. Em rede corporativa que intercepta SSL, o `npm ci` dentro do container pode falhar por certificado.
 
-No modo `docker`, o cache do npm fica no volume nomeado `tv30-devhost-npm` (montado em `/root/.npm`), para que o `npm ci` dos cenários seguintes não baixe tudo de novo. O script **não** apaga esse volume. Para removê-lo: `docker volume rm tv30-devhost-npm`.
+No modo `docker`, cada módulo do host roda num container `tv30-devhost-<módulo>`, que o script remove no fim de cada cenário. Desde a noite de 12/10, ele também remove, ao começar, os que uma execução interrompida tenha deixado de pé (seguravam a porta do módulo, como a 8081 do bcast, e os cenários seguintes falhavam com "porta ja ocupada"), e restaura a stack também quando a sessão é fechada (SIGHUP). O cache do npm fica no volume nomeado `tv30-devhost-npm` (montado em `/root/.npm`), para que o `npm ci` dos cenários seguintes não baixe tudo de novo. O script **não** apaga esse volume. Para removê-lo: `docker volume rm tv30-devhost-npm`.
 
 ### O que cada cenário verifica
 
