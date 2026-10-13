@@ -365,7 +365,10 @@ expect_pass() {
 }
 
 # C.4.1.9.2: exatamente um Access-Control-Allow-Origin: * (duplicado, o
-# Chrome recusa), com ou sem Origin na requisicao
+# Chrome recusa), com ou sem Origin na requisicao. Desde 12/10 (opcao b do
+# Luis: o CORS e todo do plugin, sem o modulo CORS do KrakenD), tambem um
+# Access-Control-Expose-Headers com o X-TV30-Auth-Warn (cors.expose_headers),
+# para o navegador ler o aviso do warn
 expect_acao() {
   local name=$1 why=""; shift
   req "$@"
@@ -373,7 +376,10 @@ expect_acao() {
   local n; n=$(grep -ci '^Access-Control-Allow-Origin:' "$TMP/h2")
   [ "$n" = 1 ] || why="$why acao-linhas=$n"
   [ "$(hdr Access-Control-Allow-Origin)" = "*" ] || why="$why acao='$(hdr Access-Control-Allow-Origin)'"
-  if [ -z "$why" ]; then pass "$name -> um Access-Control-Allow-Origin: * (status $ST)"; else fail "$name -> esperado um ACAO *:$why"; fi
+  n=$(grep -ci '^Access-Control-Expose-Headers:' "$TMP/h2")
+  [ "$n" = 1 ] || why="$why expose-linhas=$n"
+  hdr Access-Control-Expose-Headers | grep -qi 'X-TV30-Auth-Warn' || why="$why expose='$(hdr Access-Control-Expose-Headers)'"
+  if [ -z "$why" ]; then pass "$name -> um Access-Control-Allow-Origin: * e o Expose-Headers da borda (status $ST)"; else fail "$name -> esperado um ACAO * e o Expose-Headers:$why"; fi
 }
 
 # C.4.1.9.3: OPTIONS sem preflight numa API declarada -> 200 com ACAO, ACAM e ACAH
@@ -430,10 +436,12 @@ expect_edge_warn() {
   if [ -z "$why" ]; then pass "$name -> 200 da borda com X-TV30-Auth-Warn: $code"; else fail "$name -> esperado 200 da borda com aviso $code:$why"; fi
 }
 
-# preflight CORS (modulo CORS do KrakenD): expect_preflight NOME URL METODO
-# CABECALHOS. Os cabecalhos pedidos vao em ordem lexicografica, como o
-# navegador manda: o modulo CORS do KrakenD 2.7.2 recusa a lista fora de
-# ordem em qualquer rota (achado da rodada de 05/10)
+# preflight CORS: expect_preflight NOME URL METODO CABECALHOS. Desde 12/10
+# (decisao do Luis, opcao b) quem responde e o plugin da borda, em qualquer
+# caminho e com a lista pedida em qualquer ordem: o modulo CORS do KrakenD
+# 2.7.2 (rs/cors 1.11.0), que respondia antes, recusava a lista fora de ordem
+# lexicografica. Resposta: 200 com ACAO *, ACAM * (C.4.1.9.3), o ACAH do
+# routes.json e Access-Control-Max-Age 43200 (o max_age 12h do routes.json)
 expect_preflight() {
   local name=$1 url=$2 m=$3 hs=$4 why="" h
   req OPTIONS "$url" -H "Origin: $OTHER_ORIGIN" -H "Access-Control-Request-Method: $m" \
@@ -441,7 +449,8 @@ expect_preflight() {
   [ "$CE" = 0 ] || why="$why curl=$CE"
   [ "${ST:0:1}" = 2 ] || why="$why status=$ST"
   [ "$(hdr Access-Control-Allow-Origin)" = "*" ] || why="$why acao='$(hdr Access-Control-Allow-Origin)'"
-  hdr Access-Control-Allow-Methods | grep -qi "$m" || why="$why allow-methods='$(hdr Access-Control-Allow-Methods)'"
+  [ "$(hdr Access-Control-Allow-Methods)" = "*" ] || why="$why allow-methods='$(hdr Access-Control-Allow-Methods)'"
+  [ "$(hdr Access-Control-Max-Age)" = 43200 ] || why="$why max-age='$(hdr Access-Control-Max-Age)'"
   for h in ${hs//,/ }; do
     hdr Access-Control-Allow-Headers | grep -qi "$h" || why="$why allow-headers='$(hdr Access-Control-Allow-Headers)'"
   done
@@ -799,7 +808,8 @@ fi
 # ============================================================ ENFORCE =====
 # B3 (decisao do Luis em 11/10): o /manifest expoe ao navegador os seis
 # cabecalhos proprios dele (Access-Control-Expose-Headers do tv3ws,
-# tv3ws/src/manifest.ts). O modulo CORS da borda manda outra linha do mesmo
+# tv3ws/src/manifest.ts). O plugin da borda (ate 12/10, o modulo CORS do
+# KrakenD) manda outra linha do mesmo
 # cabecalho (Content-Length, X-Tv30-Auth-Warn) e nao a sobrescreve: as duas
 # linhas valem, entao o caso junta todas.
 req GET "$H_INT/manifest" -H "Origin: $OTHER_ORIGIN"
@@ -1165,8 +1175,8 @@ expect_api_version "[44642] 101 da borda" 2.0
 expect_err "[44642] GET /tv3/bind-context com Accept-Version 3.0" 100 borda GET "$H_INT/tv3/bind-context" "${TOK[@]}" -H "bind-token: $BT_HS512" -H 'Accept-Version: 3.0'
 expect_api_version "[44642] 100 da borda em /tv3/bind-context" 2.1
 expect_err "[44642] PUT /tv3/api-info (metodo nao declarado)" 100 borda PUT "$H_INT/tv3/api-info" "${TOK[@]}"
-# CORS das rotas da borda: o preflight passa ao modulo CORS do KrakenD (o
-# endpoint continua gerado); OPTIONS sem preflight o plugin responde
+# CORS das rotas da borda: o plugin responde o preflight (opcao b, Luis
+# 12/10) e o OPTIONS sem preflight
 for H in "$H_INT" "$H_EXT"; do
   S="[${H##*:}]"
   expect_preflight "$S preflight GET /tv3/api-info" "$H/tv3/api-info" GET authorization
@@ -1250,16 +1260,14 @@ for H in "$H_INT" "$H_EXT"; do
   expect_err "$S GET /tv3/abc" 100 borda GET "$H/tv3/abc"
   expect_err "$S POST /tv3/users (rota antiga)" 100 borda POST "$H/tv3/users" -H 'Content-Type: application/json' -d '{}'
   expect_err "$S PUT /tv3/current-service (metodo nao declarado)" 100 borda PUT "$H/tv3/current-service"
-  req OPTIONS "$H$CU" -H "Origin: $OTHER_ORIGIN" -H 'Access-Control-Request-Method: GET' \
-      -H 'Access-Control-Request-Headers: authorization,bind-token'
-  if [ "$CE" = 0 ] && [ "${ST:0:1}" = 2 ] && hdr Access-Control-Allow-Headers | grep -qi 'bind-token'; then
-    pass "$S OPTIONS preflight (bind-token) -> $ST, Allow-Headers: $(hdr Access-Control-Allow-Headers)"
-  else
-    fail "$S OPTIONS preflight -> curl=$CE status=$ST allow-headers='$(hdr Access-Control-Allow-Headers)'"
-  fi
-  req OPTIONS "$H/tv3/xyz/abc" -H "Origin: $OTHER_ORIGIN" -H 'Access-Control-Request-Method: GET'
-  if [ "$CE" = 0 ]; then pass "$S OPTIONS preflight em caminho nao declarado -> $ST (sem reset)"
-  else fail "$S OPTIONS preflight em caminho nao declarado -> curl=$CE (conexao)"; fi
+  expect_preflight "$S OPTIONS preflight (bind-token)" "$H$CU" GET authorization,bind-token
+  # a lista fora de ordem lexicografica, que o modulo CORS do KrakenD
+  # recusava ate 12/10 (opcao b do Luis: o plugin responde)
+  expect_preflight "$S OPTIONS preflight com a lista fora de ordem" "$H$CU" POST content-type,bind-token
+  expect_preflight "$S OPTIONS preflight com a lista fora de ordem e espacos" "$H$CU" GET "bind-token, authorization, accept-version"
+  # caminho nao declarado: o preflight tambem passa (como no modulo CORS), e o
+  # navegador le o 100 da requisicao em seguida
+  expect_preflight "$S OPTIONS preflight em caminho nao declarado" "$H/tv3/xyz/abc" GET authorization
   # OPTIONS sem Access-Control-Request-Method nao e preflight: numa API
   # declarada responde com os cabecalhos da C.4.1.9.3; fora da tabela, 100
   expect_options "$S OPTIONS sem preflight em rota declarada" "$H$CU"
