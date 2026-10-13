@@ -84,7 +84,7 @@ Nessas rotas, a borda também negocia a versão (`Accept-Version`), com as mesma
 
 ## Lacunas
 
-O que a norma deixa em aberto, ou que o projeto ainda não decidiu, tem um comportamento provisório marcado `PENDENTE (Joel)` no código. A lista e o estado de cada ponto ficam em [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes), seção A, e, para a F-1, seção F:
+O que a norma deixa em aberto, ou que o projeto ainda não decidiu, tem um comportamento provisório marcado `PENDENTE (Joel)` no código. A lista e o estado de cada ponto ficam em [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes), seção A; para a F-1, seção F; e, para a H1 e a H2, seção H:
 
 - **L1:** reconhecer o local associado pelo `Origin` (risco aceito pelo Luís em 03/10);
 - **L2:** o `serviceContextId` é uma constante do tv3ws, e nas rotas `/tv3/{serviceContextId}/...` só vale `current-service` ou a constante (outro valor dá 108);
@@ -93,6 +93,8 @@ O que a norma deixa em aberto, ou que o projeto ainda não decidiu, tem um compo
 - **L5:** o relógio do bind-token é o do host, e não o System Time Fragment;
 - **F-1** (ligada à L3): com TLS na 44643, se as rotas só do cliente local dão 100 ou 106 ali (C.4.1.8); e, desde 12/10, se o não local recebe 107 (Tabela C.78) ou 106 (C.4.1.8) na C.6.15.5 (hoje, 106 na 44642 e 100 na 44643);
 - **L7:** liberar os recursos compartilhados ao revogar uma chave (C.4.4) não está implementado; em 11/10, o Luís pediu uma proposta de desenho para levar ao Joel (A10, [Proposta: recursos compartilhados (C.4.4)]({{ site.baseurl }}/proposta-c44-recursos-compartilhados)).
+- **H1:** o associado reconhecido pelo `Origin` não é limitado ao próprio contexto de serviço nas rotas `/tv3/{serviceContextId}/...` (C.4.1.1: "referencing their own service context");
+- **H2:** sem serviço corrente, as rotas com bind-token dão 108, e a maioria das tabelas dessas APIs prevê 300.
 
 A E6 (exigir `clients:authorized`), que estava nesta lista, foi decidida pelo Luís em 11/10: a borda exige (acima).
 

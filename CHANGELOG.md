@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-12, night: H1 and H2 registered; stale B2 marker
+
+A check of every `PENDENTE (Joel)` marker in the code against
+`docs/decisoes-pendentes.md` found two edge behaviors marked for Joel in
+`infra/edgegateway/plugin/handler.go` and in the plugin README that the page
+did not list, and one marker for a point Luis had already decided. No
+behavior changed.
+
+#### Documentation
+
+- `docs/decisoes-pendentes.md`, new section H, for Joel:
+  - H1: the associated client, recognized by `Origin`, is not limited to its
+    own service context on `/tv3/{serviceContextId}/...` routes (C.4.1.1,
+    p. 222 of the PDF: "referencing their own service context").
+  - H2: with no current service, `token+bind` routes answer 108, while most
+    of their tables list "300: If the DTV function is not in use in the
+    receiver" (Tables C.17 and C.68 to C.73; Table C.81 does not).
+- H1 and H2 also listed in `docs/borda-credenciais.md`,
+  `docs/avaliacao-item9-credenciais.md`, `docs/glossario.md`,
+  `infra/docs/05-autenticacao.md` and `infra/edgegateway/plugin/README.md`,
+  and named in the two comments of `handler.go`.
+- `tv3ws/src/ssdp-config.ts`: the comment on the loopback default of the
+  announced host said `PENDENTE (Joel)`, but B2 (Luis, 2026-10-11) decided it:
+  `SSDP_ADVERTISE_HOST` is mandatory with the edge announcement on, and in
+  tv3ws (the `/manifest` and the dev-host Node announcer) the chain stays,
+  with the warning. Now `DECIDIDO (Luis, 11/10; B2)`; the same note in
+  `docs/ssdp-verificacao.md` was rewritten as history.
+
 ### 2026-10-12, evening: G8 and G9 (Luis's decisions)
 
 On the evening of 2026-10-12 Luis decided the two points of *Achados de
