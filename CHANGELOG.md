@@ -13,6 +13,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### 2026-10-12, late night: one authorization at a time, 103 with the graphic layer busy (Luis's decision, first question of G2)
+
+Luis decided the first question of G2 (*Achados de 12/10* in
+`docs/decisoes-pendentes.md`, until then with Joel) and, with it, the
+simultaneous-authorizations issue of `KNOWN-ISSUES.md`. The rest of G2, the
+expiry of the pairing challenge, stays with Joel.
+
+#### Decided
+
+- While the graphic layer shows the yes/no of a request still waiting for an
+  answer, or the QR code or the PIN of a pairing, a new `/tv3/authorize`
+  gets 404 `{"error":103}` at once, with no pop-up, from another client and
+  from the same `clientid` alike. C.4.2.3 (p. 209; p. 227 of the PDF): "If
+  there is any restriction preventing the pop-up from being displayed at that
+  time, the implementation shall immediately send a response to the request
+  with error code 103, so that the client can try again later"; Table C.3
+  (p. 215; p. 233 of the PDF): "103: When the TV 3.0 receiver is unable to
+  display the authorization pop-up". The other options were a pop-up queue
+  and keeping the replacement.
+
+#### Changed
+
+- `tv3ws/src/api/client-identification/service.ts`: one in-memory state of
+  the layer (type, owner, deadline). `reservarCamada` reserves it for the
+  yes/no of a request (10 s plus 5 s of slack for the Redis writes before the
+  pairing pop-up); the QR code or PIN takes it over with no gap
+  (`ocuparComPareamento`, 120 s, the lock of the pop-up); `liberarReserva`
+  releases it at the end of the request unless it already became the
+  pairing's; `endPairing` releases it on pairing success. The reservation
+  belongs to the request, not to the `clientid`. Replaces `popUpOwner`.
+- `tv3ws/src/api/client-identification/controller.ts`: the 103 comes after
+  the 105 and the 101, right before the yes/no, with no `await` between the
+  reservation and the publication; the rest of `/tv3/authorize` moved to
+  `authorizeReserved`, inside a `try/finally` that releases the reservation.
+- Effect on the issues: two authorizations no longer mix (the single handler
+  per response topic in `core.ts` is no longer reached by them; it stays in
+  the code), and the yes/no of another client no longer takes the QR code or
+  the PIN of a pairing in progress off the screen. The AoP did not change:
+  it still replaces a pop-up if it gets one.
+- The challenge still does not expire (G2, Joel): after the 120 s lock the
+  layer is free, and the client that read the code can still finish.
+- Tests: `pairing-popup.test.ts` (the two cases that assumed replacement
+  became 103 cases, plus the yes/no waiting with another client and the same
+  `clientid`, refusal, error after the reservation and the 120 s lock with a
+  test clock); `client-identification.test.ts` starts every case with the
+  layer free; `scripts/test-auth.sh` gets the 103 on the stack (another
+  client and the same `clientid` while a yes/no waits; one yes/no only; the
+  first request gets the viewer's answer; only it is recorded).
+- Docs: `docs/decisoes-pendentes.md` (G2 split), `KNOWN-ISSUES.md` (two
+  entries, and a new one: fixed ports inside Linux's ephemeral range, found
+  while verifying, open for Luis), `docs/apis-tv3ws.md`, `docs/mqtt-topicos.md`, `docs/glossario.md`,
+  `docs/troubleshooting.md` (new entry for the 103), `docs/como-testar.md`,
+  `infra/docs/05-autenticacao.md`, `infra/docs/08-mqtt-map.md`.
+
+#### Verified
+
+- Off the stack (Windows, Node 20.8.1): tv3ws `npm test` 127 PASS, 0 FAIL
+  (were 123) and `npx tsc --noEmit` clean. Six mutations in `service.ts` and
+  `controller.ts`; five caught (no 103, no release at the end of the request,
+  QR code and PIN not taking the layer, no 120 s lock, 103 before 101). The
+  one that releases by `clientid` instead of by request passes: in the tested
+  cases it is equivalent, because a request that gets 103 never reserves; the
+  identity only matters when a request's reservation expires before it ends.
+- On the stack (WSL2), tv3ws image rebuilt: `scripts/test-auth.sh` 255 PASS,
+  0 FAIL on the bridge and 255/0 with the edge on the host network, with the
+  five new cases (another client and the same `clientid` get 103 while a
+  yes/no waits; one yes/no only; the first request gets the viewer's refusal,
+  102; only it is recorded); `scripts/test-dev-host.sh` 67/0 on the second
+  run (the first gave 59 PASS and 1 FAIL: the host tv3ws got
+  `EADDRINUSE :::44654` minutes after the script found the port free, an
+  ephemeral-port collision, now a `KNOWN-ISSUES.md` entry); `test-template.sh`
+  13/0; `test-fase0.sh` ok; audit empty.
+- Not run this time: the headless Chrome pop-up check (the AoP did not
+  change) and the native Linux machine.
+
 ### 2026-10-12, night: the 2 s edge limit kept; CORS answered by the plugin (Luis's decisions)
 
 Two open items of `KNOWN-ISSUES.md` that had no owner, decided by Luis on
