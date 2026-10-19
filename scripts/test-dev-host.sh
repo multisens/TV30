@@ -6,16 +6,14 @@
 # comunicacao host <-> rede do Docker em cinco combinacoes:
 #
 #   1  tv3ws no host | containers: redis, mosquitto, edgegateway (variante
-#      windows: backends em host.docker.internal:44654/44655), aop, bcast;
-#      o tv3ws do host anuncia o SSDP sozinho (a borda, na bridge, nao anuncia)
+#      windows: backends em host.docker.internal:44654/44655), aop, bcast
 #   2  aop no host   | containers: redis, mosquitto, edgegateway (variante
 #      linux), tv3ws, bcast (BCAST_HOSTNAME=localhost, BCAST_PUBLISH=8081:8081)
 #   3  bcast no host | containers: redis, mosquitto, edgegateway (variante
 #      linux), tv3ws, aop (alcanca o host por host.docker.internal)
 #   4  tv3ws, aop e bcast no host AO MESMO TEMPO | containers: redis,
 #      mosquitto, edgegateway (variante windows); bcast com
-#      BCAST_HOSTNAME=127.0.0.1 (o aop que o alcanca tambem esta no host);
-#      como no 1, o tv3ws do host e o unico anunciante SSDP
+#      BCAST_HOSTNAME=127.0.0.1 (o aop que o alcanca tambem esta no host)
 #   5  componente novo no host (exemplo de templates/componente) | containers:
 #      redis e mosquitto; a borda fica PARADA durante o cenario
 #
@@ -49,10 +47,10 @@
 # derrubada (docker compose down) se nao estava.
 #
 # A borda roda SEMPRE na bridge durante o teste (COMPOSE_FILE fixo em
-# docker-compose.yml), mesmo que o .env ligue o docker-compose.ssdp.yml (borda
-# em rede do host, anunciando o SSDP; L6 = opcao A, 09/10); no cenario 5 ela
-# fica parada. A restauracao volta a configuracao do .env, inclusive esse
-# override.
+# docker-compose.yml); no cenario 5 ela fica parada. A restauracao volta a
+# configuracao do .env. O anuncio SSDP nao entra aqui: desde 15/10 ele e do
+# anunciante nativo do host (./tv30 up; complemento do Joel), e o anunciante
+# Node que o tv3ws do host rodava nos cenarios 1 e 4 saiu.
 #
 # "Host" = processo na rede do host. Duas formas (DEVHOST_MODO):
 #   node    node/npm do PATH, numa copia temporaria do modulo (sem
@@ -179,7 +177,13 @@ LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/tv30-devhost-logs.XXXXXX")
 
 # Toda chamada ao compose ativa os dois profiles: tv3ws/aop/bcast/sysctl-init
 # tem profile "linux" e o mosquitto "mqtt" (sem eles, clone sem .env nao os ve).
-compose() { COMPOSE_FILE=docker-compose.yml docker compose --profile mqtt --profile linux "$@"; }
+# A borda do teste sobe em warn, explicito (DEVHOST_AUTH_ENFORCE muda): o que
+# este script prova e o caminho de rede host <-> containers, e nao a
+# credencial, que e do scripts/test-auth.sh. Desde 15/10 o padrao da stack e
+# enforce, e nele o token de teste (sub fora de clients:authorized, E6) daria
+# 107 antes de chegar ao modulo do host. A restauracao (compose_env) volta ao
+# modo do .env.
+compose() { COMPOSE_FILE=docker-compose.yml AUTH_ENFORCE=${DEVHOST_AUTH_ENFORCE:-warn} docker compose --profile mqtt --profile linux "$@"; }
 # restauracao: a configuracao do .env (COMPOSE_FILE incluido)
 compose_env() { docker compose --profile mqtt --profile linux "$@"; }
 
@@ -482,7 +486,7 @@ checar_redis_mqtt() { checar_redis_host; checar_mqtt_host; }
 # controller.ts): com servico, 200 com serviceContextId; sem servico (nada
 # selecionado no catalogo, o caso do cenario 1), 404 {"error":300}; valem os
 # dois. O que se prova aqui e o caminho borda -> tv3ws do host. NAO prova o
-# JWT_SECRET compartilhado: em warn (padrao) a borda repassa mesmo com token
+# JWT_SECRET compartilhado: em warn (o modo da borda deste teste; ver compose) a borda repassa mesmo com token
 # invalido. O X-TV30-Auth-Warn, registrado como info por
 # checar_borda_tv3ws_host, diz o que a borda acharia do token em enforce:
 # desde a E6 (decisao do Luis em 11/10) o sub deste token de teste

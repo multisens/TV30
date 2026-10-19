@@ -46,9 +46,9 @@ por bind, a causa já está nomeada no início do log.
 
 ### Quais portas podem estar presas (C1, decisão do Luís em 11/10)
 
-Só as portas **fixas** do host podem colidir com outro processo: a 44642 (norma, C.3.4), a 44643 da borda, a do AoP (8080, `AOP_PUBLIC_PORT`), a 1883, a 6379 e a faixa 45000–45199, que o compose publica inteira para o tv3ws; com o `docker-compose.ssdp.yml`, também a 8085 da borda, em rede do host. A 44643 é fixa por padrão também na bridge desde 12/10 (decisão do Luís, que revê a C1 nesse ponto; `EDGE_EXT_PUBLISH`, padrão `44643:44643`). O `preflight` confere a 44642 (bloqueia a subida se um processo nativo a ocupa) e avisa se a 1883, a 6379, a 44643 ou a do AoP estão ocupadas; no modo SSDP, também a 8085 e a 44652/44653 (`scripts/preflight.sh`, `PORTS_WARN`). A faixa 45000–45199 não entra na checagem.
+Só as portas **fixas** do host podem colidir com outro processo: a 44642 (norma, C.3.4), a 44643 da borda, a do AoP (8080, `AOP_PUBLIC_PORT`), a 1883, a 6379 (só em `127.0.0.1` desde 15/10, A1) e a faixa 45000–45199, que o compose publica inteira para o tv3ws; fora do Docker, a UDP 1900 do anunciante SSDP. A 44643 é fixa por padrão desde 12/10 (decisão do Luís, que revê a C1 nesse ponto; `EDGE_EXT_PUBLISH`, padrão `44643:44643`). O `preflight` confere a 44642 (bloqueia a subida se um processo nativo a ocupa) e avisa se a 1883, a 6379, a 44643 ou a do AoP estão ocupadas (`scripts/preflight.sh`, `PORTS_WARN`). A faixa 45000–45199 e a UDP 1900 não entram na checagem; com a 1900 presa, o próprio anunciante encerra com erro (*Descoberta SSDP*, abaixo).
 
-As outras portas saem numa porta livre que o Docker escolhe, e não colidem: a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação na bridge e a 18081 do redis-commander. Até 11/10, a 44643, a 8081 e a 9001 eram fixas, e daí vinha o conselho de trocar `MQTT_WS_PORT` para 9003 no Windows com o Hyper-V ocupando a 9001 e a 9002; de 11/10 a 12/10, a 44643 saía numa porta livre na bridge. Hoje a 9003 vale só como opção para quem roda o AoP fora do Docker no Windows (*AoP fora do Docker no Windows*, abaixo). Se você fixou uma das portas livres no `.env` (`BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` com `host:container`), ela volta a poder colidir; `EDGE_EXT_PUBLISH=44643`, só o número, faz o contrário com a 44643, que passa a sair numa porta livre.
+As outras portas saem numa porta livre que o Docker escolhe, e não colidem: a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação e a 18081 do redis-commander. Até 11/10, a 44643, a 8081 e a 9001 eram fixas, e daí vinha o conselho de trocar `MQTT_WS_PORT` para 9003 no Windows com o Hyper-V ocupando a 9001 e a 9002; de 11/10 a 12/10, a 44643 saía numa porta livre na bridge. Hoje a 9003 vale só como opção para quem roda o AoP fora do Docker no Windows (*AoP fora do Docker no Windows*, abaixo). Se você fixou uma das portas livres no `.env` (`BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` com `host:container`), ela volta a poder colidir; `EDGE_EXT_PUBLISH=44643`, só o número, faz o contrário com a 44643, que passa a sair numa porta livre.
 
 ### Onde está a porta de um serviço
 
@@ -65,7 +65,7 @@ docker port redis 18081                    # redis-commander
 
 O `docker compose port` usa o nome do serviço (`mosquitto`, `edgegateway`); o `docker port`, o do container (`mqtt-broker`, `edgegateway`). A resposta vem como endereço e porta, por exemplo `0.0.0.0:32768` (o `docker port` pode trazer também a linha do IPv6, `[::]:32768`).
 
-O `/manifest` (`Server-SecureBaseURL`, `tv3ws/src/ssdp-config.ts`) e o OpenAPI da superfície externa, na documentação Swagger (`servers: http://localhost:44643`, `infra/edgegateway/generate.js`), dizem 44643. Com o padrão (`EDGE_EXT_PUBLISH=44643:44643`, desde 12/10), essa é a porta de host da externa. Com `EDGE_EXT_PUBLISH=44643` (só o número), o Docker escolhe outra, e os dois deixam de valer. Com outra porta fixa (`X:44643`), defina também `EDGE_HTTPS_PORT=X` no `.env` da raiz, para o `/manifest` anunciá-la; o OpenAPI continua dizendo 44643. Depois de mudar o `.env`, recrie a borda e o tv3ws (`docker compose up -d edgegateway tv3ws`).
+O `/manifest` (`Server-SecureBaseURL`, `tv3ws/src/ssdp-config.ts`) e o OpenAPI da superfície externa, na documentação Swagger (`servers: https://localhost:44643`, `infra/edgegateway/generate.js`), dizem 44643. Com o padrão (`EDGE_EXT_PUBLISH=44643:44643`, desde 12/10), essa é a porta de host da externa. Com `EDGE_EXT_PUBLISH=44643` (só o número), o Docker escolhe outra, e os dois deixam de valer. Com outra porta fixa (`X:44643`), defina também `EDGE_HTTPS_PORT=X` no `.env` da raiz, para o `/manifest` anunciá-la; o OpenAPI continua dizendo 44643. Depois de mudar o `.env`, recrie a borda e o tv3ws (`docker compose up -d edgegateway tv3ws`).
 
 ### `preflight`: "a porta 44642 esta ocupada (-)" com a stack de pé
 
@@ -77,17 +77,19 @@ no preflight com essa mensagem. O container do preflight não tem
 repositório. Se a mensagem continuar, há um processo nativo na 44642:
 confira com `sudo ss -ltnp | grep 44642`.
 
-### `preflight`: "o anuncio SSDP esta ligado (docker-compose.ssdp.yml) e falta SSDP_ADVERTISE_HOST"
+## Descoberta SSDP: o anunciante não sobe ou não anuncia
 
-Desde 11/10 (B2, decisão do Luís), com o override `docker-compose.ssdp.yml` ligado, o `SSDP_ADVERTISE_HOST` é obrigatório. Sem ele, ou vazio, o `scripts/preflight.sh` sai com erro, e a borda, que depende dele, não sobe:
+O anunciante roda no host, fora do Docker, subido pelo `./tv30 up` (no Windows, `.\tv30.ps1 up`), com pid e log em `.tv30/` ([Descoberta SSDP]({{ site.baseurl }}/ssdp)). `./tv30 status` diz se ele está de pé, e `./tv30 logs` mostra o log (`.tv30/ssdp.log`). Sem ele, o cliente ainda chega ao receptor pelo IP: `http://<IP>:44642/manifest`.
 
-```
-[preflight] ERRO: o anuncio SSDP esta ligado (docker-compose.ssdp.yml) e falta SSDP_ADVERTISE_HOST.
-[preflight]       Defina no .env da raiz o IP (ou nome) desta maquina na rede, por exemplo
-[preflight]       SSDP_ADVERTISE_HOST=192.168.0.23, e rode 'docker compose up -d' de novo.
-```
+| Sintoma | Causa provável | O que fazer |
+|---|---|---|
+| `o anunciante SSDP saiu logo depois de subir` no `./tv30 up`, e o log mostra `[ssdp] FALHA em ...` | Erro de configuração: porta inválida em `EDGE_HTTP_PORT` ou `EDGE_HTTPS_PORT`, `SSDP_INTERFACE` inexistente ou de loopback, `SSDP_ADVERTISE_HOST` sem host, ou a UDP 1900 presa por um socket sem `SO_REUSEADDR` | Corrija o `.env` da raiz (ou o `tv3ws/.env`) e rode `./tv30 up` de novo. O anunciante lê os dois arquivos, e o shell prevalece |
+| No macOS, o log mostra `no route to host`, e o anunciante fica esperando a rede | O terminal que roda o `./tv30 up` não tem a permissão de Rede Local | Ajustes > Privacidade e Segurança > Rede Local; depois, `./tv30 up` de novo |
+| No Windows, outro aparelho não recebe o anúncio | O Windows Defender não liberou o anunciante em redes privadas, ou o perfil da rede é Público | Aceite o pedido do Defender marcando "redes privadas", com o perfil da rede como Privada |
+| `AVISO sem rede para o anuncio` | Sem rede na interface da rota padrão | Nada: o anunciante tenta de novo sozinho, com espera crescente até 30 s, e volta a anunciar quando a rede volta. As APIs não dependem dele |
+| `SSDP_ENABLED=false: anunciante nao sobe` | `SSDP_ENABLED=false` no `.env` ou no shell | Tire a variável para ligar a descoberta |
 
-Defina-o no `.env` da raiz (ou no `tv3ws/.env`; o da raiz prevalece). Um valor só exportado no shell não chega ao preflight nem à borda, que o leem dos mesmos arquivos de ambiente. Se a borda subisse sem ele (por exemplo, sem o preflight), o anunciante sairia com erro de configuração, e a borda cairia inteira, como nos outros erros de configuração da C8 (`docker logs edgegateway` mostra `[ssdp] FALHA em configuracao do anuncio (SSDP_ADVERTISE_HOST, EDGE_HTTP_PORT, EDGE_HTTPS_PORT)`). O `SERVER_URL` não serve mais de host do anúncio. Para desligar a descoberta, comente o `COMPOSE_FILE` no `.env`.
+Se o container antigo `tv3ws-ssdp` (opção B, substituída em 09/10) ainda estiver de pé, ele é um segundo anunciante: o `preflight` avisa, e `docker rm -f tv3ws-ssdp` o remove.
 
 ## Redis não fica saudável e o tv3ws ou a borda não sobem
 
@@ -123,9 +125,13 @@ Cada achado é `[chave, familia, motivo]`, e a auditoria vazia é o estado esper
 
 - **Volume de antes do P4.** A carga antiga gravava os booleanos como `"False"`/`"True"`, e o `lastAccess` avulso de antes de 05/10 deixava hashes `user:{id}` só com `lastAccess`, fora de `users:index` (por exemplo, `user:abc-123`). Para começar limpo, use `docker compose down -v`, que apaga o volume e com ele os perfis criados. A outra saída é corrigir ou apagar as chaves apontadas.
 - **Volume de antes de 11/10 (F-3): `{id} da chave: deve ser UUID ...`.** O esquema exige o id do perfil em UUID desde a versão 2 (11/10), e em UUID estrito desde a versão 3 (12/10), sem compatibilidade com os ids antigos (decisões do Luís). Todo perfil criado antes de 11/10 (`user_<epoch-ms>`) e o da carga antiga (`c3167a18-5dc5`) aparecem em `users:index`, `user:{id}`, `user:{id}:consent` e `user:{id}:broadcaster-attrs:*`. A carga não roda de novo num volume já semeado (`seed:done`), então o perfil novo da carga (`c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`) não entra. Saída: `docker compose down -v`, que apaga os perfis criados e também os retidos do broker. Um id que passou na versão 2 (de 11 a 12/10) sem ser UUID estrito aparece com o motivo da versão 3 (`versao do UUID ...`, `variante do UUID ...`, `UUID nulo` ou `UUID maximo`); os do AoP (`crypto.randomUUID()`) e o da carga atual passam. Para conferir a versão carregada: `docker exec redis redis-cli FCALL_RO tv30_versao 0` (tem de dar `4` desde a noite de 12/10, G8, e dava `3` de 12/10 até ali; `infra/redis/esquema.json`).
-- **Volume de antes da G8 (12/10, à noite): `campo avatar: SVG em linha nao serve: ...`.** Desde a versão 4 do esquema, o `avatar` é o nome de um arquivo, e cada perfil gravado com o SVG em linha (os criados pelo AoP até a G8 e o da carga) aparece em `user:{id}`. A escolha do perfil, os atributos de emissora e o despejo continuam funcionando, e as telas mostram o avatar padrão para eles. O perfil da carga se conserta com `docker exec redis redis-cli HSET user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10 avatar c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg`; o arquivo vem do template para `./user-files/thumbs` pelo `userfiles-seed` (se ainda não estiver lá, `docker compose up -d` o copia). Um perfil criado pelo AoP antes da G8 não tem arquivo: tire o campo (`docker exec redis redis-cli HDEL user:<id> avatar`, e as telas mostram o padrão) ou recrie o volume (`docker compose down -v`, que apaga os perfis criados e os retidos do broker).
+- **Volume de antes da G8 (12/10, à noite): `campo avatar: SVG em linha nao serve: ...`.** Desde a versão 4 do esquema, o `avatar` é o nome de um arquivo, e cada perfil gravado com o SVG em linha (os criados pelo AoP até a G8 e o da carga) aparece em `user:{id}`. A escolha do perfil e os atributos de emissora continuam funcionando, e as telas mostram o avatar padrão para eles. O perfil da carga se conserta com `docker exec redis redis-cli HSET user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10 avatar c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg`; o arquivo vem do template para `./user-files/thumbs` pelo `userfiles-seed` (se ainda não estiver lá, `docker compose up -d` o copia). Um perfil criado pelo AoP antes da G8 não tem arquivo: tire o campo (`docker exec redis redis-cli HDEL user:<id> avatar`, e as telas mostram o padrão) ou recrie o volume (`docker compose down -v`, que apaga os perfis criados e os retidos do broker).
 - **Escrita à mão** pelo `redis-cli` ou pelo Redis Commander, que não passa pelas funções. Grave pela função (`FCALL <funcao> 0 ...`, exemplos em [Modelo de dados Redis](modelo-redis.md)) ou desfaça a escrita.
 - **`chave sem familia no esquema`:** a chave tem um prefixo do alcance (`user:`, `session:`, `client:`...) mas não é de nenhuma família, como a antiga `user:{id}:profile`. Se ninguém a usa, apague.
+
+## Criação de perfil recusada: `O limite de 5 perfis foi atingido`
+
+O AoP recusa o sexto perfil, sem despejar nenhum (10.3.3; respostas do Joel de 15/10; `MAX_PROFILES` em `aop/src/modules/profile-manager/service.js`). Até 15/10, o sexto despejava o perfil de último acesso mais antigo. A remoção de perfil pelo telespectador ainda não existe (ponto aberto, levado ao Joel). Num ambiente de teste, `docker compose down -v` volta à carga inicial, apagando os perfis criados e os retidos do broker.
 
 ## WSL2 + Docker
 
@@ -188,6 +194,12 @@ E suba a stack de novo.
 
 ---
 
+## Mac com Apple Silicon: imagens só `amd64`
+
+As imagens do Docker Hub saem só para `amd64` (o workflow de CI não define `platforms`). Num Mac com Apple Silicon, construa as imagens localmente antes de subir: `docker compose build` e depois `./tv30 up`. O Dockerfile da borda escolhe o Go pela arquitetura (`TARGETARCH`): o `krakend/builder` em `amd64` e o `golang:1.22.7-alpine3.19` em `arm64`, com o mesmo Go e a mesma libc do KrakenD; outra arquitetura falha no build (`infra/edgegateway/Dockerfile`).
+
+---
+
 ## CRLF em scripts shell
 
 ### `exec /entrypoint.sh: no such file or directory`
@@ -229,27 +241,26 @@ docker logs aop --tail 50 | grep '\[apps\]'
 | `Bad Gateway: aplicacao fora do ar` (502) | O AoP não alcança o `bcastEntryPackageUrl` da app (bcast parado, ou `BCAST_HOSTNAME` errado no dev-host) | `docker logs aop` mostra a falha do proxy (`[apps] falha no proxy ...`); confira o bcast |
 | O AoP não sobe: `[boot] APPS_DOMAIN invalido` ou `AOP_PUBLIC_PORT invalida` | Valor fora do formato (rótulos `[a-z0-9-]` separados por ponto; porta inteira de 1 a 65535) | Corrija o `.env` da raiz |
 | A app abre, mas não recebe teclas, `timeupdate` nem `stream_event` | Com a app em outra origem, o AoP entrega os eventos por `postMessage`, e a app não inclui a ponte `bcast/public/js/aop-bridge.js`; ou a imagem do bcast é anterior a 10/10 | Inclua `<script src="js/aop-bridge.js"></script>` na app (ver `bcast/README.md`); reconstrua o bcast junto com o AoP |
-| As chamadas da app às APIs levam `X-TV30-Auth-Warn: 107` (ou 106, nas rotas só do local associado, como `POST /tv3/bind-context`) | A origem da app não está em `origins:associated`: a app foi encerrada (ESC) ou trocada, e a página ficou aberta; ou a gravação no Redis falhou (log do AoP). Com uma imagem do AoP anterior a 11/10, a app aberta pelo caminho antigo `/graphicsAppProxy` ficava na origem do AoP, que não é gravada | Abra a app pelo AoP (catálogo e tela cheia); reconstrua o AoP se a imagem for anterior a 11/10 |
+| As chamadas da app às APIs recebem 107 (em `warn`, passam com `X-TV30-Auth-Warn: 107`), ou 106 nas rotas só do local associado, como `POST /tv3/bind-context` | A origem da app não está em `origins:associated`: a app foi encerrada (ESC) ou trocada, e a página ficou aberta; ou a gravação no Redis falhou (log do AoP). Com uma imagem do AoP anterior a 11/10, a app aberta pelo caminho antigo `/graphicsAppProxy` ficava na origem do AoP, que não é gravada | Abra a app pelo AoP (catálogo e tela cheia); reconstrua o AoP se a imagem for anterior a 11/10 |
 
 O QtWebEngine não foi testado com os nomes `*.apps.localhost`; o Firefox 154 (Linux) e o Chrome 154 (Windows) foram conferidos em 10/10.
 
-## `POST` ou `DELETE /tv3/bind-context` dá 100 na 44643
+## Rota exclusiva do cliente local, ou o `/tv3/authorize`, dá 106
 
-É a regra da P1.9 (decisão do Luís em 10/10): a superfície externa (44643) só expõe as rotas que admitem o cliente não local, e essas duas são só do local associado. Use a superfície interna (44642). O `GET /tv3/bind-context` existe nas duas. Na 44643, a C.6.7.9 lista 17 APIs, e não 20, e a C.6.7.8 dá 101 para `tv3ws-bind-context-register`, `tv3ws-bind-context-remove` e, desde 12/10, `tv3ws-remotedevice-communication` (cada superfície lista só o que oferece; F-2, decisão do Luís em 11/10). Hoje, a interna tem 26 rotas e a externa, 21 (`infra/edgegateway/routes.json`, regra em `generate.js`).
+As duas superfícies têm as 26 rotas; o que muda de uma para a outra é o 106 (respostas do Joel de 15/10, F-1 e E7; [Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). Sai nos dois modos, `enforce` e `warn`:
 
-## `GET /tv3/remote-device/devices/{classId}` ou `/tv3/remote-device/device/{handle}` dá 100 na 44643 ou 106 na 44642
+- **Na 44643 (externa, HTTPS):** as rotas de uso exclusivo do cliente local (`POST` e `DELETE /tv3/bind-context`, `GET /tv3/remote-device/devices/{classId}` da C.6.15.5 e as rotas por *handle*, `GET` e `DELETE /tv3/remote-device/device/{handle}`) e o `GET /tv3/authorize` respondem 404 `{"error":106}` a qualquer requisição (C.4.1.8; a C.6.1.2 "can only be accessed via the HTTP protocol"). Use a 44642.
+- **Na 44642 (interna, HTTP):** o access token de classe `non-local` só vale no `/tv3/authorize` e no `/tv3/token`; nas demais rotas, 106 (C.4.1.6), com o log `cliente nao local por HTTP fora da C.6.1.2/C.6.1.3`. Depois de obter o token, o cliente não local usa a 44643. Nas rotas só do cliente local, ele recebe antes o 106 da regra de classe (`rota nao disponivel para non-local`; `infra/edgegateway/plugin/handler.go`).
 
-Desde 12/10 (decisão do Luís), a C.6.15.5 é só do cliente local: a rota tem as `classes` `local-associated` e `local-autonomous` no `infra/edgegateway/routes.json`. Desde a tarde de 12/10 (segunda decisão do Luís), as rotas 2.1 `GET` e `DELETE /tv3/remote-device/device/{handle}` também, e o que segue vale para as três, menos a lista da C.6.7.9: as rotas 2.1 não têm API nela. Pela regra da P1.9, as três saem da 44643, onde respondem 404 `{"error":100}` nos dois modos, e a API da C.6.15.5, `tv3ws-remotedevice-communication`, sai da lista da C.6.7.9 ali. Na 44642, o cliente não local recebe o 106 da regra de classe da borda (`rota nao disponivel para ...`, `infra/edgegateway/plugin/handler.go`): em `enforce`, 404 `{"error":106}`; em `warn`, a requisição passa com `X-TV30-Auth-Warn: 106`. Chame-as de um cliente local, pela 44642.
-
-O código exato ainda não está decidido: a Tabela C.78 (p. 339; p. 357 do PDF) pede 107 ao não local, e a C.4.1.8 (p. 206-207; p. 224-225 do PDF) fala em 106 para o não local que chama uma API de uso exclusivo do cliente local. Fica com o Joel, na F-1 ([Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes), seção F); se as rotas 2.1 entram nela é a G3 (*Achados de 12/10*, na mesma página).
+A C.6.7.9 lista as 20 APIs nas duas superfícies (F-2): a restrição aparece pelo 106 no uso, e não na lista.
 
 ## `POST /tv3/<scid>/users` dá 100
 
-É a A4 (decisão do Luís em 11/10): `POST /tv3/{serviceContextId}/users` não existe na norma, que só define `POST /tv3/current-service/users` (C.6.14.1), e saiu da tabela de rotas (`infra/edgegateway/routes.json`). A borda responde 404 `{"error":100}` em qualquer scid, inclusive a constante do tv3ws e `Current-Service` com a caixa trocada, nas duas superfícies e nos dois modos. Use `POST /tv3/current-service/users`, com bind-token. As rotas `GET` e `POST /tv3/{serviceContextId}/users/{userid}` (C.6.14.2 e C.6.14.5) continuam.
+É a A4 (decisão do Luís em 11/10): `POST /tv3/{serviceContextId}/users` não existe na norma, que só define `POST /tv3/current-service/users` (C.6.14.1), e saiu da tabela de rotas (`infra/edgegateway/routes.json`). A borda responde 404 `{"error":100}` em qualquer scid, inclusive o `globalServiceId` de um serviço e `Current-Service` com a caixa trocada, nas duas superfícies e nos dois modos. Use `POST /tv3/current-service/users`, com bind-token. As rotas `GET` e `POST /tv3/{serviceContextId}/users/{userid}` (C.6.14.2 e C.6.14.5) continuam.
 
 ## Access token válido recebe 107 (`cliente fora de clients:authorized`)
 
-Desde 11/10 (E6, decisão do Luís), a borda exige que o `sub` do access token esteja no SET `clients:authorized`, nas rotas que pedem token (`token` e `token+bind`; as de `auth: none` não mudam). Fora dele, a resposta é 107, como a do cliente bloqueado, também com token de classe `local-associated`; em `warn`, só o aviso `X-TV30-Auth-Warn: 107`. O log da borda diz `cliente fora de clients:authorized (E6)`; token sem `sub` dá `access token sem sub: cliente fora de clients:authorized (E6)`, e o bloqueado mantém `cliente bloqueado pelo usuario (C.4.2.2)`, porque é conferido antes.
+Desde 11/10 (E6, decisão do Luís), a borda exige que o `sub` do access token esteja no SET `clients:authorized`, nas rotas que pedem token (`token` e `token+bind`; as de `auth: none` não mudam). Fora dele, a resposta é 404 `{"error":107}` (em `warn`, só o aviso `X-TV30-Auth-Warn: 107`), como a do cliente bloqueado, também com token de classe `local-associated`. O log da borda diz `cliente fora de clients:authorized (E6)`; token sem `sub` dá `access token sem sub: cliente fora de clients:authorized (E6)`, e o bloqueado mantém `cliente bloqueado pelo usuario (C.4.2.2)`, porque é conferido antes.
 
 | Causa | O que fazer |
 |---|---|
@@ -261,6 +272,18 @@ Desde 11/10 (E6, decisão do Luís), a borda exige que o `sub` do access token e
 docker exec redis redis-cli SISMEMBER clients:authorized <clientid>   # 1 = autorizado
 docker exec redis redis-cli SISMEMBER clients:blocked <clientid>      # 1 = bloqueado
 ```
+
+## Rota com bind-token dá 300, 104 ou 108
+
+Nas rotas `token+bind` (`infra/edgegateway/routes.json`), depois da classe e do access token (o local associado reconhecido pelo `Origin` não passa pelo token), a borda confere nesta ordem (`evaluate`, em `infra/edgegateway/plugin/handler.go`; [Borda e credenciais]({{ site.baseurl }}/borda-credenciais)):
+
+| Código | Quando | O que fazer |
+|---|---|---|
+| 300 | Nenhum serviço DTV selecionado, nas rotas cuja tabela lista o 300 (C.6.4.7 e C.6.14.1 a C.6.14.6). Vem antes do bind-token (H2) e sai nos dois modos | Selecione um serviço no catálogo do AoP. `docker exec redis redis-cli GET session:current-service-id` mostra o serviço corrente (vazio = nenhum) |
+| 104 | Sem o cabeçalho `bind-token` | Mande o bind-token assinado pela emissora |
+| 108 | O bind-token não foi assinado por uma chave registrada (C.6.8.2) para o contexto de serviço da rota: o `{serviceContextId}` do caminho, que é o `globalServiceId` do BAM (A6), ou o serviço corrente em `current-service`. Na C.6.16.3, também sem serviço selecionado | A app da emissora registra a chave pela C.6.8.2 (`POST /tv3/bind-context`, que grava no serviço corrente; `bindcontext.go`). Confira se o contexto da rota é esse serviço |
+
+A app de emissora reconhecida pelo `Origin` (local associado) dispensa o bind-token só no próprio contexto de serviço, o do serviço que a lançou (valor em `origins:associated`). Noutro contexto, recebe 104 ou 108 como qualquer cliente (H1, C.4.1.1). O 104 e o 108 seguem o modo: em `warn`, só o aviso `X-TV30-Auth-Warn`.
 
 ## A página da TV não conecta no MQTT (`/mqtt`)
 
@@ -291,6 +314,14 @@ Desde 12/10 (correção; C.4.3.2 e C.4.3.3), o pop-up do QR code e o do PIN fica
 | Some antes do fim do pareamento | A trava de 120 s acabou. Desde a noite de 12/10, outro pedido de autorização não toma mais o lugar dele: recebe 103 (G2 de [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes)); com uma imagem do tv3ws anterior, o sim/não ou o pareamento de outro cliente o substituía. O aviso da C.6.14.5 (`popup/info`, desde a G9) não toma o lugar: espera o QR code ou o PIN sair | Se o cliente já leu o código, o pareamento continua valendo: o challenge não expira. Se não leu, repita o `/tv3/authorize` com `clientid` novo (o antigo dá 101) |
 | Fica na tela depois do `/tv3/token` | O `/tv3/token` não concluiu o pareamento: falhou (102, por exemplo, com o desafio errado, que deixa a tentativa aberta) ou foi uma renovação por `refresh-token`; ou o tv3ws reiniciou entre o `/authorize` e o `/token` e perdeu o pareamento (o `/token` dá 102); ou o pop-up na tela é de outro cliente | A trava de 120 s o fecha. No fim do pareamento, o log do tv3ws mostra `Closing QRCode popup` ou `Closing PIN popup` |
 
+## A 44643 recusa o certificado, ou a app não abre o `wss://`
+
+A 44643 (superfície externa) fala TLS com o certificado autoassinado do receptor, que o `tls-init` gera em `.tv30/tls` na primeira subida (A7; `docker logs tv30-tls-init` mostra o assunto e a validade). O mesmo certificado vale para o HTTPS do tv3ws, o `serverCert` do pareamento (Tabela C.4) e os `wss://` do remote-device.
+
+- **`curl` na 44643 falha com erro de certificado:** use `curl -k https://localhost:44643/...`, ou `--cacert .tv30/tls/cert.pem`. O certificado vale para `localhost` e `127.0.0.1` (`subjectAltName`, `infra/edgegateway/tls-init.sh`): por outro endereço, o nome não confere, e só o `-k` resolve.
+- **App de navegador não abre o `wss://` do remote-device:** o navegador não abre `wss://` com certificado autoassinado em que não confia. Confie no certificado, ou defina `TV3WS_WS_TLS=false` no `.env` da raiz e recrie o tv3ws (`docker compose up -d tv3ws`): os pontos de entrada voltam a `ws://`.
+- **Trocar o certificado:** ponha `cert.pem` e `key.pem` em `.tv30/tls` e recrie a stack. O `tls-init` só gera o par quando falta um dos dois.
+
 ## `errors/<client_id>`: `INVALID_JSON` num payload que parece JSON, ou mensagem com `"truncated":true`
 
 Desde 12/10, o plugin do broker lê o payload inteiro e monta a mensagem de erro sempre como JSON válido ([Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos), *Plugin C do Mosquitto*; detalhes em `infra/docs/09-schema-validation.md`).
@@ -310,6 +341,7 @@ Desde 12/10, o plugin do broker lê o payload inteiro e monta a mensagem de erro
 docker exec redis redis-cli SMEMBERS users:index
 docker exec redis redis-cli HGETALL user:<id>              # id em UUID desde 11/10 (F-3)
 docker exec redis redis-cli GET session:current-user
+docker exec redis redis-cli GET session:current-service-id # servico corrente (vazio = nenhum)
 docker exec redis redis-cli HGETALL origins:associated   # origem da app em execucao -> servico
 docker exec redis redis-cli FCALL_RO tv30_auditoria 0    # chaves fora do esquema (P4); vazio = ok
 docker exec redis redis-cli FCALL_RO tv30_versao 0       # versao do esquema carregado (4 desde a noite de 12/10, G8)
@@ -324,7 +356,7 @@ docker logs tv3ws --tail 50
 docker logs mqtt-broker --tail 50
 ```
 
-Redis Commander: a porta de host é dinâmica. `docker port redis 18081` mostra qual é, e a UI fica em `http://localhost:<porta>/`. A UI exige login: usuário `admin` e senha `tv30-redis-admin` por padrão, ou os valores de `REDIS_COMMANDER_USER`/`REDIS_COMMANDER_PASSWORD` no `.env` da raiz (D-L1, decidida pelo Luís em 03/10). A conexão com o banco (6379, `redis-cli`) segue sem senha.
+Redis Commander: a porta de host é dinâmica. `docker port redis 18081` mostra qual é, e a UI fica em `http://localhost:<porta>/`. A UI exige login: usuário `admin` e senha `tv30-redis-admin` por padrão, ou os valores de `REDIS_COMMANDER_USER`/`REDIS_COMMANDER_PASSWORD` no `.env` da raiz (D-L1, decidida pelo Luís em 03/10). A conexão com o banco (6379, `redis-cli`) segue sem senha, e a 6379 só escuta em `127.0.0.1` (A1).
 
 ## Redis Commander abre sem pedir login, recusa o login padrão ou derruba o Redis
 

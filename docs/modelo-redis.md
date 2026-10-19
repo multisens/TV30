@@ -10,6 +10,8 @@ O Redis guarda o estado de sessão, os perfis de usuário e as credenciais. Ele 
 
 Redis, borda e mensageria são decisões de implementação deste testbed, não da ABNT NBR 25608. O *consent* destas chaves é a visibilidade do perfil por serviço, e não o consentimento da seção 8.8 da norma.
 
+**Porta e acesso (A1, Joel em 15/10).** A 6379 é publicada só em `127.0.0.1`: aberta à rede, um aparelho gravaria na lista de associados ou nas chaves de bind e contornaria a borda. O Redis fica sem senha e sem ACL; a escrita direta fora das funções que validam (abaixo) é vedada por convenção. Os serviços em container usam a `ginga_net`; os que rodam no host (dev-host) usam `127.0.0.1`.
+
 UI de inspeção: Redis Commander, em porta dinâmica do host — `docker port redis 18081` mostra qual. A UI exige login: usuário `admin` e senha `tv30-redis-admin` por padrão, trocáveis por `REDIS_COMMANDER_USER`/`REDIS_COMMANDER_PASSWORD` no `.env` da raiz (decisão D-L1, tomada pelo Luís em 03/10; ver [README](https://github.com/multisens/TV30/blob/main/README.md#interface-administrativa-do-redis)). A senha vale só para a UI: a conexão com o banco (6379) segue sem senha. Desde 11/10 (C2, decisão do Luís), a morte do commander derruba o container do Redis inteiro, e o `restart` o traz de volta (`infra/redis/entrypoint.sh`); até 11/10, o banco seguia sem ele.
 
 **Id do perfil em UUID (F-3, decisão do Luís em 11/10; estrito desde 12/10).** O esquema, desde a versão 3 (hoje na 4, que só mudou o avatar), exige o id do perfil no formato textual da IETF RFC 9562 (8-4-4-4-12 dígitos hexadecimais), em minúsculas, como pede a Tabela 7 ("UUID string"), sem compatibilidade com os ids antigos. Desde 12/10 (decisão do Luís), o UUID é estrito: a versão (primeiro dígito do terceiro grupo) tem de ser de 1 a 8, e a variante (primeiro dígito do quarto grupo), a da RFC 9562 (`8`, `9`, `a` ou `b`); o UUID nulo (todo 0) e o máximo (todo f) são recusados, e a mensagem diz qual parte falhou (`motivoUuid`, em `infra/redis/funcoes.lua`). O AoP gera `crypto.randomUUID()` (versão 4), e a carga inicial traz `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10` (versão 4, variante 9). Até 11/10, o id era texto de 1 a 64 caracteres sem `:`, o AoP gerava `user_<epoch-ms>`, e a carga trazia `c3167a18-5dc5`; de 11/10 a 12/10 (versão 2 do esquema), versão e variante não eram conferidas. Um volume de antes de 11/10 fica fora do esquema (seção *Auditoria*, abaixo).
@@ -27,12 +29,12 @@ O P5, decidido antes da rodada de 05/10, pede um dono por família de chave. Na 
 | Família | Escreve | Função que grava (P4) | Lê |
 |---|---|---|---|
 | `session:current-user`, `session:current-service-id` | tv3ws: espelho dos tópicos `aop/currentUser` e `aop/currentService`; o `session:current-user` também na C.6.14.4 | `tv30_sessao_usuario`, `tv30_sessao_servico_id` | tv3ws; a borda lê o `session:current-service-id` (bind-token e C.6.8); o AoP o lê na criação de perfil |
-| `session:current-service` | tv3ws (`src/core.ts`; a API C.6.3.1 do tv3ws responde da memória, não deste hash) | `tv30_sessao_servico` | a borda, na C.6.8.3 |
-| `users:index`, `user:{id}`, `user:{id}:consent` | **AoP** (gestor de perfis: criação, despejo e `lastAccess`). A carga inicial só escreve no banco vazio | `tv30_perfil_grava`, `tv30_perfil_ultimo_acesso`, `tv30_perfil_remove` | AoP; tv3ws, só leitura desde 05/10 |
-| `user:{id}:broadcaster-attrs:{scid}` | tv3ws (C.6.14.5) e AoP (apaga no despejo): **dois escritores**, ponto em aberto (E4 de [Decisões pendentes]({{ site.baseurl }}/decisoes-pendentes)) | `tv30_atributos_emissora`; no despejo, `tv30_perfil_remove` | tv3ws |
+| `session:current-service` | tv3ws (`src/core.ts`; a API C.6.3.1 do tv3ws responde da memória, não deste hash). O `serviceContextId` é o `globalServiceId` do serviço (A6, Joel em 15/10); sem serviço selecionado, o hash não é regravado | `tv30_sessao_servico` | a borda, na C.6.8.3 |
+| `users:index`, `user:{id}`, `user:{id}:consent` | **AoP** (gestor de perfis: criação, remoção e `lastAccess`). A carga inicial só escreve no banco vazio | `tv30_perfil_grava`, `tv30_perfil_ultimo_acesso`, `tv30_perfil_remove` | AoP; tv3ws, só leitura desde 05/10 |
+| `user:{id}:broadcaster-attrs:{scid}` | **dois escritores** (E4, Joel em 15/10; *Princípios e critérios* 5.3): o tv3ws grava o conteúdo (C.6.14.5), e o AoP remove a família inteira ao remover o perfil, na mesma função que remove o perfil (atômico, sem chaves órfãs). O `esquema.json` registra os dois e a operação de cada um (campo `escritores`). O `{scid}` é o `globalServiceId` (A6) | `tv30_atributos_emissora`; na remoção do perfil, `tv30_perfil_remove` | tv3ws |
 | `client:{id}`, `clients:authorized`, `clients:blocked` | tv3ws (`src/modules/auth-manager/manager.ts`) | `tv30_cliente_grava`, `tv30_cliente_autoriza`, `tv30_cliente_bloqueia`, `tv30_cliente_inclui_autorizado` | tv3ws; a borda lê `clients:blocked` e, desde 11/10 (E6, decisão do Luís), `clients:authorized` |
-| `origins:associated` | AoP (`src/core.js`) | `tv30_origem_registra`, `tv30_origem_remove`, `tv30_origens_limpa` | borda; tv3ws (`classifyClient`) |
-| `bind-context:{serviceId}` | **borda**, na C.6.8.2 e na C.6.8.4, desde 05/10 (antes, o tv3ws) | `tv30_bind_registra`, `tv30_bind_remove` | borda |
+| `origins:associated` | AoP (`src/core.js`): origem da app -> o serviço que a lançou; sem serviço corrente, a origem não é registrada | `tv30_origem_registra`, `tv30_origem_remove`, `tv30_origens_limpa` | borda, que compara o serviço com o contexto da rota (H1, Joel em 15/10); tv3ws (`classifyClient`) |
+| `bind-context:{serviceId}` | **só a borda**, na C.6.8.2 e na C.6.8.4, desde 05/10 (antes, o tv3ws) | `tv30_bind_registra`, `tv30_bind_remove` | só a borda (bind-token e C.6.8.3); a auditoria do esquema (`tv30_auditoria`) também a lê, para conferir o formato |
 | `remote-devices:index`, `remote-devices:class:{classe}`, `remote-device:{handle}` | tv3ws: espelho dos dispositivos remotos conectados, limpo no boot | nenhuma: fora do alcance do P4, escrita direta | só o próprio tv3ws, na limpeza do boot |
 | `seed:done` | entrypoint do container `redis`, depois da carga inicial | nenhuma: fora do alcance do P4 (marca de controle) | o mesmo entrypoint e o healthcheck |
 
@@ -61,7 +63,7 @@ Detalhes, a lista de funções com argumentos e como mudar uma regra: `infra/red
 | `users:index` | AoP | SET | ids de perfil (`idPerfil`: UUID no formato da IETF RFC 9562, em minúsculas, desde 11/10, F-3; estrito desde 12/10, com versão de 1 a 8, variante `8`, `9`, `a` ou `b` e sem o nulo e o máximo; até 11/10, 1 a 64 caracteres sem `:`). O `{id}` das chaves `user:{id}`, `user:{id}:consent` e `user:{id}:broadcaster-attrs:{scid}` segue a mesma regra |
 | `user:{id}` | AoP | HASH | Tabela 7 mais `lastAccess`: obrigatórios e condicionais da tabela, booleanos `"true"`/`"false"`, `nickname` de 1 a 20 caracteres, `maxContentRating` em L/10/12/14/16/18, idiomas em IETF RFC 5646, `closedSigningWidth` de 14 a 28, `avatar` (opcional) como nome de arquivo do diretório de miniaturas, com extensão `.svg`, `.png`, `.jpg`, `.jpeg` ou `.webp` (desde a G8, versão 4); o campo `id` igual ao da chave; nenhum campo fora da lista |
 | `user:{id}:consent` | AoP | SET | ids de serviço (1 a 256 caracteres) |
-| `user:{id}:broadcaster-attrs:{scid}` | tv3ws grava; AoP apaga no despejo (E4) | HASH | nome e valor não vazios, sem os básicos que a C.6.14.5 proíbe redefinir (`id`, `nickname`, `parentalControl`, `maxContentRating`), até 20 MB de nomes mais valores (P3/10.3.3) |
+| `user:{id}:broadcaster-attrs:{scid}` | tv3ws grava; AoP remove junto com o perfil (E4) | HASH | nome e valor não vazios, sem os básicos que a C.6.14.5 proíbe redefinir (`id`, `nickname`, `parentalControl`, `maxContentRating`), até 20 MB de nomes mais valores (P3/10.3.3) |
 | `client:{id}` | tv3ws | HASH | `class` em `local-associated`/`local-autonomous`/`non-local` e `refreshToken`, obrigatórios; `accessToken` opcional; nada além |
 | `clients:authorized`, `clients:blocked` | tv3ws | SET | ids de cliente não vazios |
 | `origins:associated` | AoP | HASH | campo = origem como o navegador a manda no `Origin` (esquema `http`/`https` e host em minúsculas, porta só se não for a padrão, sem caminho); valor = id de serviço |
@@ -70,7 +72,7 @@ Detalhes, a lista de funções com argumentos e como mudar uma regra: `infra/red
 **Invariantes entre chaves** (conferidas pelas funções e pela auditoria):
 
 - `perfil-indexado`: todo membro de `users:index` tem o hash `user:{id}`, e todo hash `user:{id}` tem o id em `users:index` (decisão do Luís em 10/10). `tv30_perfil_grava` grava os dois juntos, e `tv30_perfil_remove` tira os dois juntos.
-- `perfil-dependentes`: `user:{id}:consent` e `user:{id}:broadcaster-attrs:*` só existem para id em `users:index`. Invariante derivada do código: a criação grava perfil e visibilidade juntos, e o despejo apaga as quatro famílias juntas.
+- `perfil-dependentes`: `user:{id}:consent` e `user:{id}:broadcaster-attrs:*` só existem para id em `users:index`. Invariante derivada do código: a criação grava perfil e visibilidade juntos, e a remoção do perfil (`tv30_perfil_remove`) apaga as quatro famílias juntas.
 - `clientes-disjuntos`: nenhum id fica nos dois conjuntos de clientes (D-0510-4). Autorizar e bloquear são uma função cada; antes eram transações `MULTI`.
 - `autorizado-tem-registro`: todo membro de `clients:authorized` tem o hash `client:{id}`. Invariante derivada do código: a autorização grava os dois juntos.
 
@@ -205,7 +207,7 @@ Atributos básicos do perfil (conforme **ABNT NBR 25608, Tabela 7**) mais o `las
 | `audioDescription` | true/false, requerido | obrigatório, `"true"` ou `"false"` |
 | `dialogEnhancement` | true/false, requerido | obrigatório, `"true"` ou `"false"` |
 | `voiceGuidance` | true/false, requerido | obrigatório, `"true"` ou `"false"` |
-| `lastAccess` | (não é da norma) | opcional, inteiro (instante em ms; despejo P3) |
+| `lastAccess` | (não é da norma) | opcional, inteiro (instante em ms) |
 
 Nenhum outro campo entra no hash.
 
@@ -272,8 +274,8 @@ userData.json ──(build da imagem redis: emit_seed.py)──> seed.resp
 
 user-files-template/thumbs ──(userfiles-seed, a cada subida, o que falta)──> user-files/thumbs
 
-gestor de perfis do AoP ──(criação, despejo, lastAccess)──> Redis
-gestor de perfis do AoP ──(arquivo do avatar: criação, despejo)──> user-files/thumbs
+gestor de perfis do AoP ──(criação, lastAccess)──> Redis
+gestor de perfis do AoP ──(arquivo do avatar: criação)──> user-files/thumbs
 tv3ws ──(só leitura de perfis)──> Redis
 tv3ws ──(C.6.14.6: só leitura)──> user-files/thumbs
 ```
@@ -284,12 +286,12 @@ tv3ws ──(C.6.14.6: só leitura)──> user-files/thumbs
 Quem grava os perfis é o **gestor de perfis do AoP** (`aop/src/modules/profile-manager/service.js`), pelas funções do Redis (adaptador `aop/src/redis-funcoes.js`, P4). A antiga rota `POST /tv3/users` do tv3ws não existe mais. Na criação pelo form (`createProfile`):
 
 1. O dado do form é conferido: nickname, classificação, Libras e, desde o P4, os idiomas (IETF RFC 5646) e a lista de visibilidade (ids de serviço). Dado inválido dá 400, com a mensagem.
-2. Teto de 5 perfis: acima dele, despeja o de último acesso mais antigo (P3) com `tv30_perfil_remove`, que apaga numa operação só `users:index`, `user:{id}`, `user:{id}:consent` e todos os `user:{id}:broadcaster-attrs:*`. Antes eram `SREM`, `DEL`, `KEYS` e `DEL` avulsos. Desde a G8 (decisão do Luís em 12/10, à noite), o despejo apaga depois o arquivo `<id>.svg` do perfil em `<USER_DATA_PATH>/thumbs`; a falha ao apagar só vai para o log. O despejo do perfil da carga apaga o arquivo dela, que o `userfiles-seed` copia de novo na subida seguinte, sem perfil que o cite.
+2. Teto de 5 perfis (10.3.3): com cinco, o sexto é **recusado** com 400 e a mensagem, que a tela mostra ao telespectador, e nenhum perfil é despejado (Joel, 15/10). O despejo por último acesso da 10.3.3 é da quota de área privativa, e não dos perfis; apoio: a proposta de emenda da Issue 95 do Fórum (PRFFR-07), pela qual apagar um perfil exige confirmação explícita do telespectador. Até 15/10 (P3), o sexto despejava o perfil de último acesso mais antigo. A função `tv30_perfil_remove` continua, para a remoção do perfil, que apaga numa operação só `users:index`, `user:{id}`, `user:{id}:consent` e todos os `user:{id}:broadcaster-attrs:*` (E4); hoje nada a chama, porque a remoção pelo telespectador ainda não existe.
 3. Desde a G8, o arquivo do avatar antes do perfil: o SVG do formulário, conferido como as telas conferiam (texto que começa por `<svg` e tem o elemento `<svg>`; fora disso, o avatar padrão), vai para `<USER_DATA_PATH>/thumbs/<userId>.svg`, com o `xmlns` acrescentado quando falta e sem sobrescrever arquivo existente (`aop/src/modules/profile-manager/avatar.js`). Falha ao gravar o arquivo responde 404 `{"error":200}` sem gravar o perfil.
 4. `tv30_perfil_grava` numa operação só, com o `{userId}` gerado por `crypto.randomUUID()` (desde 11/10, F-3; até ali, `user_<epoch-ms>`): `users:index` recebe o `{userId}`, `user:{userId}` é regravado com os campos da Tabela 7 (com `lastAccess` igual ao instante da criação) e `user:{userId}:consent` recebe o `{session:current-service-id}` (visibilidade automática para o serviço ativo — termo aceito no form), mais a lista `accessConsent` do pedido, quando ele a traz (o form do AoP não a manda). Antes, `SADD`, `DEL`, `HSET` e `SADD` avulsos. O `avatar` gravado é o nome do arquivo do passo 3, `<userId>.svg` (até a G8, o SVG em linha). Se a função recusar o perfil, o AoP apaga o arquivo e responde o erro.
 5. O AoP recarrega a própria lista de usuários do Redis (`refreshUserData`); o `userData.json` não é alterado.
 
-**`lastAccess`** (campo de `user:{id}`, usado pelo despejo). Desde 05/10, só o AoP o grava (`touchLastAccess`), em toda troca de usuário corrente: a feita pela própria plataforma (seletor de perfis) e a que chega pelo tópico `aop/currentUser`, publicada por outro componente (por exemplo, a C.6.14.4 no tv3ws). A gravação é a função `tv30_perfil_ultimo_acesso` (antes, um script Lua do AoP), que só escreve se o id estiver em `users:index`, para não criar um hash avulso de um perfil inexistente ou despejado. O AoP grava o `lastAccess` também na criação. Perfil sem `lastAccess` (o da carga inicial, enquanto não for usado) conta como o mais antigo (0) no despejo. Até 11/10, ele contava pelo instante embutido no id (`user_<epoch-ms>`); com o id em UUID (F-3), essa leitura saiu, porque um UUID que começa por dígitos viraria um instante falso (`lastAccessOf`, em `aop/src/modules/profile-manager/service.js`). Até 05/10, quem gravava era o tv3ws.
+**`lastAccess`** (campo de `user:{id}`; até 15/10, critério do despejo). Desde 05/10, só o AoP o grava (`touchLastAccess`), em toda troca de usuário corrente: a feita pela própria plataforma (seletor de perfis) e a que chega pelo tópico `aop/currentUser`, publicada por outro componente (por exemplo, a C.6.14.4 no tv3ws). A gravação é a função `tv30_perfil_ultimo_acesso` (antes, um script Lua do AoP), que só escreve se o id estiver em `users:index`, para não criar um hash avulso de um perfil inexistente ou despejado. O AoP grava o `lastAccess` também na criação. Até 05/10, quem gravava era o tv3ws.
 
 ---
 

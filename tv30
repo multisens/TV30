@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# tv30 — sobe e desce o testbed com a descoberta SSDP (C.3.4).
+#
+#   ./tv30 up   [args do docker compose up]    compose up -d + anunciante
+#   ./tv30 down [args do docker compose down]  anunciante (ssdp:byebye) + compose down
+#   ./tv30 status                              containers e anunciante
+#   ./tv30 logs                                log do anunciante (tail -f)
+#
+# Complemento do Joel de 15/10 (B1 e B2): dentro do Docker o multicast do SSDP
+# so sai em Linux nativo (no Mac e no Windows o container fica na VM do
+# Docker; medido). Por isso o anunciante roda NO HOST, fora do Docker, nos tres
+# sistemas: e o mesmo programa em Go de infra/edgegateway/ssdp, que so
+# divulga onde esta o /manifest e responde a buscas (nao guarda estado nem
+# valida credencial, entao ficar fora da borda nao abre caminho em volta
+# dela). O resto do testbed continua em container. Quem roda o testbed nao
+# precisa saber que o anunciante existe: este comando o compila, o sobe depois
+# do compose e, na descida, o encerra ANTES, para que ele mande o ssdp:byebye.
+#
+# O binario sai do codigo a cada mudanca nele: com o Go do host, se houver;
+# senao, num container golang (so o Docker e preciso), compilado para o
+# sistema e a arquitetura desta maquina. Fica em .tv30/bin (fora do git),
+# junto com o pid, o log e o arquivo de parada.
+#
+# Configuracao (no .env da raiz; o ambiente do shell prevalece):
+#   SSDP_ENABLED=false    nao sobe o anunciante
+#   SSDP_ADVERTISE_HOST   fixa o host do LOCATION (sem ele: o IPv4 da
+#                         interface da rota padrao, detectado; B2 revista)
+#   SSDP_INTERFACE        forca a interface (ex.: eth0, en0)
+#   EDGE_HTTP_PORT, EDGE_HTTPS_PORT, UDN
+# O Windows tem o equivalente em tv30.ps1.
+set -u
+ROOT=$(cd "$(dirname "$0")" && pwd)
+STATE="$ROOT/.tv30"
+SRC="$ROOT/infra/edgegateway/ssdp"
+BIN="$STATE/bin/ssdp-announcer"
+PIDF="$STATE/ssdp.pid"
+LOG="$STATE/ssdp.log"
+STOPF="$STATE/ssdp.stop"
+GO_IMG=${GO_IMG:-golang:1.22.7-alpine3.19}   # o mesmo Go da borda (Dockerfile)
+SSDP_KEYS="SSDP_ENABLED SSDP_ADVERTISE_HOST SSDP_INTERFACE EDGE_HTTP_PORT EDGE_HTTPS_PORT UDN"
+
+info() { echo "[tv30] $*"; }
+die()  { echo "[tv30] ERRO: $*" >&2; exit 1; }
+
+# valor de KEY nos arquivos de ambiente (tv3ws/.env, depois o .env da raiz,
+# como no compose); o shell prevalece
+env_value() {
+  local key=$1 f line val=""
+  for f in "$ROOT/tv3ws/.env" "$ROOT/.env"; do
+    [ -r "$f" ] || continue
+    while IFS= read -r line || [ -n "$line" ]; do
+      line=${line%$'\r'}
+      case "$line" in "$key="*) val=${line#"$key="} ;; esac
+    done <"$f"
+  done
+  val=${val#\"}; val=${val%\"}; val=${val#\'}; val=${val%\'}
+  if [ -n "${!key+x}" ]; then val=${!key}; fi
+  printf '%s' "$val"
+}
+
+running() { [ -r "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
+
+host_target() {
+  local os arch
+  case "$(uname -s)" in
+    Linux) os=linux ;; Darwin) os=darwin ;;
+    *) die "sistema $(uname -s) sem suporte neste script (no Windows: tv30.ps1)" ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;; arm64|aarch64) arch=arm64 ;;
+    *) die "arquitetura $(uname -m) sem suporte" ;;
+  esac
+  echo "$os $arch"
+}
+
+# compila o anunciante se faltar o binario ou se o codigo mudou depois dele;
+# vet e testes antes, como no build da imagem da borda ate 15/10
+build() {
+  local force=${1:-} newer
+  if [ -z "$force" ] && [ -x "$BIN" ]; then
+    newer=$(find "$SRC" -name '*.go' -newer "$BIN" -o -name go.mod -newer "$BIN" 2>/dev/null | head -1)
+    [ -z "$newer" ] && return 0
+  fi
+  read -r os arch <<<"$(host_target)"
+  mkdir -p "$STATE/bin"
+  info "compilando o anunciante SSDP ($os/$arch) a partir de infra/edgegateway/ssdp..."
+  if command -v go >/dev/null 2>&1; then
+    (cd "$SRC" && go vet ./... && go test -count=1 ./... >/dev/null \
+      && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o "$BIN" .) \
+      || die "falha ao compilar o anunciante (go do host)"
+  else
+    command -v docker >/dev/null 2>&1 || die "sem go e sem docker para compilar o anunciante"
+    docker run --rm -v "$SRC:/src:ro" -v "$STATE/bin:/out" -w /src \
+      -e CGO_ENABLED=0 -e GOCACHE=/tmp/gocache -e GOFLAGS=-buildvcs=false "$GO_IMG" \
+      sh -c "go vet ./... && go test -count=1 ./... >/dev/null && GOOS=$os GOARCH=$arch go build -trimpath -o /out/ssdp-announcer ." \
+      || die "falha ao compilar o anunciante (container $GO_IMG)"
+  fi
+}
+
+ssdp_stop() {
+  running || { rm -f "$PIDF" "$STOPF"; return 0; }
+  local pid i
+  pid=$(cat "$PIDF")
+  : >"$STOPF"   # o anunciante manda o ssdp:byebye e sai (SSDP_STOP_FILE)
+  for i in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -TERM "$pid" 2>/dev/null; sleep 1
+    kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
+  fi
+  rm -f "$PIDF" "$STOPF"
+  info "anunciante SSDP encerrado ($(grep -c 'ssdp:byebye' "$LOG" 2>/dev/null | tr -d ' ') linha(s) de byebye no log)"
+}
+
+ssdp_start() {
+  case "$(env_value SSDP_ENABLED | tr '[:upper:]' '[:lower:]')" in
+    false|0) info "SSDP_ENABLED=false: anunciante nao sobe"; return 0 ;;
+  esac
+  build || return 1
+  ssdp_stop
+  mkdir -p "$STATE"; rm -f "$STOPF"
+  local k v envs=()
+  for k in $SSDP_KEYS; do
+    v=$(env_value "$k")
+    [ -n "$v" ] && envs+=("$k=$v")
+  done
+  echo "--- $(date '+%Y-%m-%d %H:%M:%S') ./tv30 up ---" >>"$LOG"
+  nohup env ${envs[@]+"${envs[@]}"} SSDP_STOP_FILE="$STOPF" "$BIN" >>"$LOG" 2>&1 </dev/null &
+  echo $! >"$PIDF"
+  sleep 2
+  if ! running; then
+    tail -5 "$LOG" >&2
+    die "o anunciante SSDP saiu logo depois de subir (log: .tv30/ssdp.log)"
+  fi
+  local last
+  last=$(grep '^\[ssdp\]' "$LOG" | tail -1)
+  info "anunciante SSDP de pe (pid $(cat "$PIDF")): ${last#\[ssdp\] }"
+  case "$last" in
+    *"no route to host"*)
+      [ "$(uname -s)" = Darwin ] && info "no macOS, de ao terminal a permissao de Rede Local (Ajustes > Privacidade e Seguranca > Rede Local)" ;;
+  esac
+}
+
+cmd=${1:-}
+[ $# -gt 0 ] && shift
+cd "$ROOT" || exit 1
+case "$cmd" in
+  up)
+    # o certificado do receptor (A7) e gerado em .tv30/tls pelo tls-init; o
+    # diretorio criado aqui fica com o usuario, e nao com o root do Docker
+    mkdir -p "$STATE/tls"
+    docker compose up -d "$@" || die "docker compose up falhou"
+    ssdp_start ;;
+  down)
+    ssdp_stop
+    docker compose down "$@" ;;
+  status)
+    docker compose ps
+    if running; then info "anunciante SSDP: de pe (pid $(cat "$PIDF")); ultima linha: $(grep '^\[ssdp\]' "$LOG" | tail -1)"
+    else info "anunciante SSDP: parado"; fi ;;
+  logs)
+    [ -r "$LOG" ] || die "sem log do anunciante ainda (.tv30/ssdp.log)"
+    tail -f "$LOG" ;;
+  ssdp-build)
+    build force && info "binario em .tv30/bin/ssdp-announcer" ;;
+  *)
+    sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2 ;;
+esac

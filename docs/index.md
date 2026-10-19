@@ -71,7 +71,7 @@ Depois de subir:
 | APIs, superfície externa | `http://localhost:44643`, fixa desde 12/10 (ainda HTTP; o TLS está pendente). As rotas que a borda repassa ao tv3ws por ela precisam do HTTPS do tv3ws ([Instalação]({{ site.baseurl }}/instalacao#o-que-não-vem-no-clone)) |
 | Documentação Swagger das duas superfícies | porta dinâmica: `docker port edgegateway 8085` |
 | bcast (apps de emissora e mídia, direto) | porta dinâmica: `docker compose port bcast 8081` |
-| Redis Commander | porta dinâmica: `docker port redis 18081`; pede login (usuário e senha padrão na seção [*Interface administrativa do Redis*](https://github.com/multisens/TV30/blob/main/README.md#interface-administrativa-do-redis) do `README.md` da raiz). A conexão com o banco (6379) segue sem senha |
+| Redis Commander | porta dinâmica: `docker port redis 18081`; pede login (usuário `admin` e senha `tv30-redis-admin` por padrão; `REDIS_COMMANDER_USER` e `REDIS_COMMANDER_PASSWORD` no `.env` da raiz). A conexão com o banco (6379) segue sem senha |
 
 Ficam fixas no host a 44642, a 44643, a do AoP (8080), a 1883, a 6379 e a faixa 45000–45199 dos WebSockets de remote-device (C1, decisão do Luís em 11/10; a 44643 ficou fixa também na bridge em 12/10, também por decisão dele, porque o `/manifest` a anuncia). As outras saem numa porta livre que o Docker escolhe, e a tabela acima diz como achá-las; `docker compose ps` mostra todas. A página da TV fala MQTT pelo próprio AoP, em `ws://localhost:8080/mqtt`.
 

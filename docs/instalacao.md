@@ -20,10 +20,10 @@ nav_order: 1
 git clone --recurse-submodules https://github.com/multisens/TV30.git
 cd TV30
 cp .env.example .env       # ativa profiles "linux" e "mqtt"
-docker compose up -d
+./tv30 up                  # docker compose up -d + anunciante SSDP
 ```
 
-Acesse `http://localhost:8080`.
+Acesse `http://localhost:8080`. Para descer: `./tv30 down`. Só `docker compose up -d` também funciona, sem a descoberta SSDP.
 
 > **Importante:** sem o `.env` (ou sem `COMPOSE_PROFILES=mqtt,linux` definido de alguma forma), o receptor não sobe. O `aop`, o `tv3ws`, o `bcast` e o `sysctl-init` têm `profiles: ["linux"]`, e o `mosquitto` tem `["mqtt"]` (`docker-compose.yml` e `infra/docker-compose.yml`); sem o perfil ativo, eles ficam fora do `up`. Sobem só o `redis`, a borda (`edgegateway`) e as tarefas `tv30-preflight` e `tv30-userfiles-seed`.
 
@@ -37,21 +37,19 @@ Com o `.env.example`, o compose usa as imagens publicadas no Docker Hub (`DOCKER
 ### O que não vem no clone
 
 - **Os segmentos de vídeo do bcast.** Os `.ts`, `.m3u8` e `.mp4` de `bcast/public/` estão no `bcast/.gitignore`; das pastas `bcast/public/hls/<nome>/`, o repositório só traz o `events.json`. Os segmentos são preparados fora da stack, a partir de um vídeo, com `bcast/scripts/ffmpeg-hls.sh` ou `ffmpeg-dash.sh` (precisam de FFmpeg). A `bcast/public/` é montada no container (`docker-compose.yml`), e o que estiver nela é servido sem rebuild.
-- **O HTTPS do tv3ws.** A superfície externa da borda (44643, no container e no host; ver [Portas](#portas)) repassa ao HTTPS do tv3ws (`https://tv3ws:44653`), que só sobe com `HTTPS_KEY` e `HTTPS_CERT` no `tv3ws/.env` (o `tv3ws/.env.example` os traz vazios). Sem eles, as rotas que a borda repassa pela 44643 respondem 404 `{"error":200}`; a 44642 funciona normalmente. O passo a passo para gerar o certificado está na seção [*(Opcional) Habilitando HTTPS no tv3ws*](https://github.com/multisens/TV30/blob/main/README.md#opcional-habilitando-https-no-tv3ws) do `README.md` da raiz.
 
-### Descoberta SSDP (opcional)
+### Certificado e descoberta
 
-Para que outro aparelho da rede encontre o receptor por SSDP (C.3.4), ligue o override `docker-compose.ssdp.yml`: ele põe a borda (`edgegateway`) em rede do host e liga o anunciante dela (L6, opção A, decidido pelo Luís em 09/10). A descoberta só é suportada em Linux nativo com Docker Engine (decisão do Joel, informada pelo Luís em 04/10); nesse ambiente, ela foi validada com um segundo aparelho em 09/10, primeiro com a opção B, anterior, e depois com a opção A (um notebook no mesmo Wi-Fi, testes 40 a 43 das [Medições da descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao)). No `.env` da raiz:
+Duas coisas acontecem sozinhas na subida (respostas do Joel de 15/10):
 
-```bash
-COMPOSE_FILE=docker-compose.yml:docker-compose.ssdp.yml
-SSDP_ADVERTISE_HOST=192.168.0.12   # IP desta máquina na rede local (obrigatório)
-#SSDP_INTERFACE=wlan0              # só se a interface escolhida sozinha estiver errada
-```
+- **Certificado do receptor (A7).** O serviço `tls-init` gera em `.tv30/tls` um certificado autoassinado, usado no TLS da 44643, no HTTPS interno do tv3ws, no `serverCert` do pareamento e nos `wss://` do remote-device ([HTTPS](https://github.com/multisens/TV30/blob/main/README.md#https) no `README.md` da raiz).
+- **Descoberta SSDP (C.3.4).** O `./tv30 up` compila e sobe, no host e fora do Docker, o anunciante de `infra/edgegateway/ssdp/`, com o IP da máquina detectado. Libere a UDP 1900 e a TCP 44642 no firewall. Arranjo, permissões e medições em [Descoberta SSDP]({{ site.baseurl }}/ssdp).
 
-O `SSDP_ADVERTISE_HOST` é obrigatório com o override (B2, decisão do Luís em 11/10): sem ele, o `tv30-preflight` para a subida com a mensagem `ERRO: o anuncio SSDP esta ligado (docker-compose.ssdp.yml) e falta SSDP_ADVERTISE_HOST`, e a borda não sobe. O `LOCATION` anunciado é esse valor, fixo: numa troca de rede, atualize o `.env` e rode `docker compose up -d` de novo.
+---
 
-Depois, `docker compose up -d`, e libere a UDP 1900 e a TCP 44642 no firewall. Com o override, a borda ocupa a 44642, a 44643 e a 8085 direto no host (a 8085 só é fixa nesse modo), e um erro de configuração do anúncio (UDP 1900 ocupada sem `SO_REUSEADDR`, `SSDP_INTERFACE` inexistente) derruba a borda inteira até o `restart` trazê-la de volta; a falta de rede não a derruba, e o anunciante espera e tenta de novo (morre-inteiro decidido pelo Luís em 09/10, revisto por ele em 10/10). Sem o override, nada é anunciado, e o cliente chega pelo IP (`http://<IP>:44642/manifest`). Quem usava o perfil `ssdp` (opção B) remove o container antigo com `docker rm -f tv3ws-ssdp`; o perfil deixou de existir. O passo a passo da verificação, com um segundo aparelho, está em [Descoberta SSDP]({{ site.baseurl }}/ssdp#o-que-exige-rede-doméstica-e-um-segundo-dispositivo).
+## macOS
+
+O Docker roda numa VM (Docker Desktop, Colima ou outro); o anunciante SSDP roda fora dela, pelo `./tv30 up`, como no Linux. Em Apple Silicon, as imagens do Docker Hub são `amd64`, e a borda não roda emulada: construa as imagens com `docker compose build` antes do `./tv30 up` (a borda escolhe o Go pela arquitetura, `infra/edgegateway/Dockerfile`). O terminal precisa da permissão de Rede Local para o anúncio sair (Ajustes > Privacidade e Segurança > Rede Local).
 
 ---
 
@@ -98,7 +96,7 @@ docker compose up -d
 
 Até 11/10, com a 9001 e a 9002 ocupadas pelo Hyper-V, era preciso definir `MQTT_WS_PORT=9003` no `.env`. Não é mais: a página da TV conecta no MQTT pelo próprio AoP (`ws://localhost:8080/mqtt`), e a 9001 do Mosquitto sai numa porta que o Docker escolhe (C1, decisão do Luís em 11/10; ver [Portas](#portas)). Para quem roda o AoP fora do Docker no Windows, há uma opção, que não é regra, para fixá-la em 9003: [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local#aop-fora-do-docker-no-windows-opção).
 
-> **Descoberta SSDP no WSL2:** deixe o `COMPOSE_FILE` do `.env` comentado. Anunciado em rede do host, o anúncio não sai da máquina: chega ao próprio Windows e não chega aos outros aparelhos da rede (medido em 03 e 04/10 com um anunciante descartável em modo host; com a borda anunciando, não medido; [Medições da descoberta SSDP]({{ site.baseurl }}/ssdp-verificacao)). O Docker Desktop, que também roda o Docker numa VM, fica fora do suporte (não medido). Nesses ambientes, o cliente chega ao receptor pelo IP, sem a etapa de descoberta.
+> **Descoberta SSDP no Windows:** de dentro do WSL2, o anúncio não sai da máquina (medido em 03 e 04/10). O anunciante tem de rodar no Windows: `.\tv30.ps1 up`, no PowerShell, na raiz do clone. Sem `docker` no PowerShell, o script chama o do WSL (`wsl docker compose`). Não medido no Windows: a M1 a M7 de [Descoberta SSDP]({{ site.baseurl }}/ssdp), e se as portas que o Docker do WSL2 publica (44642, 44643) chegam aos outros aparelhos da rede, porque o WSL2 em NAT só as repassa ao `localhost` do Windows.
 
 ---
 
@@ -109,7 +107,6 @@ O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla
 | Variável | Valor no `.env.example` | Para quê |
 |---|---|---|
 | `COMPOSE_PROFILES` | `mqtt,linux` | Liga o broker, o AoP, o tv3ws, o bcast e o `sysctl-init`. Sem ela, o receptor não sobe |
-| `COMPOSE_FILE` | comentada | `docker-compose.yml:docker-compose.ssdp.yml` liga a descoberta SSDP (só Linux nativo; [Descoberta SSDP]({{ site.baseurl }}/ssdp)) |
 | `DOCKERHUB_NS`, `IMAGE_TAG` | `labmultisens`, `latest` | Nome e tag das imagens (ver *Imagens publicadas ou código do clone*, acima) |
 | `EDGE_EXT_PUBLISH` | comentada (padrão `44643:44643`) | O que vai em `ports` para a superfície externa da borda. O padrão a fixa na 44643 do host desde 12/10; só o número (`44643`) a põe numa porta escolhida pelo Docker, que o `/manifest` não anuncia (ver [Portas](#portas)) |
 | `BCAST_PUBLISH`, `MQTT_WS_PUBLISH` | comentadas (padrões `8081` e `9001`) | O que vai em `ports` para o bcast e o WebSocket do Mosquitto. Só o número (o padrão) = a porta do container numa porta de host escolhida pelo Docker; `host:container` fixa (ver [Portas](#portas)) |
@@ -117,10 +114,11 @@ O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla
 | `APPS_DOMAIN` | comentada (padrão `apps.localhost`) | Domínio dos hosts próprios das aplicações de emissora. `*.localhost` só resolve para a própria máquina de quem abre a tela do AoP |
 | `EDGE_VARIANT` | `linux` | Onde a borda procura o tv3ws: `linux` (container) ou `windows` (o tv3ws no host; [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local)) |
 | `JWT_SECRET`, `JWT_ISSUER` | comentadas | Segredo e emissor do access token, o mesmo valor para o tv3ws e a borda. Sem elas, valem os padrões de desenvolvimento do compose; troque fora do laboratório |
-| `AUTH_ENFORCE` | comentada (padrão `warn`) | `warn` só avisa; `enforce` recusa a credencial inválida ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)) |
+| `AUTH_ENFORCE` | comentada (padrão `enforce`, desde 15/10) | `enforce` recusa a credencial inválida; `warn`, opção transitória, só avisa nas recusas de credencial (104, 107, 108) ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)) |
 | `REDIS_COMMANDER_USER`, `REDIS_COMMANDER_PASSWORD` | comentadas (padrões `admin` e `tv30-redis-admin`) | Login da interface do redis-commander. A conexão com o banco (6379) segue sem senha |
 | `SERVER_URL` | `localhost` | Host que aparelhos externos usam para abrir os WebSockets de remote-device; numa rede de verdade, o IP desta máquina |
-| `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Host e interface do anúncio SSDP. O `SSDP_ADVERTISE_HOST` é obrigatório com o `docker-compose.ssdp.yml` (B2) |
+| `TV3WS_WS_TLS` | comentada (padrão: `wss://`) | `false` = WebSockets de remote-device em `ws://` |
+| `SSDP_ENABLED`, `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Liga o anunciante (padrão `true`), fixa o host do anúncio e do `/manifest` (sobreposição; sem ele, o IP detectado, B2 revista) e força a interface |
 | `WEBMEDIA_REMOTE_MEDIA_PATH`, `WEBMEDIA_REMOTE_USERFILES_PATH` | comentadas | Caminhos no dispositivo remoto do demo webmedia |
 
 Saíram do `.env.example` em 11/10 o `BCAST_PORT` e o `MQTT_WS_PORT`: o compose não os lê mais, e um `.env` antigo com eles não muda nada (o `BCAST_PUBLISH` e o `MQTT_WS_PUBLISH` fazem o papel de antes, agora com porta aleatória por padrão).
@@ -131,7 +129,7 @@ Política decidida pelo Luís em 11/10 (C1, opção b) e revista por ele em 12/1
 
 | Fixas no host | Escolhidas pelo Docker a cada criação do container |
 |---|---|
-| 44642 (superfície interna da borda), 44643 (superfície externa da borda; na bridge, desde 12/10), a do AoP (8080, `AOP_PUBLIC_PORT`), 1883 (MQTT), 6379 (Redis), 45000–45199 (WebSockets de remote-device) e, com o `docker-compose.ssdp.yml`, a 8085 da borda | a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação da borda na bridge e a 18081 do redis-commander |
+| 44642 (superfície interna da borda, HTTP), 44643 (superfície externa da borda, HTTPS), a do AoP (8080, `AOP_PUBLIC_PORT`), 1883 (MQTT), 6379 (Redis, só em `127.0.0.1` desde 15/10, A1), 45000–45199 (WebSockets de remote-device) e a UDP 1900 do anunciante SSDP, no host | a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação da borda e a 18081 do redis-commander |
 
 Para achar a porta de host de uma delas, na raiz do clone: `docker compose port <serviço> <porta do container>`, por exemplo `docker compose port bcast 8081` ou `docker compose port mosquitto 9001`; ou `docker compose ps`, que mostra todas. Para fixar uma delas, defina no `.env` `BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` como `host:container` (por exemplo, `BCAST_PUBLISH=8081:8081`) e recrie o serviço (`docker compose up -d <serviço>`).
 

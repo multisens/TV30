@@ -7,3 +7,6 @@ user-files/
 # norma ABNT (licenciada) e artigos em PDF; codigo de terceiros sem licenca
 docs/*.pdf
 *.zip
+
+# estado local do ./tv30 (binario do anunciante SSDP, pid, log; complemento do Joel de 15/10)
+/.tv30/

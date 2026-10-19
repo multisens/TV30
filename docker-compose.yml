@@ -18,11 +18,10 @@ include:
 services:
 
   # Diagnostico pre-subida: checa DNS e portas do stack e imprime avisos
-  # legiveis ANTES dos servicos subirem. So bloqueia em dois casos (exit 1, e
-  # a borda, que depende dele com service_completed_successfully, nao sobe):
-  # a 44642 (fixa da norma, C.3.4) ocupada por outro processo, e o anuncio
-  # SSDP ligado sem SSDP_ADVERTISE_HOST (B2, decisao do Luis em 11/10). Roda com rede+pid do
-  # host para enxergar quem esta segurando cada porta.
+  # legiveis ANTES dos servicos subirem. So bloqueia num caso (exit 1, e a
+  # borda, que depende dele com service_completed_successfully, nao sobe): a
+  # 44642 (fixa da norma, C.3.4) ocupada por outro processo. Roda com rede+pid
+  # do host para enxergar quem esta segurando cada porta.
   preflight:
     image: alpine:3
     container_name: tv30-preflight
@@ -30,9 +29,7 @@ services:
     pid: host
     environment:
       # Perfis ativos (vem do .env da raiz ou do shell; perfil ligado so por
-      # --profile na linha de comando nao aparece aqui). As checagens da borda
-      # em rede do host (UDP 1900, 44642 com o proprio KrakenD) ligam com
-      # SSDP_EDGE, que o docker-compose.ssdp.yml define.
+      # --profile na linha de comando nao aparece aqui).
       COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
       # porta publicada do AoP (P1.3): a mesma do servico aop abaixo
       AOP_PUBLIC_PORT: ${AOP_PUBLIC_PORT:-8080}
@@ -53,6 +50,21 @@ services:
       - ./infra/user-files-template:/template:ro
       - ./scripts/seed-user-files.sh:/seed.sh:ro
     command: sh /seed.sh
+    restart: "no"
+
+  # A7 (Joel, 15/10): certificado X.509 autoassinado do receptor, gerado na
+  # PRIMEIRA subida em .tv30/tls (fora do git), sem acao do usuario; nas
+  # seguintes, nada muda. Usa a imagem da borda (openssl + o gerador,
+  # infra/edgegateway/tls-init.sh). A borda termina com ele o TLS da 44643; o
+  # tv3ws o usa no HTTPS da 44653, no serverCert do pareamento e nos wss://.
+  tls-init:
+    image: ${DOCKERHUB_NS:-tv30}/tv30-edgegateway:${IMAGE_TAG:-latest}
+    container_name: tv30-tls-init
+    entrypoint: ["sh", "/usr/local/bin/tv30-tls-init"]
+    environment:
+      TLS_DIR: /tls
+    volumes:
+      - ./.tv30/tls:/tls
     restart: "no"
 
   # MOTIVO (registro do item 1 da lista de trabalho): em alguns kernels
@@ -95,12 +107,19 @@ services:
       #
       # WebSockets de remote-device usam portas dinamicas nesse range. Tem
       # que estar publicado no host pra apps externas alcancarem a URL que o
-      # tv3ws devolve no registro (ws://SERVER_URL:<porta>).
+      # tv3ws devolve no registro (wss://SERVER_URL:<porta>, com o
+      # certificado do receptor; ws:// com TV3WS_WS_TLS=false, A7).
       - "45000-45199:45000-45199"
     environment:
       MQTT_HOST: mosquitto
       HTTP_PORT: 44652
       HTTPS_PORT: 44653
+      # no container o tv3ws escuta em todas as interfaces (a borda chega pela
+      # ginga_net, e a 44652/44653 nao sao publicadas no host); fora dele, o
+      # padrao e so a propria maquina (tv3ws/src/listen-hosts.ts; Joel, 15/10)
+      TV3WS_LISTEN_HOST: "0.0.0.0"
+      # certificado do receptor (A7): HTTPS da 44653, serverCert e wss://
+      TV30_TLS_DIR: /tls
       # Host que apps externas usam pra abrir o websocket devolvido no
       # registro em /tv3/remote-device. Tem que bater com o IP/hostname
       # alcancavel de fora do container (nao localhost/nome-de-servico).
@@ -121,21 +140,18 @@ services:
       # Emissor do accessToken. Mesma fonte (.env da raiz / shell) e mesmo
       # padrao que a borda usa para validar o token (infra/docker-compose.yml).
       JWT_ISSUER: ${JWT_ISSUER:-GenericIssuer}
-      # Descoberta SSDP: no compose quem anuncia e a BORDA, em rede do host
-      # (L6 = opcao A, decisao do Luis em 09/10; docker-compose.ssdp.yml, so
-      # Linux nativo). Daqui, da bridge, o multicast nao sai para a LAN. O
-      # tv3ws so serve o /manifest, para onde aponta o LOCATION da borda.
-      SSDP_ENABLED: "false"
     env_file:
-      # Opcional: HTTPS_KEY/HTTPS_CERT proprios (fora da imagem; nao estao
-      # na secao environment, entao valem daqui). Ausente => tv3ws sobe so
-      # em HTTP.
+      # Opcional. HTTPS_KEY/HTTPS_CERT so valem sem o certificado de
+      # TV30_TLS_DIR (tv3ws/src/tls.ts): no compose, servem ao tv3ws rodando
+      # no host (dev-host).
       - path: ./tv3ws/.env
         required: false
-      # Endereco do anuncio SSDP (SSDP_ADVERTISE_HOST, EDGE_HTTP_PORT,
-      # EDGE_HTTPS_PORT): o /manifest daqui e o LOCATION da borda tem de
-      # sair do mesmo valor, entao os dois servicos leem os mesmos arquivos,
-      # nesta ordem (o de baixo prevalece): tv3ws/.env e o .env da raiz.
+      # /manifest (SSDP_ADVERTISE_HOST, EDGE_HTTP_PORT, EDGE_HTTPS_PORT): o
+      # host de cada resposta sai da requisicao (o Host original, que a borda
+      # repassa), para casar com o LOCATION do anunciante nativo do host
+      # (./tv30 up, que le o .env da raiz); o SSDP_ADVERTISE_HOST, definido,
+      # prevalece nos dois (complemento do Joel de 15/10). Ordem dos arquivos
+      # (o de baixo prevalece): tv3ws/.env e o .env da raiz.
       # Essas variaveis ficam fora da secao environment de proposito: la, ate
       # vazio (SSDP_ADVERTISE_HOST: ${SSDP_ADVERTISE_HOST:-}), o valor
       # sobrescreveria o do tv3ws/.env, onde ele valia ate aqui (medido em
@@ -148,6 +164,7 @@ services:
         required: false
     volumes:
       - ./user-files:/user-files
+      - ./.tv30/tls:/tls:ro
     depends_on:
       # redis so fica healthy APOS a carga inicial (chave seed:done) — isso
       # substitui o antigo container redis-seed + service_completed_successfully.
@@ -156,6 +173,8 @@ services:
       mosquitto:
         condition: service_started
       userfiles-seed:
+        condition: service_completed_successfully
+      tls-init:
         condition: service_completed_successfully
     restart: unless-stopped
 
