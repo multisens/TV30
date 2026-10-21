@@ -12,15 +12,12 @@ search_enabled: true
 heading_anchors: true
 color_scheme: dark
 
-# Navegação: as seções (Primeiros passos, Como funciona, Histórico) são
-# páginas com has_children; a ordem de cada página vem do nav_order dela.
+# Navegação: as seções (Primeiros passos, Como funciona) são páginas com
+# has_children; a ordem de cada página vem do nav_order dela.
 
-# Avisos em destaque. Uso no Markdown: uma linha "{: .historico }" logo antes
+# Avisos em destaque. Uso no Markdown: uma linha "{: .nota }" logo antes
 # do parágrafo (ou do bloco "> ...") do aviso.
 callouts:
-  historico:
-    title: Registro histórico
-    color: yellow
   nota:
     title: Norma × implementação
     color: blue

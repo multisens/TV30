@@ -113,11 +113,11 @@ A superfície externa da borda (44643) fala HTTPS. O certificado é autoassinado
 O `./tv30 up` sobe o anunciante SSDP (C.3.4) no host. O anúncio aponta para `http://<IP da máquina>:44642/manifest`.
 
 - Libere a UDP 1900 e a TCP 44642 no firewall.
-- **Windows:** aceite o pedido do Defender para "redes privadas".
+- **Windows:** aceite a solicitação do Defender para "redes privadas".
 - **macOS:** dê ao terminal a permissão de Rede Local (Ajustes > Privacidade e Segurança > Rede Local).
 - Sem o anúncio, o cliente chega ao receptor pelo IP: `http://<IP>:44642/manifest`.
 
-Detalhes e medições: [`docs/ssdp.md`](./docs/ssdp.md).
+Detalhes: [`docs/ssdp.md`](./docs/ssdp.md).
 
 ---
 
@@ -160,9 +160,10 @@ Cada submodule (aop, bcast, tv3ws, infra) tem um workflow `.github/workflows/bum
 
 ## Documentação aprofundada
 
-- [`docs/`](./docs/): site Jekyll com guias detalhados (primeiros passos, como funciona, troubleshooting, padrões de apps de serviço etc.).
+- [`docs/`](./docs/): site Jekyll com guias detalhados (primeiros passos, como funciona, solução de problemas).
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md): canais entre serviços, tópicos MQTT, containers e portas.
 - [`docs/dev-local.md`](./docs/dev-local.md): desenvolvimento com um módulo rodando no host.
+- [`KNOWN-ISSUES.md`](./KNOWN-ISSUES.md): problemas conhecidos, com sintoma, causa e contorno.
 
 ---
 

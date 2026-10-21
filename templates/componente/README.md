@@ -1,6 +1,6 @@
 # Template: componente novo no TV30
 
-Pedido das reuniões de 21/09 e 28/09: quem cria um componente novo precisa saber como montar o compose dele e como rodar o mesmo componente fora do Docker enquanto desenvolve. Este diretório traz o modelo de compose ([`docker-compose.yml`](./docker-compose.yml)), um componente de exemplo que sobe com ele e as regras. O passo a passo do desenvolvimento no host está em [`docs/dev-local.md`](../../docs/dev-local.md).
+Quem cria um componente novo precisa saber como montar o compose dele e como rodar o mesmo componente fora do Docker enquanto desenvolve. Este diretório traz o modelo de compose ([`docker-compose.yml`](./docker-compose.yml)), um componente de exemplo que sobe com ele e as regras. O passo a passo do desenvolvimento no host está em [`docs/dev-local.md`](../../docs/dev-local.md).
 
 > Mensageria (MQTT), borda (KrakenD) e armazenamento (Redis) são decisões de implementação deste testbed, não exigências da ABNT NBR 25608. O template segue essas decisões; não é requisito da norma.
 
@@ -48,8 +48,8 @@ Se o componente for passar a fazer parte da stack, cole o bloco do serviço no `
 | `init: true` | O init mínimo do Docker fica como PID 1 e o processo do componente como filho. O `SIGTERM` do `docker stop` chega ao processo (o Node como PID 1 o ignoraria e esperaria o `SIGKILL`). Se o processo morrer, o init sai junto, e o container cai como a regra anterior exige. |
 | Publicar só a porta que um cliente fora do Docker usa | Clientes das APIs da norma acessam a **borda** (44642, porta fixa da C.3.4, e 44643), não a implementação interna. |
 | Tolerar dependência ainda subindo | O `depends_on` não alcança serviços de outro projeto compose. Tente de novo ou saia com erro e deixe o `restart` religar. |
-| Componente novo **não valida credencial** | Decisão de 28/09 (D1): access token e bind-token são validados só na borda (plugin `tv30-auth`). Uma rota nova da norma entra em `infra/edgegateway/routes.json`, com `auth` e `classes`. |
-| Mesmo `JWT_SECRET`/`JWT_ISSUER` do tv3ws e da borda, só se o componente **emitir** accessToken | A borda valida o token que o tv3ws assina, e os dois leem o `.env` da raiz, com o padrão `tv30-dev-secret-nao-usar-em-producao` / `GenericIssuer`. Outro emissor de token além do tv3ws é caso a confirmar com o Joel. |
+| Componente novo **não valida credencial** | Decisão do projeto: access token e bind-token são validados só na borda (plugin `tv30-auth`). Uma rota nova da norma entra em `infra/edgegateway/routes.json`, com `auth` e `classes`. |
+| Mesmo `JWT_SECRET`/`JWT_ISSUER` do tv3ws e da borda, só se o componente **emitir** accessToken | A borda valida o token que o tv3ws assina, e os dois leem o `.env` da raiz, com o padrão `tv30-dev-secret-nao-usar-em-producao` / `GenericIssuer`. Outro emissor de token além do tv3ws é caso em aberto. |
 | `clientId` MQTT fixo só se houver uma única instância | O broker derruba a conexão anterior quando chega outra com o mesmo `clientId`. Por isso o mesmo módulo não pode rodar no host e em container ao mesmo tempo (vale para `tv3ws-client`, `aop-core` e `bcast_svc`). |
 
 ## O mesmo componente rodando no host
@@ -64,7 +64,7 @@ Enquanto desenvolve, rode o processo direto no host e deixe a infra em container
 | Processo no host | — | `host.docker.internal:<porta>` (requer o `extra_hosts`) |
 
 ```bash
-# pare o container do componente antes (mesma porta, mesmo clientId MQTT)
+# pare o container do componente antes (mesma porta e, com clientId MQTT fixo, o mesmo id)
 docker compose -f <pasta-do-componente>/docker-compose.yml stop
 cd <pasta-do-componente> && npm ci
 MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 PORT=8090 npm run dev
@@ -74,7 +74,7 @@ No exemplo, o `npm ci` não instala nada (não há dependências) e o `npm run d
 
 Se um container precisar chamar o componente no host, configure nele `http://host.docker.internal:8090` e garanta o `extra_hosts` nesse container.
 
-O cenário 5 de `scripts/test-dev-host.sh` automatiza isso com este exemplo (pedido da reunião de 05/10 com o Joel). Ele sobe só o Redis e o broker, para a borda, roda o exemplo no host com `npm ci && npm run dev` e confere:
+O cenário 5 de `scripts/test-dev-host.sh` automatiza isso com este exemplo. Ele sobe só o Redis e o broker, para a borda, roda o exemplo no host com `npm ci && npm run dev` e confere:
 
 - o `/health` na 8090;
 - os logs de conexão com `127.0.0.1:6379` e `127.0.0.1:1883`;
