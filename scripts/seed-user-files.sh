@@ -1,18 +1,7 @@
 #!/bin/sh
-# Semeia ./user-files a partir do template (one-shot do servico userfiles-seed
-# do compose da raiz, a cada subida; idempotente). Elimina o pre-requisito
-# manual de criar a pasta antes do `docker compose up`. Nao sobrescreve dados
-# existentes: arquivo que ja esta em ./user-files fica como esta.
-#
-# G8 (decisao do Luis em 12/10): alem de semear a pasta ausente, copia do
-# template os arquivos que FALTAM, para que uma instalacao existente ganhe os
-# arquivos novos do template, como o avatar do perfil da carga inicial
-# (thumbs/c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg; o campo avatar do perfil
-# guarda so o nome do arquivo, infra/redis/esquema.json). Ate 12/10 so o
-# userData.json era copiado, e so quando faltava. Efeito: arquivo do template
-# apagado de ./user-files volta na subida seguinte (ex.: o avatar do perfil da
-# carga depois do despejo dele, P3; fica um arquivo que nenhum perfil cita, e
-# a C.6.14.6 nao o entrega, porque so serve o avatar de um perfil).
+# Semeia ./user-files a partir do template (one-shot userfiles-seed do compose,
+# a cada subida): copia os arquivos que faltam e nao sobrescreve os existentes.
+# Arquivo do template apagado de ./user-files volta na subida seguinte.
 set -eu
 
 DEST=/user-files

@@ -1,9 +1,8 @@
 #!/bin/bash
-# Teste do cenario de desenvolvimento (reunioes 21/09 e 28/09; combinacoes
-# 4 e 5 pedidas na reuniao de 05/10 com o Joel): sobe o MINIMO de containers
-# e roda modulos REAIS (tv3ws, aop, bcast ou o componente de exemplo do
-# template) fora do Docker, com `npm ci && npm run dev`, verificando a
-# comunicacao host <-> rede do Docker em cinco combinacoes:
+# Teste do cenario de desenvolvimento: sobe o MINIMO de containers e roda
+# modulos REAIS (tv3ws, aop, bcast ou o componente de exemplo do template)
+# fora do Docker, com `npm ci && npm run dev`, verificando a comunicacao
+# host <-> rede do Docker em cinco combinacoes:
 #
 #   1  tv3ws no host | containers: redis, mosquitto, edgegateway (variante
 #      windows: backends em host.docker.internal:44654/44655), aop, bcast
@@ -17,60 +16,24 @@
 #   5  componente novo no host (exemplo de templates/componente) | containers:
 #      redis e mosquitto; a borda fica PARADA durante o cenario
 #
-# Todo cenario verifica host->Redis (PING) e host->MQTT (pub/sub) a partir do
-# MESMO ambiente em que o modulo roda, os logs de conexao do proprio modulo e
-# o caminho especifico:
-#   1  borda (44642) -> tv3ws no host: /health e GET /tv3/current-service com
-#      accessToken HS256 assinado com o mesmo JWT_SECRET da borda (resposta do
-#      Express do tv3ws: 200, ou 404 {error:300} sem servico em uso); depois
-#      de matar o processo do host a borda deixa de responder (prova negativa)
-#   2  aop no host servindo 8080, recebendo o BAMT do bcast por MQTT e
-#      alcancando o bcast em container pelo proxy HTTP do host proprio da
-#      aplicacao (<rotulo>.apps.localhost:8080/graphicsAppProxy/..., P1.3, a
-#      origem que o aop grava em origins:associated); o caminho antigo no host
-#      do aop redireciona (302) para ele
-#   3  bcast no host publicando a sinalizacao (bcastEntryPackageUrl com
-#      host.docker.internal) e o aop em container alcancando o bcast do host
-#      pelo proxy HTTP; depois de matar o processo do host o proxy falha
-#   4  host->Redis/MQTT de cada um dos tres; borda -> tv3ws do host (como no
-#      1); BAMT do bcast do host chegando ao aop do host por MQTT; aop do host
-#      -> bcast do host pelo proxy HTTP; provas negativas matando o bcast
-#      (o proxy falha) e o tv3ws (a borda para de responder)
-#   5  o componente fala DIRETO com o Redis e o broker por 127.0.0.1, sem a
-#      borda: /health na 8090, ping por MQTT que volta com o valor que o teste
-#      acabou de gravar no Redis; depois de matar o processo do host, o ping
-#      fica sem resposta (o exemplo nao traz a lib mqtt, entao o host->MQTT
-#      desse cenario e o pub/sub do proprio componente)
-#
-# Ao fim de cada cenario os processos do host morrem. No fim de tudo a stack
-# padrao (EDGE_VARIANT=linux) e restaurada se estava de pe antes do teste, ou
-# derrubada (docker compose down) se nao estava.
-#
-# A borda roda SEMPRE na bridge durante o teste (COMPOSE_FILE fixo em
-# docker-compose.yml); no cenario 5 ela fica parada. A restauracao volta a
-# configuracao do .env. O anuncio SSDP nao entra aqui: desde 15/10 ele e do
-# anunciante nativo do host (./tv30 up; complemento do Joel), e o anunciante
-# Node que o tv3ws do host rodava nos cenarios 1 e 4 saiu.
+# Todo cenario verifica host->Redis e host->MQTT a partir do ambiente do
+# modulo, os logs de conexao dele e o caminho especifico do cenario, com prova
+# negativa depois de matar o processo do host. No fim, a stack padrao volta
+# (configuracao do .env) se estava de pe antes, ou cai (docker compose down).
+# A borda roda sempre na bridge; o anuncio SSDP (./tv30 up) nao entra aqui.
 #
 # "Host" = processo na rede do host. Duas formas (DEVHOST_MODO):
 #   node    node/npm do PATH, numa copia temporaria do modulo (sem
 #           node_modules/.env; public/ entra como link)
 #   docker  docker run --network host <imagem node> com o modulo montado
 #           somente-leitura em /src e copiado para /app: rede identica a do
-#           host, para maquinas sem node (ex.: WSL deste projeto)
+#           host, para maquinas sem node (ex.: WSL sem node)
 #   auto    node se houver node Linux no PATH, senao docker (padrao)
 #
 # Portas no host: 44654/44655 e 45000-45199 (tv3ws, cenarios 1 e 4), 8080
-# (aop, 2 e 4), 8081 (bcast, 3 e 4) e 8090 (componente, 5). Nenhuma colide
-# com as fixas da infra (6379, 1883, 44642, 44643); 8080, 8081 e 45000-45199 sao as
-# mesmas do container do modulo, que o cenario para antes. O script confere
-# 44654, 8080, 8081 e 8090 livres antes de subir o processo. Desde a decisao
-# do Luis em 11/10 (C1), a 9001 do mosquitto (MQTT por WebSocket) e a 8081 do
-# bcast em container sao publicadas sem porta fixa: o Docker escolhe uma
-# livre (a 44643 da borda tambem foi assim de 11/10 a 12/10, e voltou a ser
-# fixa). O aop do host recebe a porta publicada da
-# 9001 (porta_ws_mqtt), porque atende o MQTT da pagina da TV em /mqtt e o
-# repassa ao mosquitto; o cenario 2 fixa a 8081 do bcast (BCAST_PUBLISH).
+# (aop, 2 e 4), 8081 (bcast, 3 e 4) e 8090 (componente, 5); 8080, 8081 e
+# 45000-45199 sao as do container do modulo, que o cenario para antes. O
+# script confere 44654, 8080, 8081 e 8090 livres antes de subir o processo.
 #
 # Uso: ./scripts/test-dev-host.sh [--cenario N[,N...]] [--build] [-h]
 #   --cenario  1, 2, 3, 4 e/ou 5 (padrao: todos, em ordem)
@@ -148,8 +111,8 @@ cfg() {
 # MESMO valor — a borda valida o accessToken que o tv3ws assina.
 JWT_SECRET=$(cfg JWT_SECRET tv30-dev-secret-nao-usar-em-producao); export JWT_SECRET
 JWT_ISSUER=$(cfg JWT_ISSUER GenericIssuer); export JWT_ISSUER
-# porta do host em que o Docker publicou a 9001 do mosquitto (C1, Luis 11/10:
-# sem porta fixa); vazia se o broker nao estiver de pe
+# porta do host em que o Docker publicou a 9001 do mosquitto; vazia se o
+# broker nao estiver de pe
 porta_ws_mqtt() { docker port mqtt-broker 9001/tcp 2>/dev/null | head -1 | sed 's/.*://'; }
 SERVER_URL_CFG=$(cfg SERVER_URL localhost)
 
@@ -177,12 +140,10 @@ LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/tv30-devhost-logs.XXXXXX")
 
 # Toda chamada ao compose ativa os dois profiles: tv3ws/aop/bcast/sysctl-init
 # tem profile "linux" e o mosquitto "mqtt" (sem eles, clone sem .env nao os ve).
-# A borda do teste sobe em warn, explicito (DEVHOST_AUTH_ENFORCE muda): o que
-# este script prova e o caminho de rede host <-> containers, e nao a
-# credencial, que e do scripts/test-auth.sh. Desde 15/10 o padrao da stack e
-# enforce, e nele o token de teste (sub fora de clients:authorized, E6) daria
-# 107 antes de chegar ao modulo do host. A restauracao (compose_env) volta ao
-# modo do .env.
+# A borda do teste sobe em warn (DEVHOST_AUTH_ENFORCE muda): este script prova
+# o caminho de rede, nao a credencial (scripts/test-auth.sh); em enforce o
+# token de teste (sub fora de clients:authorized) daria 107 antes de chegar ao
+# modulo do host. A restauracao (compose_env) volta ao modo do .env.
 compose() { COMPOSE_FILE=docker-compose.yml AUTH_ENFORCE=${DEVHOST_AUTH_ENFORCE:-warn} docker compose --profile mqtt --profile linux "$@"; }
 # restauracao: a configuracao do .env (COMPOSE_FILE incluido)
 compose_env() { docker compose --profile mqtt --profile linux "$@"; }
@@ -191,11 +152,9 @@ compose_env() { docker compose --profile mqtt --profile linux "$@"; }
 # do edgegateway; userfiles-seed cria ./user-files para o modulo do host).
 INFRA="redis mosquitto edgegateway userfiles-seed"
 
-# Restos de uma execucao interrompida (achado de 12/10, noite): o modulo do
-# host roda num container proprio, tv30-devhost-<modulo>, em rede do host. Se
-# a execucao anterior morreu sem restaurar, ele continua de pe e segura a
-# porta do modulo (a 8081, no caso do bcast), e os cenarios seguintes falham
-# com "porta ja ocupada". O nome e so deste script; sai antes de comecar.
+# Restos de uma execucao interrompida: o container tv30-devhost-<modulo> (rede
+# do host) seguraria a porta do modulo, e os cenarios falhariam com "porta ja
+# ocupada". O nome e so deste script; sai antes de comecar.
 RESTOS=$(docker ps -aq --filter name='^tv30-devhost-' 2>/dev/null | tr '\n' ' ')
 if [ -n "${RESTOS// /}" ]; then
   echo "removendo restos de uma execucao interrompida: $(docker ps -a --filter name='^tv30-devhost-' --format '{{.Names}}' | tr '\n' ' ')"
@@ -480,20 +439,12 @@ checar_mqtt_host() {
 checar_redis_mqtt() { checar_redis_host; checar_mqtt_host; }
 
 # GET /tv3/current-service pela borda, com o accessToken: a resposta tem de
-# vir do Express do tv3ws (X-Powered-By; a borda repassa os cabecalhos do
-# backend e nao responde esta rota). O corpo depende de haver servico em uso
-# (C.6.3.1, Tabela C.8; tv3ws/src/api/aop-communication/current-service/
-# controller.ts): com servico, 200 com serviceContextId; sem servico (nada
-# selecionado no catalogo, o caso do cenario 1), 404 {"error":300}; valem os
-# dois. O que se prova aqui e o caminho borda -> tv3ws do host. NAO prova o
-# JWT_SECRET compartilhado: em warn (o modo da borda deste teste; ver compose) a borda repassa mesmo com token
-# invalido. O X-TV30-Auth-Warn, registrado como info por
-# checar_borda_tv3ws_host, diz o que a borda acharia do token em enforce:
-# desde a E6 (decisao do Luis em 11/10) o sub deste token de teste
-# (tv30-devhost-teste) nao esta em clients:authorized, entao o esperado e 107
-# mesmo com o JWT_SECRET certo. Nao se publica aop/currentService retido
-# para forcar o 200: o topico e da plataforma (o aop o publica e o le, no
-# container ou no host), e o valor ficaria no broker depois do teste.
+# vir do Express do tv3ws (X-Powered-By). Com servico em uso, 200 com
+# serviceContextId; sem (o caso do cenario 1), 404 {"error":300} (C.6.3.1,
+# Tabela C.8); valem os dois. Prova o caminho borda -> tv3ws do host, NAO o
+# JWT_SECRET compartilhado: em warn a borda repassa mesmo com token invalido.
+# Nao se publica aop/currentService para forcar o 200: o topico e da
+# plataforma, e o valor retido ficaria no broker depois do teste.
 checar_current_service_host() { # checar_current_service_host <token>
   local desc="borda 44642 GET /tv3/current-service (Bearer assinado com o JWT_SECRET da borda) -> tv3ws no host"
   local i=0 h="" r=""
@@ -527,7 +478,8 @@ checar_borda_tv3ws_host() {
     checar_current_service_host "$tk"
     h=$(curl -s -m 5 -o /dev/null -D - -H "Authorization: Bearer $tk" \
           http://127.0.0.1:44642/tv3/current-service 2>/dev/null | tr -d '\r' | grep -i '^X-TV30-Auth-Warn:' || true)
-    info "X-TV30-Auth-Warn com token valido de cliente fora de clients:authorized (E6; esperado 107): ${h:-ausente}"
+    # o sub do token de teste nao esta em clients:authorized: 107 mesmo com o JWT_SECRET certo
+    info "X-TV30-Auth-Warn com token valido de cliente fora de clients:authorized (esperado 107): ${h:-ausente}"
   else
     falha "nao consegui gerar o accessToken de teste no ambiente do modulo"
   fi
@@ -550,13 +502,11 @@ checar_bald() { # checar_bald <host:porta>
 
 # Abre o app users-test do bcast pelo fluxo real do aop: selecao no catalogo
 # (assina a sinalizacao do servico) e tela cheia (startApp -> alvo do proxy =
-# bcastEntryPackageUrl da BALD). Desde o P1.3 (decisao do Luis em 10/10) a
-# camada grafica abre a app no host proprio dela, e o aop grava essa origem em
-# origins:associated. Desde 11/10 (decisoes do Luis) a URL mantem o prefixo:
-# <rotulo>.apps.localhost:8080/graphicsAppProxy/<caminho> (aop/src/app-hosts.js;
-# o rotulo sai do appId, fixo por app: urn-tv30-app-users-test), e o
-# /graphicsAppProxy/... no host do proprio aop redireciona (302) para la. Fechar = ESC (/keydown/27: encerra a camada grafica e remove a
-# origem) e volta ao catalogo; so o catalogo deixaria a origem no Redis.
+# bcastEntryPackageUrl da BALD). A camada grafica abre a app no host proprio
+# dela, <rotulo>.apps.localhost:8080/graphicsAppProxy/<caminho>
+# (aop/src/app-hosts.js), e o aop grava essa origem em origins:associated.
+# Fechar = ESC (/keydown/27: encerra a camada grafica e remove a origem) e
+# volta ao catalogo; so o catalogo deixaria a origem no Redis.
 SID_USERS_TEST="urn:tv30:service:users-test"
 abrir_users_test() {
   resposta "http://127.0.0.1:8080/appcat/select?id=$SID_USERS_TEST" >/dev/null
@@ -569,7 +519,7 @@ fechar_users_test() {
 }
 
 # HOST_APP = host:porta da app aberta, lido da origem que o aop gravou em
-# origins:associated (P1.3); vazio se nenhuma apareceu em 10 s. A requisicao
+# origins:associated; vazio se nenhuma apareceu em 10 s. A requisicao
 # vai a 127.0.0.1:8080 com esse Host, sem depender de o resolvedor do
 # ambiente do teste conhecer *.localhost.
 HOST_APP=""
@@ -583,15 +533,15 @@ checar_origem_app() {
     i=$((i + 1)); sleep 1
   done
   if [ -z "$o" ]; then
-    falha "aop gravou a origem propria da app em origins:associated (P1.3) — nenhuma <rotulo>.apps.localhost:8080"
+    falha "aop gravou a origem propria da app em origins:associated — nenhuma <rotulo>.apps.localhost:8080"
     return 1
   fi
   HOST_APP=${o#http://}
-  ok "aop gravou a origem propria da app em origins:associated (P1.3): $o"
+  ok "aop gravou a origem propria da app em origins:associated: $o"
 }
 
 # checar_mqtt_ws_aop <descricao>: o aop do host atende o MQTT da pagina da TV
-# por WebSocket em /mqtt (C1, decisao do Luis em 11/10) e repassa ao mosquitto
+# por WebSocket em /mqtt e repassa ao mosquitto
 # na porta que o Docker publicou (porta_ws_mqtt). 101 = o handshake foi ate o
 # broker; porta vazia ou errada daria 502.
 checar_mqtt_ws_aop() {
@@ -604,13 +554,13 @@ checar_mqtt_ws_aop() {
 }
 
 # checar_app_aberta <descricao>: a app responde no host proprio, com o prefixo
-# /graphicsAppProxy (a URL que a camada grafica abre), e o caminho antigo no
-# host do aop redireciona (302) para essa mesma URL. Depende de HOST_APP.
+# /graphicsAppProxy (a URL que a camada grafica abre), e o mesmo caminho no
+# host do aop redireciona (302) para essa URL. Depende de HOST_APP.
 checar_app_aberta() {
   [ -n "$HOST_APP" ] || return 1
-  checar_http "$1 (host proprio da app, P1.3)" \
+  checar_http "$1 (host proprio da app)" \
     http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10 -H "Host: $HOST_APP"
-  checar_http "caminho antigo no host do aop -> 302 para o host da app" \
+  checar_http "/graphicsAppProxy no host do aop -> 302 para o host da app" \
     http://127.0.0.1:8080/graphicsAppProxy/users-test "ocation: http://$HOST_APP/graphicsAppProxy/users-test" 5 -D -
 }
 
@@ -680,7 +630,7 @@ cenario_2() {
   # O bcast anuncia bcastEntryPackageUrl = http://BCAST_HOSTNAME:8081 (porta
   # INTERNA). Para o aop do host, isso e localhost:8081 publicado pelo
   # container — por isso a 8081 publicada FIXA aqui (BCAST_PUBLISH; no padrao,
-  # desde 11/10, ela sai numa porta livre qualquer).
+  # ela sai numa porta livre qualquer).
   BCAST_HOSTNAME=localhost BCAST_PUBLISH=8081:8081 subir linux $INFRA tv3ws bcast || return
   porta_livre 8080 || { falha "porta 8080 ja ocupada no host"; return; }
   host_start aop PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$(porta_ws_mqtt)" \
@@ -866,9 +816,8 @@ restaurar() {
   fi
 }
 trap 'restaurar' EXIT
-# HUP tambem: fechar a sessao (o wsl.exe encerrado do lado do Windows, por
-# exemplo) mandava SIGHUP, que sem trap matava o script sem restaurar (achado
-# de 12/10, noite)
+# HUP tambem: fechar a sessao (ex.: o wsl.exe encerrado do lado do Windows)
+# manda SIGHUP, que sem trap mataria o script sem restaurar
 trap 'echo; echo "interrompido"; exit 130' INT TERM HUP
 
 # ------------------------------------------------------------------ main ---

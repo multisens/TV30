@@ -1,21 +1,9 @@
-// Componente de EXEMPLO do template (templates/componente; ver README.md).
-// Processo unico, so com a biblioteca padrao do node: sobe sem npm install
-// (na rede do laboratorio o proxy intercepta SSL e o npm quebra dentro do
-// build). Um componente real usa as bibliotecas do projeto (mqtt, ioredis),
-// como o tv3ws; os clientes minimos abaixo so existem para o exemplo rodar.
-//
-// O que ele faz (e o que scripts/test-template.sh confere em container; o
-// cenario 5 de scripts/test-dev-host.sh confere o mesmo com ele no host,
-// falando com Redis e broker por 127.0.0.1):
-//   - Redis pelo NOME DO SERVICO (REDIS_HOST/REDIS_PORT): PING na subida e
-//     GET da chave EXEMPLO_CHAVE a cada ping recebido;
-//   - MQTT pelo NOME DO SERVICO (MQTT_HOST/MQTT_PORT): assina
-//     <EXEMPLO_TOPICO>/ping e responde em <EXEMPLO_TOPICO>/pong com o valor
-//     da chave lido do Redis naquele momento;
-//   - GET /health na PORT (healthcheck do compose), aberto so depois de
-//     Redis e broker conectados;
-//   - morre-inteiro: sem Redis ou sem broker (na subida ou depois), sai com
-//     codigo 1 e o restart do Docker religa. Nada de meio-vivo.
+// Componente de EXEMPLO do template (ver README.md). So biblioteca padrao do
+// node, para subir sem npm install (na rede do laboratorio o proxy intercepta
+// SSL e o npm quebra no build); um componente real usa mqtt e ioredis.
+// Redis e MQTT pelo NOME DO SERVICO: responde <EXEMPLO_TOPICO>/ping em
+// <EXEMPLO_TOPICO>/pong com o valor de EXEMPLO_CHAVE no Redis; GET /health so
+// abre com os dois conectados; sem um deles, sai com 1 e o restart religa.
 'use strict';
 const net = require('net');
 const http = require('http');
@@ -41,7 +29,7 @@ function morre(motivo) {
   process.exit(1);
 }
 
-// ------------------------------------------------------------ Redis (RESP2)
+// Redis (RESP2)
 function respEncode(args) {
   const partes = [Buffer.from(`*${args.length}\r\n`)];
   for (const a of args) {
@@ -115,7 +103,7 @@ function redisConnect() {
   });
 }
 
-// ---------------------------------------------------- MQTT 3.1.1 (QoS 0)
+// MQTT 3.1.1 (QoS 0)
 function remLen(n) {
   const out = [];
   do {
@@ -191,7 +179,6 @@ function mqttConnect(onMessage) {
   });
 }
 
-// ------------------------------------------------------------------ main
 async function main() {
   let redis;
   try {

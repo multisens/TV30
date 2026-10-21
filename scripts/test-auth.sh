@@ -1,135 +1,26 @@
 #!/usr/bin/env bash
 # test-auth.sh — validacao de credenciais na BORDA (plugin tv30-auth do
-# edgegateway, item 9 / decisao de 28/09). Roda contra a stack JA DE PE
-# (localhost:44642 interna e 44643 externa) e imprime PASS/FAIL por caso;
-# sai com codigo != 0 se algum caso falhar.
+# edgegateway). Roda contra a stack JA DE PE (44642 interna, 44643 externa),
+# imprime PASS/FAIL por caso e sai != 0 se algum falhar.
 #
 # Uso (Linux/WSL, com acesso ao docker):  bash scripts/test-auth.sh
-#   (no WSL desta maquina: wsl.exe -u root bash /mnt/d/.../scripts/test-auth.sh)
 #
-# Reuniao de 05/10 com o Joel: toda a validacao de credencial fica na borda e
-# o tv3ws fica "anonimo" (D-0510-1: sem 107 no tv3ws, e o 106 por protocolo
-# so na renovacao do /token por HTTP, emissao de credencial);
-# a API C.6.8 (D-0510-2) e as APIs de informacao de API C.6.7.8/C.6.7.9
-# (D-0510-3) sao RESPONDIDAS pela borda (infra/edgegateway/plugin/
-# bindcontext.go e apiinfo.go), sem repasse ao tv3ws.
-#
-# O que ele faz:
-#   1. modo WARN (a borda e recriada com AUTH_ENFORCE=warn: desde 15/10 o
-#      padrao e enforce, Joel): requisicao sem token passa e traz
-#      X-TV30-Auth-Warn: 107; token adulterado tambem (o tv3ws nao confere
-#      mais a credencial); API respondida pela borda (GET /tv3/api-info) sem
-#      token responde 200 com o aviso; rota nao declarada da 100 nos dois
-#      modos; Access-Control-Allow-Origin: * uma vez, com e sem Origin
-#      (C.4.1.9.2); OPTIONS sem preflight em rota declarada da 200 com os
-#      cabecalhos da C.4.1.9.3; caminho com %0A nao forja linha no log; tv3ws
-#      congelado (docker pause) da 404 {error:200} da borda COM
-#      X-TV30-Auth-Warn: 107 (P1 em warn); pop-up de autorizacao recusado
-#      ("false") da 102. Desde 15/10 (Joel) so 104, 107 e 108 seguem o modo:
-#      o 106 (POST /tv3/bind-context pelo nao associado; as rotas exclusivas
-#      do cliente local e o /tv3/authorize na 44643) e o 300 bloqueiam tambem
-#      em warn.
-#   2. recria SO o edgegateway com AUTH_ENFORCE=enforce (mesma variante,
-#      mesmo JWT_SECRET/JWT_ISSUER do container em execucao) e cobre 107,
-#      104, 106, 108, 100, preflight CORS, a API C.6.8 (POST/GET/DELETE
-#      /tv3/bind-context) com HS256, HS512, RS256 e RS512, isolamento entre
-#      servicos e confusao de algoritmo, e as APIs C.6.7.8/C.6.7.9
-#      (GET /tv3/api-info[/{apiId}]) com a negociacao de versao da borda
-#      (API-Version 100.0, a mais recente suportada, no erro 100; C.3.6.6).
-#      GET /tv3/current-service (C.6.3.1, Tabela C.8) respondido pelo tv3ws:
-#      404 {error:300} sem servico em uso e 200 com "serviceId" inteiro ou
-#      omitido com servico em uso; erros 100/101 da negociacao de versao do
-#      Desde 15/10 (D2, Joel) a borda negocia a versao em toda rota, pelas
-#      versoes do routes.json (D4): 100 e 101 saem dela, com API-Version
-#      (100.0 no 100, 2.0 no 101); a C.6.15.5 serve 2.0 e 100.0, e as rotas
-#      por handle so a 100.0 (D1; ate 15/10, "2.1").
-#      Superficies (P1.9, Luis 10/10): POST e DELETE /tv3/bind-context (so
-#      do associado) dao 100 na 44643, e a lista da C.6.7.9 de la so traz
-#      as APIs que ela oferece. Associado de verdade (P1.3, Luis 10/10): o
-#      users-test aberto pelo AoP grava a origem propria
-#      (<rotulo>.apps.localhost:8080) em origins:associated, passa sem
-#      credencial com esse Origin e volta a dar 107 depois do ESC.
-#      Ainda em enforce: reuso de clientid (101, D-L2), pareamento REAL de
-#      cliente nao local (pm=qrcode e pm=kex), Redis congelado (falha
-#      explicita do tv3ws, 404 {error:200} em menos de 2 s, D-0510-6) e
-#      backend fora do ar/lento (404 {error:200} da borda em vez de 500
-#      vazio, P1).
-#   3. no fim (trap EXIT, inclusive em erro/Ctrl+C) volta o edge ao modo que
-#      ele tinha antes, religa/descongela o tv3ws e o redis se algum caso os
-#      deixou parados e desfaz o que semeou no Redis.
-#
-# ORIGEM de cada erro: todo expect_err diz e confere QUEM respondeu.
-#   borda = o plugin tv30-auth/KrakenD respondeu sem chegar ao tv3ws: o
-#           writeError/writeC32 do plugin (infra/edgegateway/plugin/
-#           handler.go) nao poe X-Powered-By;
-#   tv3ws = a resposta veio do Express do tv3ws: o Express 5 poe
-#           "X-Powered-By: Express" em toda resposta (app.handle em
-#           express/lib/application.js; o tv3ws nao chama
-#           app.disable('x-powered-by')) e o KrakenD repassa os cabecalhos
-#           do backend (encoding no-op).
-#
-# Pre-requisito dos casos de REPASSE pela 44643: o backend da superficie
-# externa e https://tv3ws:44653, que so existe com HTTPS_KEY/HTTPS_CERT no
-# tv3ws/.env (sem eles o tv3ws sobe so em HTTP). O script detecta isso
-# (GET 44643/health chegando ao tv3ws) e, se faltar, pula esses casos com
-# uma linha explicativa em vez de dar FAIL; os erros da propria borda na
-# 44643 continuam testados.
-#
-# O access token vem do fluxo REAL (/tv3/authorize + /tv3/token de cliente
-# local autonomo): o script responde "true" ao pop-up sim/nao pelo broker
-# (aop/display/layers/popup/yesno/response), no lugar do espectador. Chaves
-# RSA e bind-tokens sao gerados na hora num container node:20-alpine (so
-# biblioteca padrao do node).
-#
-# Cliente NAO local: o script faz o papel do aplicativo e do espectador. Le
-# do broker o QR code (aop/display/layers/popup/qrcode) ou o PIN
-# (aop/display/layers/popup/pin) que o tv3ws publica para a TV, resolve o
-# desafio com a cripto de tv3ws/src/util/encryption.ts (AES-128-ECB/PKCS#7,
-# SHA-256, ECDH P-256 — C.4.3.2, C.4.3.3, C.6.1.2.2, C.6.1.3) no mesmo
-# container node e decifra a primeira resposta do /token. Segue o caminho que
-# o SSDP anuncia (tv3ws/src/ssdp-config.ts): primeiro acesso por HTTP no
-# Server-BaseURL (44642); depois, o Server-SecureBaseURL (44643), que na borda
-# ainda e HTTP (L3), com o tv3ws atras dela em HTTPS. Sem HTTPS no tv3ws, os
-# passos pela 44643 sao pulados com aviso; o pareamento pela 44642 roda.
-#
-# Estado tocado no Redis (tudo com sufixo unico desta execucao e desfeito no
-# fim): session:current-service-id (salvo e restaurado), bind-context:<urn de
-# teste>, origins:associated (uma origem de teste), clients:authorized e
-# clients:blocked (os ids de teste; o tv3ws poe o cliente autorizado no
-# primeiro e o recusado no segundo, D-0510-4) e client:<id de teste> (os
-# clientes nao locais e o de reuso usam UUID, formato da C.6.1.4.3). O caso do
-# Redis congelado (docker pause redis) dura poucos segundos e o trap
-# descongela o container se o script cair no meio.
-#
-# P4 (decisao do Luis em 10/10, "Funcoes + auditoria"): quando o script faz o
-# papel de um servico no Redis (o tv3ws espelhando aop/currentService, o AoP
-# registrando a origem associada, o tv3ws bloqueando um cliente), ele grava
-# pelas FUNCOES do esquema (fcall, abaixo), como o servico gravaria. Escrita
-# direta so onde nao existe operacao de servico: o desbloqueio (da futura
-# tela de autorizacoes, C.4.2.2; regra na E5 do Joel, 15/10) e a remocao dos
-# dados de teste no fim. No fim,
-# depois de desfazer o que semeou, roda a auditoria (FCALL_RO tv30_auditoria):
-# chave fora do esquema = FAIL (inclusive se ja estava la antes da suite —
-# o script avisa no comeco).
-#
-# Estado tocado no broker: o retido de aop/currentService (o servico em uso do
-# tv3ws, core.app.sid; a plataforma o publica retido e o tv3ws o espelha em
-# session:current-service-id e no hash session:current-service). Os casos da
-# C.6.3.1 publicam no lugar da plataforma; o trap devolve o retido que havia
-# (ou o apaga, se nao havia) e restaura o hash session:current-service.
+# Recria a borda em warn e depois em enforce, pausa/para tv3ws e redis em
+# alguns casos e publica aop/currentService no lugar da plataforma. No fim
+# (trap EXIT, inclusive em erro/Ctrl+C) volta tudo e desfaz no Redis o que
+# semeou (ids com o sufixo desta execucao); grava pelas funcoes do esquema
+# (fcall), como o servico gravaria, e termina com a auditoria do esquema.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
 H_INT=${H_INT:-http://localhost:44642}
-# A 44643 e fixa por padrao, na bridge e no modo SSDP (decisao do Luis em
-# 12/10; de 11/10 a 12/10 ela saiu numa porta livre na bridge). Com
-# EDGE_EXT_PUBLISH=44643 (so o numero) o Docker escolhe uma porta livre: por
-# isso ext_url le a porta publicada e e chamada de novo a cada recriacao da
-# borda (edge_mode). H_EXT no ambiente fixa o endereco e desliga a descoberta.
+# Com EDGE_EXT_PUBLISH=44643 (so o numero) o Docker escolhe a porta de host:
+# ext_url a le e e chamada de novo a cada recriacao da borda (edge_mode).
+# H_EXT no ambiente fixa o endereco e desliga a descoberta.
 ext_url() {
   local p
   p=$(docker port edgegateway 44643/tcp 2>/dev/null | head -1 | sed 's/.*://')
-  # A7 (Joel, 15/10): TLS na 44643, com o certificado autoassinado do receptor
+  # TLS na 44643, com o certificado autoassinado do receptor
   echo "https://localhost:${p:-44643}"
 }
 H_EXT_FIXO=${H_EXT:-}
@@ -147,18 +38,18 @@ uuid() {
 }
 CLIENT="tv30-test-auth-$RUN"
 REFUSED="tv30-test-recusa-$RUN"
-REUSE=$(uuid)    # local autonomo do caso de reuso de clientid (D-L2)
+REUSE=$(uuid)    # local autonomo do caso de reuso de clientid
 NL_QR=$(uuid)    # nao local, pm=qrcode
 NL_KEX=$(uuid)   # nao local, pm=kex
-REDIS_CID=$(uuid) # /authorize com o redis congelado (D-0510-6): nunca autorizado
-C103=$(uuid)      # 103 com a camada grafica ocupada (Luis, 12/10): o pedido que espera o sim/nao
+REDIS_CID=$(uuid) # /authorize com o redis congelado: nunca autorizado
+C103=$(uuid)      # 103 com a camada grafica ocupada: o pedido que espera o sim/nao
 C103B=$(uuid)     # e o outro cliente que chega nessa hora (recebe 103, nunca gravado)
 SVC_A="urn:tv30:test:auth-a-$RUN"
 SVC_B="urn:tv30:test:auth-b-$RUN"
 ASSOC="http://tv30-test-assoc-$RUN.invalid"     # origem "associada" simulada
 OTHER_ORIGIN="http://tv30-test-cliente.invalid"  # navegador qualquer (CORS)
-# a constante de serviceContextId que o tv3ws usava ate 15/10 (A6, Joel): o
-# scid e o globalServiceId do servico; a constante nao e mais servico nenhum
+# serviceContextId constante (regressao): o scid e o globalServiceId do
+# servico, e este valor nao e servico nenhum
 SCID_CONST="c08b2c72-fd14-4095-adaf-2e5810850c57"
 TMP=$(mktemp -d)
 PASS=0; FAIL=0; FAILED=()
@@ -184,7 +75,7 @@ fcall() {
   printf '%s\n' "$out"
 }
 # servico corrente no lugar do tv3ws (espelho de aop/currentService); vazio =
-# sem servico corrente (antes: SET/DEL direto)
+# sem servico corrente
 servico_corrente() { fcall tv30_sessao_servico_id "$1" >/dev/null; }
 # auditoria do esquema: uma linha "chave | familia | motivo" por achado
 auditoria() {
@@ -212,8 +103,7 @@ CS_TOPIC=aop/currentService
 ORIG_CS=$(docker exec mqtt-broker mosquitto_sub -t "$CS_TOPIC" -C 1 -W 2 --retained-only 2>/dev/null)
 ORIG_CS_HASH=$(rc HGETALL session:current-service | base64 | tr -d "\n")
 echo "== borda: modo=$ORIG_MODE variante=$ORIG_VARIANT; servico corrente='${ORIG_SVC}'; $CS_TOPIC retido='${ORIG_CS}' =="
-# P4: sem a biblioteca de funcoes o script nao consegue fazer o papel dos
-# servicos (imagem do redis anterior ao P4?)
+# sem a biblioteca de funcoes o script nao faz o papel dos servicos
 VERSAO_ESQUEMA=$(rc --raw FCALL_RO tv30_versao 0 2>&1)
 case "$VERSAO_ESQUEMA" in
   ''|*ERR*|*rror*) die "funcoes do Redis ausentes (FCALL_RO tv30_versao 0: '$VERSAO_ESQUEMA'): reconstrua a imagem do redis (docker compose build redis && docker compose up -d redis)" ;;
@@ -231,7 +121,7 @@ edge_mode() {
   AUTH_ENFORCE=$mode EDGE_VARIANT=$ORIG_VARIANT JWT_SECRET=$EDGE_SECRET JWT_ISSUER=$EDGE_ISSUER \
     docker compose up -d --no-deps edgegateway >"$TMP/compose.log" 2>&1 \
     || { cat "$TMP/compose.log"; return 1; }
-  [ -n "$H_EXT_FIXO" ] || H_EXT=$(ext_url)   # porta de host nova a cada recriacao (C1)
+  [ -n "$H_EXT_FIXO" ] || H_EXT=$(ext_url)   # porta de host nova a cada recriacao
   for i in $(seq 1 60); do
     if [ "$(docker logs edgegateway 2>&1 | grep -c "registrado surface=.* modo=$mode")" -ge 2 ] \
        && curl -s -o /dev/null -m 3 "$H_INT/health" && curl -sk -o /dev/null -m 3 "$H_EXT/health"; then
@@ -243,8 +133,8 @@ edge_mode() {
   return 1
 }
 
-TV3WS_TOUCHED=0   # 1 depois que o caso P1 parar/congelar o tv3ws
-REDIS_TOUCHED=0   # 1 depois que o caso D-0510-6 congelar o redis
+TV3WS_TOUCHED=0   # 1 depois que um caso parar/congelar o tv3ws
+REDIS_TOUCHED=0   # 1 depois que um caso congelar o redis
 CS_TOUCHED=0      # 1 depois que os casos da C.6.3.1 publicarem aop/currentService
 
 # cs_publish <sid>: publica aop/currentService retido no lugar da plataforma
@@ -281,7 +171,7 @@ restaura_redis() {
   fi
   # o retido de aop/currentService antes do Redis: o tv3ws reescreve
   # session:current-service-id e o hash session:current-service ao recebe-lo.
-  # O hash de antes volta pela funcao do tv3ws (tv30_sessao_servico, P4);
+  # O hash de antes volta pela funcao do tv3ws (tv30_sessao_servico);
   # sem hash antes, fica o que o tv3ws regravou para o retido restaurado.
   if [ "$CS_TOUCHED" = 1 ]; then
     if cs_publish "$ORIG_CS"; then echo "$CS_TOPIC retido restaurado ('$ORIG_CS')"
@@ -324,7 +214,7 @@ trap 'exit 130' INT TERM
 req() {
   local m=$1 u=$2; shift 2
   : >"$TMP/h"; : >"$TMP/b"
-  # -k: o certificado da 44643 e autoassinado (A7); o cliente nao local de
+  # -k: o certificado da 44643 e autoassinado; o cliente nao local de
   # verdade confia nele pelo serverCert do pareamento
   ST=$(curl -sk -m 20 -X "$m" -D "$TMP/h" -o "$TMP/b" -w '%{http_code}' "$@" "$u"); CE=$?
   tr -d '\r' <"$TMP/h" >"$TMP/h2"
@@ -333,10 +223,11 @@ hdr()  { grep -i "^$1:" "$TMP/h2" | head -1 | cut -d: -f2- | sed 's/^ *//'; }
 body() { cat "$TMP/b"; }
 short() { body | head -c 200 | tr '\n' ' '; }
 
-# quem respondeu a ultima requisicao (ver ORIGEM no cabecalho)
+# quem respondeu: o Express do tv3ws poe X-Powered-By em toda resposta (e o
+# KrakenD repassa); o plugin da borda nao poe
 origin_of() { if hdr X-Powered-By | grep -q '^Express'; then echo tv3ws; else echo borda; fi; }
 
-# confere a ULTIMA resposta: erro no formato C.3.2 (D5) — 404 +
+# confere a ULTIMA resposta: erro no formato C.3.2 — 404 +
 # {error,description} JSON + ACAO * — vindo da origem esperada (borda|tv3ws)
 check_err() {
   local name=$1 code=$2 orig=$3 why="" got
@@ -380,8 +271,7 @@ expect_pass() {
 }
 
 # C.4.1.9.2: exatamente um Access-Control-Allow-Origin: * (duplicado, o
-# Chrome recusa), com ou sem Origin na requisicao. Desde 12/10 (opcao b do
-# Luis: o CORS e todo do plugin, sem o modulo CORS do KrakenD), tambem um
+# Chrome recusa), com ou sem Origin na requisicao, e um
 # Access-Control-Expose-Headers com o X-TV30-Auth-Warn (cors.expose_headers),
 # para o navegador ler o aviso do warn
 expect_acao() {
@@ -451,12 +341,11 @@ expect_edge_warn() {
   if [ -z "$why" ]; then pass "$name -> 200 da borda com X-TV30-Auth-Warn: $code"; else fail "$name -> esperado 200 da borda com aviso $code:$why"; fi
 }
 
-# preflight CORS: expect_preflight NOME URL METODO CABECALHOS. Desde 12/10
-# (decisao do Luis, opcao b) quem responde e o plugin da borda, em qualquer
-# caminho e com a lista pedida em qualquer ordem: o modulo CORS do KrakenD
-# 2.7.2 (rs/cors 1.11.0), que respondia antes, recusava a lista fora de ordem
-# lexicografica. Resposta: 200 com ACAO *, ACAM * (C.4.1.9.3), o ACAH do
-# routes.json e Access-Control-Max-Age 43200 (o max_age 12h do routes.json)
+# preflight CORS: expect_preflight NOME URL METODO CABECALHOS. Quem responde e
+# o plugin da borda, em qualquer caminho e com a lista em qualquer ordem (o
+# modulo CORS do KrakenD 2.7.2 recusa lista fora de ordem lexicografica).
+# Resposta: 200 com ACAO *, ACAM * (C.4.1.9.3), o ACAH do routes.json e
+# Access-Control-Max-Age 43200 (o max_age 12h do routes.json)
 expect_preflight() {
   local name=$1 url=$2 m=$3 hs=$4 why="" h
   req OPTIONS "$url" -H "Origin: $OTHER_ORIGIN" -H "Access-Control-Request-Method: $m" \
@@ -614,7 +503,7 @@ try {
     out('AT', j.accessToken || ''); out('RT', j.refreshToken || '');
     out('TT', j.tokenType || ''); out('EXP', j.expiresIn ?? '');
     out('CERT', j.serverCert ? 1 : 0);
-    // A7: sha256 do PEM do serverCert, para comparar com o .tv30/tls/cert.pem
+    // sha256 do PEM do serverCert, para comparar com o .tv30/tls/cert.pem
     out('CERTSHA', j.serverCert ? crypto.createHash('sha256').update(Buffer.from(j.serverCert, 'base64')).digest('hex') : '');
     out('CLASS', p.class || ''); out('SUB', p.sub || '');
   } else {
@@ -713,9 +602,9 @@ pair() {
   if [ "$EXT_OK" = 1 ]; then
     if [ "$NL_CERT" = 1 ]; then pass "$S serverCert presente (tv3ws com HTTPS)"
     else fail "$S serverCert ausente com o tv3ws em HTTPS (Tabela C.4: incluido no primeiro acesso do nao local)"; fi
-    # A7 (Joel, 15/10): o serverCert e o certificado do receptor (.tv30/tls)
+    # o serverCert e o certificado do receptor (.tv30/tls)
     CERT_SHA=$(openssl dgst -sha256 -r .tv30/tls/cert.pem 2>/dev/null | cut -d' ' -f1)
-    if [ -n "$CERT_SHA" ] && [ "$NL_CERTSHA" = "$CERT_SHA" ]; then pass "$S serverCert = o certificado do receptor (.tv30/tls/cert.pem, A7)"
+    if [ -n "$CERT_SHA" ] && [ "$NL_CERTSHA" = "$CERT_SHA" ]; then pass "$S serverCert = o certificado do receptor (.tv30/tls/cert.pem)"
     else fail "$S serverCert diferente do .tv30/tls/cert.pem (sha256 '$NL_CERTSHA' x '$CERT_SHA')"; fi
   elif [ "$NL_CERT" = 1 ]; then
     info "$S serverCert presente, embora a 44643 nao chegue ao tv3ws"
@@ -725,7 +614,7 @@ pair() {
   return 0
 }
 
-# reuso de clientid (D-L2; C.6.1.4.4 e Tabela C.3: 101 "if clientid has been
+# reuso de clientid (C.6.1.4.4 e Tabela C.3: 101 "if clientid has been
 # used before"): 404 {error:101} do tv3ws e NENHUM pop-up publicado
 expect_reuse() {
   local name=$1 url=$2 bgw
@@ -756,7 +645,8 @@ wait_tv3ws() {
 
 AUTH_H=(-H "Origin: $OTHER_ORIGIN")   # navegador qualquer: CORS devolve ACAO
 
-# backend da superficie externa (https://tv3ws:44653) de pe? (ver cabecalho)
+# A 44643 repassa a https://tv3ws:44653, que so existe com HTTPS no tv3ws; sem
+# ele, os casos de repasse por ela sao pulados (os erros da borda la, nao)
 req GET "$H_EXT/health"
 if hdr X-Powered-By | grep -q Express; then EXT_OK=1
 else
@@ -768,7 +658,7 @@ fi
 ext_skip() { if [ "$1" = "$H_EXT" ] && [ "$EXT_OK" != 1 ]; then info "pulado (sem HTTPS no tv3ws): $2"; return 0; fi; return 1; }
 
 # ============================================================== WARN ======
-echo; echo "== 1. modo warn (borda recriada com AUTH_ENFORCE=warn; padrao enforce desde 15/10) =="
+echo; echo "== 1. modo warn (borda recriada com AUTH_ENFORCE=warn; o padrao e enforce) =="
 edge_mode warn || die "edgegateway nao subiu em warn"
 if true; then
   for H in "$H_INT" "$H_EXT"; do
@@ -783,18 +673,16 @@ if true; then
     expect_err  "[warn ${H##*:}] GET /tv3/xyz/abc (rota nao declarada)" 100 borda GET "$H/tv3/xyz/abc"
     expect_options "[warn ${H##*:}] OPTIONS sem preflight em rota declarada" "$H/tv3/current-service"
     expect_err  "[warn ${H##*:}] OPTIONS sem preflight em rota nao declarada" 100 borda OPTIONS "$H/tv3/xyz/abc"
-    # D-0510-1: o tv3ws nao confere mais a credencial (antes dava 107 a
-    # Authorization invalido nos dois modos); em warn so a borda avisa
+    # o tv3ws nao confere a credencial: em warn so a borda avisa
     ext_skip "$H" "[warn ${H##*:}] token adulterado chega ao tv3ws" \
       || expect_warn "[warn ${H##*:}] token adulterado chega ao tv3ws (sem 107 do tv3ws)" 107 GET "$H/tv3/current-service" -H "Authorization: Bearer $AT_BADSIG"
-    # API respondida pela borda (D-0510-3): em warn responde, com o aviso
+    # API respondida pela borda: em warn responde, com o aviso
     expect_edge_warn "[warn ${H##*:}] GET /tv3/api-info sem token" 107 '^\{"receiverApis":\[\{"id":"tv3ws-' GET "$H/tv3/api-info"
   done
-  # desde 15/10 (Joel) o 106 dispara tambem em warn: o nao associado nao
-  # registra chave (ate entao so levava o aviso e a borda executava a API), e
-  # na 44643 as exclusivas do cliente local e o /tv3/authorize dao 106 (F-1)
+  # o 106 bloqueia tambem em warn: o nao associado nao registra chave, e na
+  # 44643 as exclusivas do cliente local e o /tv3/authorize dao 106 (C.4.1.8)
   expect_err "[warn 44642] POST bind-context pelo nao associado (106 tambem em warn)" 106 borda POST "$H_INT/tv3/bind-context" -H 'Content-Type: application/json' -d '{"alg":"HS256","key":"tv30-test-warn"}'
-  expect_err "[warn 44643] POST bind-context (exclusiva do cliente local: 106 tambem em warn, F-1)" 106 borda POST "$H_EXT/tv3/bind-context" -H 'Content-Type: application/json' -d '{"alg":"HS256","key":"tv30-test-warn"}'
+  expect_err "[warn 44643] POST bind-context (exclusiva do cliente local: 106 tambem em warn)" 106 borda POST "$H_EXT/tv3/bind-context" -H 'Content-Type: application/json' -d '{"alg":"HS256","key":"tv30-test-warn"}'
   expect_err "[warn 44643] GET /tv3/authorize (so por HTTP, C.4.1.8: 106 tambem em warn)" 106 borda GET "$H_EXT/tv3/authorize?clientid=x&display-name=y"
   # caminho com quebra de linha (%0A) nao forja linha no log da borda
   MARK="tv30forjado$RUN"
@@ -802,10 +690,9 @@ if true; then
   if [ "$(docker logs --since 2m edgegateway 2>&1 | grep -c "^$MARK")" = 0 ]; then
     pass "[warn 44642] caminho com %0A nao gera linha forjada no log"
   else fail "[warn 44642] caminho com %0A gerou linha comecando por $MARK no log"; fi
-  # backend congelado em warn (P1): a troca do 5xx pelo 404 {error:200} da
-  # borda mantem o aviso X-TV30-Auth-Warn (o que o enforce faria; antes so o
-  # teste Go cobria). docker pause, e nao stop, para nao republicar as portas
-  # do tv3ws (45000-45199). O trap descongela se o script cair no meio.
+  # backend congelado em warn: o 404 {error:200} da borda no lugar do 5xx
+  # mantem o X-TV30-Auth-Warn. docker pause, e nao stop, para nao republicar
+  # as portas do tv3ws (45000-45199); o trap descongela se o script cair.
   TV3WS_TOUCHED=1
   if docker pause tv3ws >/dev/null 2>&1; then
     expect_err "[warn 44642] tv3ws congelado: GET /tv3/current-service sem token" 200 borda GET "$H_INT/tv3/current-service"
@@ -818,27 +705,22 @@ if true; then
     if wait_tv3ws; then pass "[warn] tv3ws descongelado: a borda volta a chegar ao Express"
     else fail "[warn] tv3ws nao voltou a responder pela borda em 90 s"; fi
   else
-    fail "[warn] docker pause tv3ws falhou (P1 em warn nao testado)"
+    fail "[warn] docker pause tv3ws falhou (backend congelado em warn nao testado)"
   fi
 fi
-# correcao do tv3ws: "false" do pop-up nao autoriza mais (Boolean("false"))
+# "false" do pop-up nao autoriza (armadilha: Boolean("false") e true)
 authorize "$REFUSED" false
 check_err "pop-up recusado (\"false\"): cliente nao autorizado" 102 tv3ws
-# D-0510-4: o recusado vai para clients:blocked e nunca para clients:authorized
+# o recusado vai para clients:blocked e nunca para clients:authorized
 if [ "$(rc SISMEMBER clients:blocked "$REFUSED")" = 1 ] && [ "$(rc SISMEMBER clients:authorized "$REFUSED")" = 0 ]; then
   pass "pop-up recusado: clientid em clients:blocked e fora de clients:authorized"
 else
   fail "pop-up recusado: blocked=$(rc SISMEMBER clients:blocked "$REFUSED") authorized=$(rc SISMEMBER clients:authorized "$REFUSED") (esperado 1 e 0)"
 fi
 
-# 103 com a camada grafica ocupada (decisao do Luis em 12/10, noite; C.4.2.3:
-# "If there is any restriction preventing the pop-up from being displayed at
-# that time, the implementation shall immediately send a response to the
-# request with error code 103"; Tabela C.3). Com o sim/nao de um pedido
-# esperando resposta, outro /tv3/authorize recebe 103 na hora, sem pop-up
-# novo, e o MESMO clientid tambem (ate 12/10, o segundo abria outro pop-up,
-# tomava a resposta e o primeiro acabava bloqueado; KNOWN-ISSUES.md). Depois
-# da resposta, o primeiro recebe o resultado dela.
+# 103 com a camada grafica ocupada (C.4.2.3, Tabela C.3): com o sim/nao de um
+# pedido esperando resposta, outro /tv3/authorize recebe 103 na hora, sem
+# pop-up novo, e o MESMO clientid tambem; o primeiro recebe a resposta.
 : >"$TMP/pop103"
 docker exec mqtt-broker mosquitto_sub -C 2 -W 10 -t "$POP/message" >"$TMP/pop103" 2>/dev/null &
 SUB103=$!
@@ -873,12 +755,10 @@ else
 fi
 
 # ============================================================ ENFORCE =====
-# B3 (decisao do Luis em 11/10): o /manifest expoe ao navegador os seis
-# cabecalhos proprios dele (Access-Control-Expose-Headers do tv3ws,
-# tv3ws/src/manifest.ts). O plugin da borda (ate 12/10, o modulo CORS do
-# KrakenD) manda outra linha do mesmo
-# cabecalho (Content-Length, X-Tv30-Auth-Warn) e nao a sobrescreve: as duas
-# linhas valem, entao o caso junta todas.
+# O /manifest expoe ao navegador os seis cabecalhos proprios dele
+# (Access-Control-Expose-Headers do tv3ws, tv3ws/src/manifest.ts). O plugin da
+# borda manda outra linha do mesmo cabecalho (Content-Length, X-Tv30-Auth-Warn)
+# sem sobrescrever: as duas valem, entao o caso junta todas.
 req GET "$H_INT/manifest" -H "Origin: $OTHER_ORIGIN"
 EXPOSE=$(grep -i '^Access-Control-Expose-Headers:' "$TMP/h2" | cut -d: -f2- | tr '\n' ',')
 FALTAM=""
@@ -886,7 +766,7 @@ for hname in Server-BaseURL Server-SecureBaseURL Server-PairingMethods Device-Br
   printf '%s' "$EXPOSE" | grep -qi "\(^\|[ ,]\)$hname\([ ,]\|$\)" || FALTAM="$FALTAM $hname"
 done
 if [ "$ST" = 200 ] && [ -z "$FALTAM" ]; then
-  pass "[44642] /manifest expoe os seis cabecalhos ao navegador (B3)"
+  pass "[44642] /manifest expoe os seis cabecalhos ao navegador"
 else
   fail "[44642] /manifest: status=$ST, faltam em Access-Control-Expose-Headers:$FALTAM (veio: $EXPOSE)"
 fi
@@ -896,7 +776,7 @@ edge_mode enforce || die "edgegateway nao subiu em enforce"
 echo "ok: as duas superficies registraram o plugin em enforce"
 
 # no lugar do tv3ws (servico corrente) e do AoP (origem associada), pelas
-# funcoes do esquema (P4)
+# funcoes do esquema
 servico_corrente "$SVC_A" || die "nao consegui gravar o servico corrente de teste pela funcao"
 fcall tv30_origem_registra "$ASSOC" "$SVC_A" >/dev/null || die "nao consegui registrar a origem associada de teste pela funcao"
 ASSOC_H=(-H "Origin: $ASSOC")
@@ -906,15 +786,14 @@ authorize "$CLIENT" true
 RT=$(json_str refreshToken)
 [ -n "$RT" ] && pass "GET /tv3/authorize (local autonomo, pop-up aceito) -> refreshToken" \
              || fail "GET /tv3/authorize -> sem refreshToken: status=$ST corpo=$(short)"
-# D-0510-4: o autorizado vai para clients:authorized (base da futura tela)
+# o autorizado vai para clients:authorized
 if [ "$(rc SISMEMBER clients:authorized "$CLIENT")" = 1 ] && [ "$(rc SISMEMBER clients:blocked "$CLIENT")" = 0 ]; then
   pass "autorizado: clientid em clients:authorized e fora de clients:blocked"
 else
   fail "autorizado: authorized=$(rc SISMEMBER clients:authorized "$CLIENT") blocked=$(rc SISMEMBER clients:blocked "$CLIENT") (esperado 1 e 0)"
 fi
-# Parametro vazio conta como ausente (correcao de 12/10: antes, refresh-token=
-# vazio emitia credencial nova e invalidava o refresh token legitimo): 105 do
-# tv3ws (Tabela C.4), e o refresh token legitimo continua valendo logo abaixo
+# Parametro vazio conta como ausente: 105 do tv3ws (Tabela C.4), e o refresh
+# token legitimo continua valendo logo abaixo
 expect_err "GET /tv3/token com refresh-token vazio" 105 tv3ws GET "$H_INT/tv3/token?clientid=$CLIENT&refresh-token="
 expect_err "GET /tv3/token com challenge-response vazio" 105 tv3ws GET "$H_INT/tv3/token?clientid=$CLIENT&challenge-response="
 req GET "$H_INT/tv3/token?clientid=$CLIENT&refresh-token=$RT"
@@ -933,7 +812,7 @@ for H in "$H_INT" "$H_EXT"; do
   ext_skip "$H" "$S token valido" || expect_pass "$S token valido" GET "$H/tv3/current-service" "${TOK[@]}"
 done
 
-echo; echo "-- TLS na 44643 (A7, Joel 15/10) --"
+echo; echo "-- TLS na 44643 --"
 # a 44643 so fala TLS, com o certificado autoassinado do receptor (tls-init)
 if [ -z "$H_EXT_FIXO" ]; then
   EXT_HOSTPORT=${H_EXT#https://}
@@ -949,11 +828,10 @@ if [ -z "$H_EXT_FIXO" ]; then
   else fail "[44643] certificado apresentado '$FP_PORTA' diferente do .tv30/tls/cert.pem '$FP_ARQ'"; fi
 fi
 
-echo; echo "-- GET /tv3/current-service (C.6.3.1, Tabela C.8) e API-Version nos 100/101 do tv3ws (C.3.6.6) --"
-# servico em uso do tv3ws = ultimo aop/currentService (core.app.sid), nao a
-# chave session:current-service-id que a borda le (o tv3ws so a escreve, como
-# espelho do mesmo topico). O teste publica o topico no lugar da plataforma;
-# com o servico de teste $SVC_A o espelho fica igual ao que a borda ja ve.
+echo; echo "-- GET /tv3/current-service (C.6.3.1, Tabela C.8) e API-Version nos 100/101 (C.3.6.6) --"
+# servico em uso do tv3ws = ultimo aop/currentService (core.app.sid); a chave
+# session:current-service-id, que a borda le, e so o espelho dele. O teste
+# publica o topico no lugar da plataforma.
 CS_TOUCHED=1
 if cs_publish ""; then
   expect_err "[44642] GET /tv3/current-service sem servico em uso" 300 tv3ws GET "$H_INT/tv3/current-service" "${TOK[@]}"
@@ -967,7 +845,7 @@ if cs_publish "$SVC_A"; then
   [ "$CE" = 0 ] || why="$why curl=$CE"
   [ "$ST" = 200 ] || why="$why status=$ST"
   [ "$(origin_of)" = tv3ws ] || why="$why origem=borda"
-  # A6 (Joel, 15/10): o serviceContextId e o globalServiceId do servico em uso
+  # o serviceContextId e o globalServiceId do servico em uso
   body | grep -q "\"serviceContextId\":\"$SVC_A\"" || why="$why serviceContextId-diferente-de-$SVC_A"
   # "serviceId" inteiro (Tabela C.8) ou omitido quando o testbed nao o
   # conhece (sem SLT; o tv3ws so o teria por aop/services, que ninguem publica)
@@ -982,14 +860,14 @@ if cs_publish "$SVC_A"; then
 else
   fail "aop/currentService=$SVC_A publicado, mas o tv3ws nao o espelhou em session:current-service-id (200 nao testado)"
 fi
-# D2 (Joel, 15/10): a borda negocia a versao tambem nas rotas que repassa
-# (antes, estes erros saiam do tv3ws), pelas versoes da rota (D4)
+# a borda negocia a versao tambem nas rotas que repassa, pelas versoes da
+# rota no routes.json
 expect_err "[44642] GET /tv3/current-service com Accept-Version 3.0 (fora do conjunto)" 100 borda GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: 3.0'
 expect_api_version "[44642] 100 da borda: a versao mais recente suportada" 100.0
 expect_err "[44642] GET /tv3/current-service com Accept-Version x (malformado)" 101 borda GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: x'
 expect_api_version "[44642] 101 da borda" 2.0
 expect_err "[44642] GET /tv3/current-service com Accept-Version 100.0 (a rota so serve 2.0)" 100 borda GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: 100.0'
-expect_err "[44642] GET /tv3/current-service com Accept-Version 2.1 (saiu em 15/10, D1)" 100 borda GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: 2.1'
+expect_err "[44642] GET /tv3/current-service com Accept-Version 2.1 (fora do conjunto)" 100 borda GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: 2.1'
 expect_pass "[44642] GET /tv3/current-service com Accept-Version 2.0" GET "$H_INT/tv3/current-service" "${TOK[@]}" -H 'Accept-Version: 2.0'
 expect_api_version "[44642] 200 do tv3ws com Accept-Version 2.0" 2.0
 # o cabecalho interno vindo do cliente e apagado pela borda: o tv3ws responde na 2.0
@@ -997,23 +875,19 @@ expect_pass "[44642] X-TV30-API-Version do cliente nao passa" GET "$H_INT/tv3/cu
 expect_api_version "[44642] X-TV30-API-Version do cliente nao passa" 2.0
 
 # Bloqueio pelo espectador: o script faz o papel do tv3ws e bloqueia pela
-# funcao (tv30_cliente_bloqueia, P4: sai de clients:authorized e entra em
-# clients:blocked, como o BlockClient). O /tv3/token deste cliente ja foi
-# chamado acima; daqui em diante so a borda confere o token dele.
-# Desbloqueio: nao ha operacao de servico. Pela E5 (Joel, 15/10), o
-# desbloqueio da futura tela (C.4.2.2) restaura a autorizacao anterior. O
-# script tira o id de clients:blocked direto, DE PROPOSITO, para conferir a
-# E6: o id fica fora dos dois conjuntos, estado que cumpre o esquema.
+# funcao (tv30_cliente_bloqueia: sai de clients:authorized e entra em
+# clients:blocked, como o BlockClient); daqui em diante so a borda confere o
+# token deste cliente. Desbloqueio: nao ha operacao de servico, entao o script
+# tira o id de clients:blocked direto, DE PROPOSITO; o id fica fora dos dois
+# conjuntos, estado que cumpre o esquema.
 desbloqueia() { rc SREM clients:blocked "$1" >/dev/null; }
 fcall tv30_cliente_bloqueia "$CLIENT" >/dev/null || fail "bloqueio de $CLIENT pela funcao recusado"
 expect_err "[44642] cliente em clients:blocked" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
 desbloqueia "$CLIENT"
-# E6 (decisao do Luis em 11/10): a borda exige o cliente em
-# clients:authorized. Desbloqueado sem nova autorizacao, ele fica fora dos
-# dois conjuntos e continua recusado; de volta ao conjunto (o script faz o
-# papel do tv3ws no boot: tv30_cliente_inclui_autorizado, que exige
-# client:{id} e o id fora de clients:blocked), passa.
-expect_err "[44642] cliente desbloqueado, fora de clients:authorized (E6)" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
+# A borda exige o cliente em clients:authorized: desbloqueado sem nova
+# autorizacao, ele continua recusado; de volta ao conjunto
+# (tv30_cliente_inclui_autorizado, como o tv3ws no boot), passa.
+expect_err "[44642] cliente desbloqueado, fora de clients:authorized" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
 fcall tv30_cliente_inclui_autorizado "$CLIENT" >/dev/null || fail "reinclusao de $CLIENT em clients:authorized pela funcao recusada"
 expect_pass "[44642] cliente de volta em clients:authorized passa" GET "$H_INT/tv3/current-service" "${TOK[@]}"
 # token valido com class local-associated: dispensa bind-token, mas nao o bloqueio
@@ -1024,7 +898,7 @@ expect_err "[44642] token de classe associado de cliente bloqueado" 107 borda GE
 desbloqueia "$CLIENT"
 fcall tv30_cliente_inclui_autorizado "$CLIENT" >/dev/null || fail "reinclusao de $CLIENT em clients:authorized pela funcao recusada"
 
-echo; echo "-- reuso de clientid (D-L2): 101 sem nova consulta ao espectador --"
+echo; echo "-- reuso de clientid: 101 sem nova consulta ao espectador --"
 # cliente proprio do caso: se o 101 falhar e o pop-up sair, o timeout dele
 # bloqueia ESTE clientid, nao o $CLIENT dos demais casos
 authorize "$REUSE" true
@@ -1040,10 +914,9 @@ echo; echo "-- rotas token+bind sem bind-token --"
 expect_err "[44642] GET current-user com token, sem bind-token" 104 borda GET "$H_INT/tv3/current-service/users/current-user" "${TOK[@]}"
 expect_err "[44643] POST sensory-effect com token, sem bind-token" 104 borda POST "$H_EXT/tv3/sensory-effect-renderers/x" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
 expect_err "[44642] POST /tv3/current-service/users sem bind-token" 104 borda POST "$H_INT/tv3/current-service/users" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
-# A4 (decisao do Luis em 11/10): POST /tv3/{serviceContextId}/users, fora da
-# Tabela C.2 (a norma so define current-service/users, C.6.14.1), saiu da
-# tabela de rotas: a borda responde 100
-expect_err "[44642] POST /tv3/xyz/users (rota fora da norma, retirada: A4)" 100 borda POST "$H_INT/tv3/xyz/users" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
+# POST /tv3/{serviceContextId}/users esta fora da Tabela C.2 (a norma so
+# define current-service/users, C.6.14.1): a borda responde 100
+expect_err "[44642] POST /tv3/xyz/users (rota fora da norma)" 100 borda POST "$H_INT/tv3/xyz/users" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
 
 echo; echo "-- POST /tv3/bind-context (associado simulado: Origin em origins:associated) --"
 for A in HS256 HS512 RS256 RS512; do
@@ -1064,18 +937,18 @@ req POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application
 N2=$(rc LLEN "bind-context:$SVC_A")
 [ "$ST" = 200 ] && [ "$N1" = "$N2" ] && pass "POST repetido -> 200 sem duplicata (LLEN=$N2)" || fail "POST repetido -> status=$ST LLEN $N1 -> $N2"
 expect_err "POST bind-context por nao associado (sem Origin associado)" 106 borda POST "$H_INT/tv3/bind-context" -H 'Content-Type: application/json' -d "$BODY_HS256"
-# validacao do corpo e logica da propria API C.6.8.2, respondida pela borda
-# desde a reuniao de 05/10 (D-0510-2; infra/edgegateway/plugin/bindcontext.go)
+# validacao do corpo e logica da C.6.8.2, respondida pela borda
+# (infra/edgegateway/plugin/bindcontext.go)
 expect_err "POST bind-context sem key" 105 borda POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application/json' -d '{"alg":"HS256"}'
 expect_err "POST bind-context alg fora dos 4" 101 borda POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application/json' -d '{"alg":"ES256","key":"x"}'
 expect_err "POST bind-context RS256 com chave que nao e RSA" 101 borda POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application/json' -d '{"alg":"RS256","key":"nao-e-chave"}'
-# so JSON (o tv3ws aceitava form-urlencoded por acidente, via express.urlencoded)
+# so JSON (form-urlencoded nao)
 expect_err "POST bind-context com Content-Type text/plain" 101 borda POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: text/plain' -d "$BODY_HS512"
-expect_edge "POST bind-context com Accept-Version 2.0 (repetido; serviceContextId = o servico corrente, A6)" '^\{"serviceContextId":"'"$SVC_A"'"\}$' 2.0 \
+expect_edge "POST bind-context com Accept-Version 2.0 (repetido; serviceContextId = o servico corrente)" '^\{"serviceContextId":"'"$SVC_A"'"\}$' 2.0 \
   POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Accept-Version: 2.0' -H 'Content-Type: application/json' -d "$BODY_HS512"
-# F-1 (Joel, 15/10; C.4.1.8): na 44643 a API exclusiva do cliente local
-# responde 106 a qualquer requisicao (ate 15/10, a rota nao existia la: 100)
-expect_err "[44643] POST bind-context (exclusiva do cliente local, F-1)" 106 borda \
+# C.4.1.8: na 44643 a API exclusiva do cliente local responde 106 a qualquer
+# requisicao
+expect_err "[44643] POST bind-context (exclusiva do cliente local)" 106 borda \
   POST "$H_EXT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application/json' -d "$BODY_HS512"
 # sem servico corrente nao ha a que ligar a chave: 300 ("No DTV service currently in use")
 servico_corrente ""
@@ -1090,9 +963,9 @@ for A in HS256 HS512 RS256 RS512 NORMA; do
 done
 ext_skip "$H_EXT" "[44643] $CU com bind-token RS512" \
   || expect_pass "[44643] $CU com bind-token RS512" GET "$H_EXT$CU" "${TOK[@]}" -H "bind-token: $BT_RS512"
-expect_pass "[44642] GET /tv3/$SVC_A/users/x (scid = globalServiceId do corrente, A6)" GET "$H_INT/tv3/$SVC_A/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
-expect_err "[44642] GET /tv3/$SCID_CONST/users/x (a constante de antes nao e servico, A6)" 108 borda GET "$H_INT/tv3/$SCID_CONST/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
-expect_err "[44642] POST /tv3/$SVC_A/users com bind-token (rota retirada: A4)" 100 borda POST "$H_INT/tv3/$SVC_A/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+expect_pass "[44642] GET /tv3/$SVC_A/users/x (scid = globalServiceId do corrente)" GET "$H_INT/tv3/$SVC_A/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
+expect_err "[44642] GET /tv3/$SCID_CONST/users/x (constante fixa, nao e servico)" 108 borda GET "$H_INT/tv3/$SCID_CONST/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
+expect_err "[44642] POST /tv3/$SVC_A/users com bind-token (rota fora da norma)" 100 borda POST "$H_INT/tv3/$SVC_A/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
 
 echo; echo "-- bind-token invalido --"
 expect_err "bind-token de chave nao registrada" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_UNREG"
@@ -1102,11 +975,11 @@ expect_err "bind-token expirado" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-
 expect_err "bind-token com iat no futuro" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_IAT"
 expect_err "bind-token alg none" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_NONE"
 expect_err "bind-token que nao e JWT" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: abc"
-expect_err "scid de outro servico com bind-token do corrente (D4: valem as chaves daquele servico)" 108 borda GET "$H_INT/tv3/outro-scid/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
-expect_err "POST /tv3/xyz/users com bind-token valido (rota retirada: A4)" 100 borda POST "$H_INT/tv3/xyz/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
-expect_err "POST /tv3/Current-Service/users (caixa trocada: nao casa com current-service; A4)" 100 borda POST "$H_INT/tv3/Current-Service/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+expect_err "scid de outro servico com bind-token do corrente (valem as chaves daquele servico)" 108 borda GET "$H_INT/tv3/outro-scid/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
+expect_err "POST /tv3/xyz/users com bind-token valido (rota fora da norma)" 100 borda POST "$H_INT/tv3/xyz/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+expect_err "POST /tv3/Current-Service/users (caixa trocada: nao casa com current-service)" 100 borda POST "$H_INT/tv3/Current-Service/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
 
-echo; echo "-- sem servico DTV selecionado (H2, Joel 15/10) --"
+echo; echo "-- sem servico DTV selecionado --"
 # 300 nas APIs cuja tabela o lista (C.6.4.7, C.6.14.1 a C.6.14.6), depois do
 # access token e antes do bind-token; 108 na C.6.16.3, cuja tabela nao o lista
 servico_corrente ""
@@ -1117,46 +990,43 @@ expect_err "sem servico: C.6.4.7 (apps/{appid}/files)" 300 borda GET "$H_INT/tv3
 expect_err "sem servico: C.6.16.3 (a tabela nao lista o 300)" 108 borda POST "$H_INT/tv3/sensory-effect-renderers/x" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
 servico_corrente "$SVC_A"
 
-echo; echo "-- isolamento entre emissoras (D4) --"
+echo; echo "-- isolamento entre emissoras --"
 servico_corrente "$SVC_B"
 expect_err "servico corrente trocado: bind-token da emissora A" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS256"
 servico_corrente "$SVC_A"
 expect_pass "servico A de volta: o mesmo bind-token passa" GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS256"
 
-echo; echo "-- associado (D8): sem access token e sem bind-token --"
+echo; echo "-- associado: sem access token e sem bind-token --"
 expect_pass "associado em $CU sem credencial" GET "$H_INT$CU" "${ASSOC_H[@]}"
-expect_err  "associado em /tv3/authorize (L4, so em enforce)" 106 borda GET "$H_INT/tv3/authorize?clientid=x&display-name=y" "${ASSOC_H[@]}"
+expect_err  "associado em /tv3/authorize (so em enforce)" 106 borda GET "$H_INT/tv3/authorize?clientid=x&display-name=y" "${ASSOC_H[@]}"
 expect_err  "associado em /tv3/authorize com Authorization qualquer (nao escapa do 106)" 106 borda GET "$H_INT/tv3/authorize?clientid=x&display-name=y" "${ASSOC_H[@]}" -H 'Authorization: x'
 expect_err  "associado em /tv3/token com Authorization qualquer (nao escapa do 106)" 106 borda GET "$H_INT/tv3/token?clientid=x&refresh-token=y" "${ASSOC_H[@]}" -H 'Authorization: x'
-# A8 (Joel, 15/10): o Origin associado da 106 tambem com access token VALIDO
-# de outra classe (ate 15/10 o token prevalecia)
-expect_err  "associado em /tv3/authorize com access token valido de autonomo (A8)" 106 borda GET "$H_INT/tv3/authorize?clientid=x&display-name=y" "${ASSOC_H[@]}" "${TOK[@]}"
-expect_err  "associado em /tv3/token com access token valido de autonomo (A8)" 106 borda GET "$H_INT/tv3/token?clientid=x&refresh-token=y" "${ASSOC_H[@]}" "${TOK[@]}"
-# F-1 (C.4.1.8): a C.6.1.2 so por HTTP; na 44643, 106 a qualquer requisicao
-expect_err  "[44643] GET /tv3/authorize (C.6.1.2 so por HTTP, F-1)" 106 borda GET "$H_EXT/tv3/authorize?clientid=x&display-name=y"
+# o Origin associado da 106 tambem com access token VALIDO de outra classe
+expect_err  "associado em /tv3/authorize com access token valido de autonomo" 106 borda GET "$H_INT/tv3/authorize?clientid=x&display-name=y" "${ASSOC_H[@]}" "${TOK[@]}"
+expect_err  "associado em /tv3/token com access token valido de autonomo" 106 borda GET "$H_INT/tv3/token?clientid=x&refresh-token=y" "${ASSOC_H[@]}" "${TOK[@]}"
+# C.4.1.8: a C.6.1.2 so por HTTP; na 44643, 106 a qualquer requisicao
+expect_err  "[44643] GET /tv3/authorize (C.6.1.2 so por HTTP)" 106 borda GET "$H_EXT/tv3/authorize?clientid=x&display-name=y"
 
-echo; echo "-- associado em contexto de outra emissora (H1, Joel 15/10) --"
+echo; echo "-- associado em contexto de outra emissora --"
 # a origem de teste foi registrada para $SVC_A (o servico que "lancou" a app);
 # no proprio contexto ela dispensa o bind-token; em outro, segue a regra geral
-expect_pass "H1: associado em /tv3/$SVC_A/users/x (proprio contexto) sem credencial" GET "$H_INT/tv3/$SVC_A/users/x" "${ASSOC_H[@]}"
-expect_err  "H1: associado em /tv3/$SVC_B/users/x sem bind-token" 104 borda GET "$H_INT/tv3/$SVC_B/users/x" "${ASSOC_H[@]}"
-expect_err  "H1: associado em /tv3/$SVC_B/users/x com bind-token de $SVC_A" 108 borda GET "$H_INT/tv3/$SVC_B/users/x" "${ASSOC_H[@]}" -H "bind-token: $BT_HS256"
+expect_pass "associado em /tv3/$SVC_A/users/x (proprio contexto) sem credencial" GET "$H_INT/tv3/$SVC_A/users/x" "${ASSOC_H[@]}"
+expect_err  "associado em /tv3/$SVC_B/users/x sem bind-token" 104 borda GET "$H_INT/tv3/$SVC_B/users/x" "${ASSOC_H[@]}"
+expect_err  "associado em /tv3/$SVC_B/users/x com bind-token de $SVC_A" 108 borda GET "$H_INT/tv3/$SVC_B/users/x" "${ASSOC_H[@]}" -H "bind-token: $BT_HS256"
 # chave registrada para $SVC_B (o registro vale para o servico corrente)
 servico_corrente "$SVC_B"
 req POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application/json' -d "$BODY_HS512"
 servico_corrente "$SVC_A"
-expect_pass "H1: associado em /tv3/$SVC_B/users/x com bind-token valido de $SVC_B" GET "$H_INT/tv3/$SVC_B/users/x" "${ASSOC_H[@]}" -H "bind-token: $BT_HS512"
+expect_pass "associado em /tv3/$SVC_B/users/x com bind-token valido de $SVC_B" GET "$H_INT/tv3/$SVC_B/users/x" "${ASSOC_H[@]}" -H "bind-token: $BT_HS512"
 
-echo; echo "-- associado de verdade: app do bcast aberta pelo AoP na origem propria (P1.3) --"
-# P1.3 (decisao do Luis em 10/10): o AoP abre cada app de emissora em
-# http://<rotulo>.apps.localhost:8080 e grava essa origem em
-# origins:associated ao lancar (remove ao encerrar). E o Origin que o
-# navegador manda nas chamadas da app (conferido no Firefox do receptor
-# Linux e no Chrome em 10/10). Aqui o script faz o papel do navegador: abre o
-# users-test pelo fluxo do AoP (catalogo + tela cheia), le a origem gravada e
-# chama a borda com ela. Selecionar o servico no AoP republica
-# aop/currentService (o trap devolve o retido de antes) e o tv3ws o espelha
-# em session:current-service-id, que o script devolve a SVC_A logo depois.
+echo; echo "-- associado de verdade: app do bcast aberta pelo AoP na origem propria --"
+# O AoP abre cada app de emissora em http://<rotulo>.apps.localhost:8080 e
+# grava essa origem em origins:associated ao lancar (remove ao encerrar); e o
+# Origin que o navegador manda nas chamadas da app. O script faz o papel do
+# navegador: abre o users-test pelo fluxo do AoP (catalogo + tela cheia), le a
+# origem gravada e chama a borda com ela. Selecionar o servico republica
+# aop/currentService (o trap devolve o retido), e o script devolve
+# session:current-service-id a SVC_A logo depois.
 AOP=${AOP_URL:-http://localhost:8080}
 SID_USERS_TEST=${USERS_TEST_SID:-urn:tv30:service:users-test}
 if curl -s -m 5 -o /dev/null "$AOP/appcat"; then
@@ -1187,7 +1057,7 @@ if curl -s -m 5 -o /dev/null "$AOP/appcat"; then
   curl -s -m 5 -o /dev/null "$AOP/btpapp/appcat"
   servico_corrente "$SVC_A"
 else
-  info "AoP fora do ar em $AOP: casos da app de verdade (P1.3) pulados"
+  info "AoP fora do ar em $AOP: casos da app de verdade pulados"
 fi
 
 echo; echo "-- GET /tv3/bind-context --"
@@ -1202,8 +1072,8 @@ expect_err "GET bind-context sem bind-token, SEM Origin" 104 borda GET "$H_INT/t
 # assinatura de chave registrada, fora do prazo: 108 (a assinatura vem antes)
 expect_err "GET bind-context com bind-token expirado" 108 borda GET "$H_INT/tv3/bind-context" "${TOK[@]}" -H "bind-token: $BT_EXP"
 expect_err "GET bind-context com bind-token que nao e JWT" 108 borda GET "$H_INT/tv3/bind-context" "${TOK[@]}" -H "bind-token: abc"
-# erro que ainda sai do tv3ws (a C.6.8 saiu dele), para cliente fora do
-# navegador (sem Origin) e com Origin: ACAO * uma vez (C.4.1.9.2)
+# erro que sai do tv3ws, para cliente fora do navegador (sem Origin) e com
+# Origin: ACAO * uma vez (C.4.1.9.2)
 expect_err "POST /tv3/remote-device com {} (erro do tv3ws), SEM Origin" 105 tv3ws POST "$H_INT/tv3/remote-device" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
 expect_acao "erro do tv3ws SEM Origin: ACAO uma vez" POST "$H_INT/tv3/remote-device" "${TOK[@]}" -H 'Content-Type: application/json' -d '{}'
 expect_acao "erro do tv3ws COM Origin: ACAO uma vez" POST "$H_INT/tv3/remote-device" "${TOK[@]}" "${AUTH_H[@]}" -H 'Content-Type: application/json' -d '{}'
@@ -1224,8 +1094,8 @@ req DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: tv30-test-inexiste
 [ "$ST" = 200 ] && pass "DELETE de chave inexistente -> 200" || fail "DELETE inexistente -> status=$ST corpo=$(short)"
 expect_err "DELETE sem cabecalho key" 105 borda DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}"
 expect_err "DELETE por nao associado" 106 borda DELETE "$H_INT/tv3/bind-context" -H "key: $HS512_KEY"
-# F-1: o DELETE (classes: local-associated) tambem da 106 na 44643
-expect_err "[44643] DELETE bind-context (exclusiva do cliente local, F-1)" 106 borda DELETE "$H_EXT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: $HS512_KEY"
+# o DELETE (classes: local-associated) tambem da 106 na 44643
+expect_err "[44643] DELETE bind-context (exclusiva do cliente local)" 106 borda DELETE "$H_EXT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: $HS512_KEY"
 expect_pass "a HS512 continua registrada depois do DELETE recusado na 44643" GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS512"
 servico_corrente ""
 expect_edge "DELETE sem servico corrente -> {} (nada a remover)" '^\{\}$' DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: $HS512_KEY"
@@ -1250,17 +1120,17 @@ req GET "$H_INT/tv3/api-info?subsystem=tv3ws" "${TOK[@]}"
 [ "$ST" = 200 ] && [ "$(body)" = "$LIST_ALL" ] && pass "[44642] GET /tv3/api-info?subsystem=tv3ws -> a mesma lista" \
   || fail "[44642] ?subsystem=tv3ws -> status=$ST corpo diferente da lista sem subsystem: $(short)"
 expect_edge "[44643] GET /tv3/api-info?subsystem=tv3ws" '^\{"receiverApis":\[\{"id":"tv3ws-application-authorization"' GET "$H_EXT/tv3/api-info?subsystem=tv3ws" "${TOK[@]}"
-# F-2 revista (Joel, 15/10): a 44643 lista TODAS as APIs implementadas, como
-# a 44642 (a C.6.7.9 descreve "all APIs of a given category", Tabela C.48), e
-# a C.6.7.8 responde por todas; a restricao aparece pelo 106 no uso
+# a 44643 lista TODAS as APIs implementadas, como a 44642 (C.6.7.9: "all APIs
+# of a given category", Tabela C.48), e a C.6.7.8 responde por todas; a
+# restricao aparece pelo 106 no uso
 req GET "$H_EXT/tv3/api-info" "${TOK[@]}"
 if [ "$ST" = 200 ] && [ "$(origin_of)" = borda ] && [ "$(body)" = "$LIST_ALL" ]; then
-  pass "[44643] GET /tv3/api-info -> a mesma lista da 44642 ($API_N APIs; F-2)"
+  pass "[44643] GET /tv3/api-info -> a mesma lista da 44642 ($API_N APIs)"
 else
-  fail "[44643] GET /tv3/api-info -> status=$ST origem=$(origin_of), esperada a lista da 44642 (F-2) corpo=$(short)"
+  fail "[44643] GET /tv3/api-info -> status=$ST origem=$(origin_of), esperada a lista da 44642 corpo=$(short)"
 fi
-expect_edge "[44643] GET /tv3/api-info/tv3ws-bind-context-register (F-2)" '^\{"receiverApi":\{"id":"tv3ws-bind-context-register","version":"2.0"\}\}$' GET "$H_EXT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
-expect_edge "[44643] GET /tv3/api-info/tv3ws-remotedevice-communication (F-2)" '^\{"receiverApi":\{"id":"tv3ws-remotedevice-communication","version":"[0-9.]+"\}\}$' GET "$H_EXT/tv3/api-info/tv3ws-remotedevice-communication" "${TOK[@]}"
+expect_edge "[44643] GET /tv3/api-info/tv3ws-bind-context-register" '^\{"receiverApi":\{"id":"tv3ws-bind-context-register","version":"2.0"\}\}$' GET "$H_EXT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
+expect_edge "[44643] GET /tv3/api-info/tv3ws-remotedevice-communication" '^\{"receiverApi":\{"id":"tv3ws-remotedevice-communication","version":"[0-9.]+"\}\}$' GET "$H_EXT/tv3/api-info/tv3ws-remotedevice-communication" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info/tv3ws-bind-context-register" '^\{"receiverApi":\{"id":"tv3ws-bind-context-register","version":"2.0"\}\}$' GET "$H_INT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=ncl (subsistema conhecido, sem API)" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=ncl" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=nclua" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=nclua" "${TOK[@]}"
@@ -1286,8 +1156,8 @@ expect_api_version "[44642] 101 da borda" 2.0
 expect_err "[44642] GET /tv3/bind-context com Accept-Version 3.0" 100 borda GET "$H_INT/tv3/bind-context" "${TOK[@]}" -H "bind-token: $BT_HS512" -H 'Accept-Version: 3.0'
 expect_api_version "[44642] 100 da borda em /tv3/bind-context" 100.0
 expect_err "[44642] PUT /tv3/api-info (metodo nao declarado)" 100 borda PUT "$H_INT/tv3/api-info" "${TOK[@]}"
-# CORS das rotas da borda: o plugin responde o preflight (opcao b, Luis
-# 12/10) e o OPTIONS sem preflight
+# CORS das rotas da borda: o plugin responde o preflight e o OPTIONS sem
+# preflight
 for H in "$H_INT" "$H_EXT"; do
   S="[${H##*:}]"
   expect_preflight "$S preflight GET /tv3/api-info" "$H/tv3/api-info" GET authorization
@@ -1301,23 +1171,19 @@ done
 
 echo; echo "-- cliente NAO local: pareamento real (C.4.3, C.6.1.2, C.6.1.3) --"
 # primeiro acesso por HTTP na 44642 (Server-BaseURL do SSDP); uso e renovacao
-# pela 44643 (Server-SecureBaseURL). A renovacao do /token por HTTP continua
-# recusada com 106 pelo proprio tv3ws (emissao de credencial, client-
-# identification/controller.ts). O 106 por protocolo nas DEMAIS APIs (nao
-# local por HTTP fora de /authorize e /token, C.4.1.6) saiu do tv3ws com a
-# D-0510-1 (reuniao de 05/10) e voltou na borda em 15/10 (E7, Joel: vale ja,
-# sem esperar o TLS da 44643, e tambem em warn).
+# pela 44643 (Server-SecureBaseURL). A renovacao do /token por HTTP leva 106
+# do proprio tv3ws (client-identification/controller.ts); nas DEMAIS APIs, o
+# nao local por HTTP leva 106 da borda (C.4.1.6), tambem em warn.
 for PM in qrcode kex; do
   if [ "$PM" = qrcode ]; then NCID=$NL_QR; else NCID=$NL_KEX; fi
   S="[nao local $PM]"
   pair "$PM" "$NCID" || { info "$S pareamento incompleto: uso, renovacao e reuso deste cliente pulados"; continue; }
   NL_REUSE_KEY=${NL_CPUB:-}   # chave ECDH do cliente usada no pareamento (kex)
   NL_TOK=(-H "Authorization: Bearer $NL_AT")
-  # o desafio e descartado no sucesso (correcao de 12/10: antes, a mesma
-  # resposta ao desafio emitia credencial de novo): 102 do tv3ws (Tabela C.4)
+  # o desafio e descartado no sucesso: 102 do tv3ws (Tabela C.4)
   expect_err "$S [44642] challenge-response repetido (desafio ja usado)" 102 tv3ws GET "$H_INT/tv3/token?clientid=$NCID&challenge-response=$NL_CR"
   if [ "$(rc SISMEMBER clients:authorized "$NCID")" = 1 ]; then
-    pass "$S clientid em clients:authorized depois do pareamento (D-0510-4)"
+    pass "$S clientid em clients:authorized depois do pareamento"
   else
     fail "$S clientid fora de clients:authorized depois do pareamento"
   fi
@@ -1327,20 +1193,18 @@ for PM in qrcode kex; do
   if ! ext_skip "$H_EXT" "$S [44643] $CU com bind-token HS512"; then
     expect_pass "$S [44643] $CU com bind-token HS512" GET "$H_EXT$CU" "${NL_TOK[@]}" -H "bind-token: $BT_HS512"
   fi
-  # E7 (Joel, 15/10; C.4.1.6): na 44642 (HTTP) o nao local so usa a C.6.1.2 e
+  # C.4.1.6: na 44642 (HTTP) o nao local so usa a C.6.1.2 e
   # a C.6.1.3; nas demais, 106 da borda, tambem nas APIs que ela responde
-  expect_err "$S [44642] API fora de /authorize e /token por HTTP (E7)" 106 borda GET "$H_INT/tv3/current-service" "${NL_TOK[@]}"
-  expect_err "$S [44642] /tv3/api-info por HTTP (E7)" 106 borda GET "$H_INT/tv3/api-info" "${NL_TOK[@]}"
-  # C.6.15.5 so para o cliente local: 106 ao nao local nas duas portas (F-1:
-  # na 44642, regra de classe; na 44643, exclusiva do cliente local, C.4.1.8)
+  expect_err "$S [44642] API fora de /authorize e /token por HTTP" 106 borda GET "$H_INT/tv3/current-service" "${NL_TOK[@]}"
+  expect_err "$S [44642] /tv3/api-info por HTTP" 106 borda GET "$H_INT/tv3/api-info" "${NL_TOK[@]}"
+  # C.6.15.5 so para o cliente local: 106 ao nao local nas duas portas (na
+  # 44642, regra de classe; na 44643, exclusiva do cliente local, C.4.1.8)
   expect_err "$S [44642] GET /tv3/remote-device/devices/x (C.6.15.5, so cliente local)" 106 borda GET "$H_INT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
-  expect_err "$S [44643] GET /tv3/remote-device/devices/x (exclusiva do cliente local, F-1)" 106 borda GET "$H_EXT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
-  # rotas 100.0 do ponto de entrada local (C.6.15.6 e C.6.15.7 da proposta do
-  # testbed, D1; ate 15/10, "2.1";
-  # "a local client application"): a mesma regra, decisao do Luis em 12/10
+  expect_err "$S [44643] GET /tv3/remote-device/devices/x (exclusiva do cliente local)" 106 borda GET "$H_EXT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
+  # rotas por handle (100.0): a mesma regra
   for M in GET DELETE; do
     expect_err "$S [44642] $M /tv3/remote-device/device/x (100.0, so cliente local)" 106 borda $M "$H_INT/tv3/remote-device/device/x" "${NL_TOK[@]}"
-    expect_err "$S [44643] $M /tv3/remote-device/device/x (exclusiva do cliente local, F-1)" 106 borda $M "$H_EXT/tv3/remote-device/device/x" "${NL_TOK[@]}"
+    expect_err "$S [44643] $M /tv3/remote-device/device/x (exclusiva do cliente local)" 106 borda $M "$H_EXT/tv3/remote-device/device/x" "${NL_TOK[@]}"
   done
   expect_err "$S [44642] renovacao por HTTP com refresh-token" 106 tv3ws GET "$H_INT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
   if ! ext_skip "$H_EXT" "$S [44643] renovacao com refresh-token"; then
@@ -1362,8 +1226,8 @@ done
 
 expect_pass "[44642] GET /tv3/remote-device/devices/x (C.6.15.5) pelo cliente local" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}"
 expect_pass "[44642] GET /tv3/remote-device/device/x (100.0) pelo cliente local" GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
-expect_err "[44642] GET /tv3/remote-device/device/x sem Accept-Version (so existe na 100.0, D1)" 100 borda GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}"
-expect_err "[44642] GET /tv3/remote-device/device/x com 2.0 (D1)" 100 borda GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 2.0'
+expect_err "[44642] GET /tv3/remote-device/device/x sem Accept-Version (so existe na 100.0)" 100 borda GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}"
+expect_err "[44642] GET /tv3/remote-device/device/x com 2.0" 100 borda GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 2.0'
 expect_pass "[44642] GET /tv3/remote-device/devices/x com 100.0 (C.6.15.5, so handles)" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
 expect_api_version "[44642] C.6.15.5 com 100.0" 100.0
 
@@ -1371,13 +1235,12 @@ echo; echo "-- rota nao declarada e preflight CORS --"
 for H in "$H_INT" "$H_EXT"; do
   S="[${H##*:}]"
   expect_err "$S GET /tv3/naoexiste" 100 borda GET "$H/tv3/naoexiste"
-  expect_err "$S GET /tv3/xyz/abc (antes: panic do Gin, conexao resetada)" 100 borda GET "$H/tv3/xyz/abc"
+  expect_err "$S GET /tv3/xyz/abc" 100 borda GET "$H/tv3/xyz/abc"
   expect_err "$S GET /tv3/abc" 100 borda GET "$H/tv3/abc"
-  expect_err "$S POST /tv3/users (rota antiga)" 100 borda POST "$H/tv3/users" -H 'Content-Type: application/json' -d '{}'
+  expect_err "$S POST /tv3/users (rota nao declarada)" 100 borda POST "$H/tv3/users" -H 'Content-Type: application/json' -d '{}'
   expect_err "$S PUT /tv3/current-service (metodo nao declarado)" 100 borda PUT "$H/tv3/current-service"
   expect_preflight "$S OPTIONS preflight (bind-token)" "$H$CU" GET authorization,bind-token
-  # a lista fora de ordem lexicografica, que o modulo CORS do KrakenD
-  # recusava ate 12/10 (opcao b do Luis: o plugin responde)
+  # lista fora de ordem lexicografica: o modulo CORS do KrakenD a recusaria
   expect_preflight "$S OPTIONS preflight com a lista fora de ordem" "$H$CU" POST content-type,bind-token
   expect_preflight "$S OPTIONS preflight com a lista fora de ordem e espacos" "$H$CU" GET "bind-token, authorization, accept-version"
   # caminho nao declarado: o preflight tambem passa (como no modulo CORS), e o
@@ -1390,15 +1253,11 @@ for H in "$H_INT" "$H_EXT"; do
   expect_err "$S OPTIONS sem preflight em /tv3/xyz/abc" 100 borda OPTIONS "$H/tv3/xyz/abc"
 done
 
-echo; echo "-- Redis congelado (D-0510-6): o tv3ws falha rapido e de forma explicita --"
-# docker pause redis: o Redis aceita a conexao e nao responde (o pior caso: com
-# o padrao do ioredis o comando esperava sem limite). /tv3/authorize SEM
-# Origin nao consulta o Redis na borda (rota sem token, nenhum Origin a
-# conferir) e chega ao tv3ws; o comando dele estoura o commandTimeout
-# (tv3ws/src/redis-client.ts) e a camada de erro responde 404 {error:200} do
-# PROPRIO tv3ws antes dos 2 s — bem antes dos 15 s de timeout da rota na borda
-# (routes.json), que dariam o 404 {error:200} com origem borda. O trap
-# descongela o redis se o script cair no meio.
+echo; echo "-- Redis congelado: o tv3ws falha rapido e de forma explicita --"
+# docker pause redis: o Redis aceita a conexao e nao responde. /tv3/authorize
+# SEM Origin nao consulta o Redis na borda e chega ao tv3ws, cujo commandTimeout
+# (tv3ws/src/redis-client.ts) da 404 {error:200} do PROPRIO tv3ws antes dos 2 s,
+# bem antes do timeout de 15 s da rota na borda (routes.json).
 REDIS_TOUCHED=1
 if docker pause redis >/dev/null 2>&1; then
   T0=$(date +%s%N)
@@ -1422,10 +1281,10 @@ if docker pause redis >/dev/null 2>&1; then
   done
   check_err "[44642] redis descongelado: /tv3/token de clientid nunca autorizado volta a ser o 102 do tv3ws" 102 tv3ws
 else
-  fail "docker pause redis falhou (caso D-0510-6 nao testado)"
+  fail "docker pause redis falhou (caso do redis congelado nao testado)"
 fi
 
-echo; echo "-- backend fora do ar ou lento (P1): 404 {error:200} da borda, nao 500 vazio --"
+echo; echo "-- backend fora do ar ou lento: 404 {error:200} da borda, nao 500 vazio --"
 # por ultimo: para e congela o tv3ws (o trap religa/descongela se o script
 # cair no meio). Token valido, para a requisicao passar pelo plugin e chegar
 # ao repasse do KrakenD.
@@ -1449,7 +1308,7 @@ else
   fail "docker pause tv3ws falhou (caso do backend lento nao testado)"
 fi
 
-echo; echo "-- esquema do Redis (P4): auditoria depois de desfazer o que a suite semeou --"
+echo; echo "-- esquema do Redis: auditoria depois de desfazer o que a suite semeou --"
 restaura_redis
 AUD=$(auditoria)
 if [ -z "$AUD" ]; then

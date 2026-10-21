@@ -6,25 +6,20 @@
 #   ./tv30 status                              containers e anunciante
 #   ./tv30 logs                                log do anunciante (tail -f)
 #
-# Complemento do Joel de 15/10 (B1 e B2): dentro do Docker o multicast do SSDP
-# so sai em Linux nativo (no Mac e no Windows o container fica na VM do
-# Docker; medido). Por isso o anunciante roda NO HOST, fora do Docker, nos tres
-# sistemas: e o mesmo programa em Go de infra/edgegateway/ssdp, que so
-# divulga onde esta o /manifest e responde a buscas (nao guarda estado nem
-# valida credencial, entao ficar fora da borda nao abre caminho em volta
-# dela). O resto do testbed continua em container. Quem roda o testbed nao
-# precisa saber que o anunciante existe: este comando o compila, o sobe depois
-# do compose e, na descida, o encerra ANTES, para que ele mande o ssdp:byebye.
+# Dentro do Docker o multicast do SSDP so sai em Linux nativo (no Mac e no
+# Windows o container fica na VM do Docker), entao o anunciante roda NO HOST:
+# o programa em Go de infra/edgegateway/ssdp, que so divulga onde esta o
+# /manifest e responde a buscas (sem estado nem credencial, nao abre caminho
+# em volta da borda). Este comando o compila, o sobe depois do compose e o
+# encerra ANTES do compose down, para que mande o ssdp:byebye.
 #
-# O binario sai do codigo a cada mudanca nele: com o Go do host, se houver;
-# senao, num container golang (so o Docker e preciso), compilado para o
-# sistema e a arquitetura desta maquina. Fica em .tv30/bin (fora do git),
-# junto com o pid, o log e o arquivo de parada.
+# O binario e recompilado quando o codigo muda (Go do host ou, sem ele, um
+# container golang) e fica em .tv30/bin, com o pid, o log e o arquivo de parada.
 #
 # Configuracao (no .env da raiz; o ambiente do shell prevalece):
 #   SSDP_ENABLED=false    nao sobe o anunciante
 #   SSDP_ADVERTISE_HOST   fixa o host do LOCATION (sem ele: o IPv4 da
-#                         interface da rota padrao, detectado; B2 revista)
+#                         interface da rota padrao, detectado)
 #   SSDP_INTERFACE        forca a interface (ex.: eth0, en0)
 #   EDGE_HTTP_PORT, EDGE_HTTPS_PORT, UDN
 # O Windows tem o equivalente em tv30.ps1.
@@ -74,7 +69,7 @@ host_target() {
 }
 
 # compila o anunciante se faltar o binario ou se o codigo mudou depois dele;
-# vet e testes antes, como no build da imagem da borda ate 15/10
+# vet e testes antes
 build() {
   local force=${1:-} newer
   if [ -z "$force" ] && [ -x "$BIN" ]; then
@@ -145,7 +140,7 @@ cmd=${1:-}
 cd "$ROOT" || exit 1
 case "$cmd" in
   up)
-    # o certificado do receptor (A7) e gerado em .tv30/tls pelo tls-init; o
+    # o certificado do receptor e gerado em .tv30/tls pelo tls-init; o
     # diretorio criado aqui fica com o usuario, e nao com o root do Docker
     mkdir -p "$STATE/tls"
     docker compose up -d "$@" || die "docker compose up falhou"

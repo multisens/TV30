@@ -1,8 +1,7 @@
 #!/bin/bash
-# Teste do shutdown limpo do bcast (item 2 da vacina):
-# 1) sobe bcast com a imagem nova; 2) confere topicos retidos publicados;
-# 3) docker stop cronometrado (deve encerrar bem antes do timeout de 10s);
-# 4) confere que os retidos foram limpos; 5) religa o bcast.
+# Teste do shutdown limpo do bcast: confere os topicos retidos, cronometra o
+# docker stop (deve encerrar bem antes do timeout de 10s), confere que os
+# retidos foram limpos e religa o bcast.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 

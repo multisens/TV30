@@ -1,24 +1,12 @@
 #!/bin/sh
-# Preflight do TV30 — roda como one-shot ANTES dos servicos (network+pid do
-# host). Diagnostica e imprime avisos legiveis para que, se o compose falhar
-# logo depois (ex.: bind de porta), a causa ja esteja nomeada no log. So
-# bloqueia a subida num caso (exit 1, abaixo): a 44642 ocupada por outro
-# processo; a borda depende deste servico e entao nao sobe. (De 11/10 a 15/10
-# bloqueava tambem o SSDP ligado sem SSDP_ADVERTISE_HOST; com a B2 revista
-# pelo Joel, o host e detectado.) Ver docs/troubleshooting.md.
+# Preflight do TV30: one-shot ANTES dos servicos (rede e pid do host). Deixa no
+# log a causa de uma falha de subida (ex.: bind de porta); so bloqueia (exit 1,
+# e a borda nao sobe) com a 44642 ocupada por outro processo.
 set -u
 
-# Politica de portas (C1, decisao do Luis em 11/10; antes, V10 do plano de
-# consolidacao):
-#   44642  — FIXA DA NORMA (C.3.4): ocupada = ERRO BLOQUEANTE
-#   fixas (aviso se ocupadas): 1883 (MQTT), 6379 (Redis), a 44643 (fixa
-#   tambem na bridge desde 12/10: o /manifest a anuncia), a do AoP
-#   (AOP_PUBLIC_PORT, padrao 8080; tambem a porta das apps de emissora em
-#   <app>.apps.localhost, P1.3)
-#   sem porta fixa (o Docker escolhe uma livre; nao entram na checagem): a
-#   9001 do mosquitto, a 8081 do bcast, a 8085 na bridge e a 18081 do
-#   commander. A faixa 45000-45199 do remote-device fica de fora:
-#   o tv3ws escolhe uma porta livre dentro dela.
+# Portas: 44642 (fixa da norma, C.3.4) ocupada = erro bloqueante; 1883, 6379,
+# 44643 e a do AoP (AOP_PUBLIC_PORT) so avisam. Ficam de fora as que o Docker
+# escolhe (9001, 8081, 8085, 18081) e a faixa 45000-45199, onde o tv3ws escolhe.
 PORTS_WARN="1883 6379 44643 ${AOP_PUBLIC_PORT:-8080}"
 PORT_BLOCK="44642"
 WARN=0
@@ -33,12 +21,9 @@ fi
 echo "[preflight] verificando portas usadas pelo stack..."
 LISTEN=$(netstat -ltn 2>/dev/null | awk '{print $4}')
 
-# Dono de uma porta em LISTEN. Este container nao tem CAP_SYS_PTRACE, entao o
-# netstat nao le /proc/<pid>/fd de processo do host com capacidades plenas —
-# caso do docker-proxy — e o dono sai "-" (medido em 02/10: com a stack de pe,
-# um segundo `docker compose up -d` parava aqui com "ocupada (-)"). Nesse caso
-# a linha de comando do docker-proxy (/proc/<pid>/cmdline, legivel sem ptrace
-# com pid: host) identifica a porta.
+# Dono de uma porta em LISTEN. Sem CAP_SYS_PTRACE, o netstat nao le o /proc do
+# docker-proxy e o dono sai "-"; a linha de comando dele (legivel com pid: host)
+# identifica a porta.
 owner_of() {
   o=$(netstat -ltnp 2>/dev/null | grep -E "[:.]$1 " | awk '{print $7}' | head -1)
   case "$o" in
@@ -69,11 +54,6 @@ if echo "$LISTEN" | grep -qE "[:.]${PORT_BLOCK}$"; then
   esac
 fi
 
-# B2 revista pelo Joel em 15/10: o host do LOCATION e detectado pelo
-# anunciante (o IPv4 da interface por onde o anuncio sai), e o
-# SSDP_ADVERTISE_HOST virou sobreposicao opcional. De 11/10 a 15/10 ele era
-# obrigatorio com o anuncio ligado, e a subida parava aqui sem ele.
-
 for p in $PORTS_WARN; do
   if echo "$LISTEN" | grep -qE "[:.]${p}$"; then
     OWNER=$(owner_of "$p")
@@ -82,17 +62,11 @@ for p in $PORTS_WARN; do
   fi
 done
 
-# UDP 1900 (SSDP): desde 15/10 (complemento do Joel) quem anuncia e o
-# anunciante nativo do host, subido pelo ./tv30 up depois do compose; ele
-# mesmo avisa se a 1900 estiver presa (FALHA ... address already in use). Ate
-# 15/10 a borda anunciava em rede do host (docker-compose.ssdp.yml), e a
-# checagem da 1900 era feita aqui.
-
-# Anunciante da opcao B (container tv3ws-ssdp, substituido em 09/10) ainda de
-# pe: seriam dois anunciantes. O servico saiu do compose, entao ele so sai
-# com docker rm (ou docker compose up -d --remove-orphans).
+# A UDP 1900 nao e checada aqui: o anunciante SSDP nativo (./tv30 up) avisa
+# se ela estiver presa. Um container tv3ws-ssdp remanescente seria um segundo
+# anunciante; fora do compose, so sai com docker rm (ou up -d --remove-orphans).
 if ps -o args 2>/dev/null | grep -qE '[n]ode dist/ssdp-announcer\.js'; then
-  echo "[preflight] AVISO: o container antigo tv3ws-ssdp ainda esta de pe (anunciante da opcao B)."
+  echo "[preflight] AVISO: o container tv3ws-ssdp esta de pe (seria um segundo anunciante SSDP)."
   echo "[preflight]        Quem anuncia e o anunciante nativo do host (./tv30 up). Para remover: docker rm -f tv3ws-ssdp"
   WARN=1
 fi

@@ -5,17 +5,13 @@
 #   .\tv30.ps1 status                              containers e anunciante
 #   .\tv30.ps1 logs                                log do anunciante
 #
-# Equivalente do ./tv30 (Linux e macOS); ver o cabecalho dele. Complemento do
-# Joel de 15/10: o anunciante roda no host, fora do Docker (no Windows o
-# container fica na VM do Docker e o multicast nao sai). No Windows nao ha
-# SIGTERM para processo em segundo plano: a descida cria o arquivo de parada
+# Equivalente do ./tv30 (Linux e macOS); ver o cabecalho dele. No Windows nao
+# ha SIGTERM para processo em segundo plano: a descida cria o arquivo de parada
 # (SSDP_STOP_FILE), e o anunciante manda o ssdp:byebye e sai. Na primeira
 # execucao o Windows Defender pede permissao de rede para o anunciante: marque
-# "redes privadas", com o perfil da rede como Privada (medicao M6).
-# Sem docker no PowerShell (Docker Engine instalado so dentro do WSL2), o
-# script usa o do WSL: "wsl docker ...", na mesma pasta (o wsl traduz o
-# diretorio corrente para /mnt/<unidade>/...). NAO medido no Windows.
-# Roda tambem no PowerShell 7 (pwsh) do Linux e do macOS.
+# "redes privadas", com o perfil da rede como Privada.
+# Sem docker no PowerShell (Docker Engine so no WSL2), usa "wsl docker ...", na
+# mesma pasta; esse caminho NAO foi medido no Windows. Roda tambem no pwsh.
 param([Parameter(Position = 0)][string]$Cmd = '', [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @())
 $ErrorActionPreference = 'Stop'
 

@@ -37,15 +37,13 @@ declare -a APPS=(
 )
 
 # (infra customs) name: context (relative-to-ROOT) | dockerfile (relative-to-ROOT)
-# Pos-consolidacao (fases 2-3): borda inteira = edgegateway; redis leva
-# seed+commander. Imagens antigas (gateways/middlewares/swagger) sairam.
+# A borda inteira e o edgegateway; o redis leva seed+commander.
 declare -a INFRA=(
     "tv30-mosquitto|infra/mqtt-broker|infra/mqtt-broker/infra/Dockerfile"
     "tv30-edgegateway|infra/edgegateway|infra/edgegateway/Dockerfile"
     "tv30-redis|infra|infra/redis/Dockerfile"
 )
 
-# --- 1. Build (skipavel) ---
 # tv30-aop e tv30-tv3ws usam contextos adicionais (template de user-files +
 # entrypoint compartilhado). Demais apps usam build simples.
 if [ "$NO_BUILD" != "--no-build" ]; then
@@ -67,7 +65,6 @@ if [ "$NO_BUILD" != "--no-build" ]; then
     ok "Build concluido"
 fi
 
-# --- 2. Verifica login ---
 step "Verificando autenticacao no Docker Hub..."
 if ! docker info 2>/dev/null | grep -qi "username"; then
     err "Voce nao esta autenticado. Rode: docker login"
@@ -75,7 +72,6 @@ if ! docker info 2>/dev/null | grep -qi "username"; then
 fi
 ok "Autenticado"
 
-# --- 3. Push ---
 step "Pushing imagens para docker.io/${NS}/..."
 for entry in "${APPS[@]}" "${INFRA[@]}"; do
     IFS='|' read -r name _ _ <<< "$entry"
@@ -84,7 +80,6 @@ for entry in "${APPS[@]}" "${INFRA[@]}"; do
     docker push "${NS}/${name}:${TAG}"
 done
 
-# Tambem tag :latest se TAG != latest
 if [ "$TAG" != "latest" ]; then
     step "Tageando tambem como :latest"
     for entry in "${APPS[@]}" "${INFRA[@]}"; do

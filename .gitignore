@@ -8,5 +8,5 @@ user-files/
 docs/*.pdf
 *.zip
 
-# estado local do ./tv30 (binario do anunciante SSDP, pid, log; complemento do Joel de 15/10)
+# estado local do ./tv30 (binario do anunciante SSDP, pid, log)
 /.tv30/

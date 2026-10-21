@@ -1,5 +1,4 @@
-# Template de compose para um COMPONENTE NOVO do TV30 (reunioes 21/09 e
-# 28/09: "como e que eu vou montar aqui o meu compose?"). Ver README.md ao
+# Template de compose para um COMPONENTE NOVO do TV30. Ver README.md ao
 # lado. Troque "meu-componente", a porta 8090 e as variaveis pelas suas.
 # Como veio, sobe o componente de EXEMPLO (Dockerfile + index.js ao lado:
 # fala com o Redis e com o broker pelo nome do servico e expoe /health);
@@ -51,11 +50,11 @@ services:
       # do nome do componente: tv30/<nome>/exemplo e tv30:<nome>:exemplo.
       # EXEMPLO_TOPICO: tv30/meu-componente/exemplo
       # EXEMPLO_CHAVE: tv30:meu-componente:exemplo
-      # Componente novo NAO valida credencial (decisao de 28/09, D1): quem
-      # valida access token e bind-token e a borda (plugin tv30-auth). Rota
-      # nova da norma entra em infra/edgegateway/routes.json com auth/classes.
-      # So se o componente EMITIR accessToken (caso a confirmar com o Joel),
-      # use a MESMA fonte do tv3ws e da borda (.env da raiz ou shell):
+      # Componente novo NAO valida credencial: quem valida access token e
+      # bind-token e a borda (plugin tv30-auth). Rota nova da norma entra em
+      # infra/edgegateway/routes.json com auth/classes. So se o componente
+      # EMITIR accessToken (caso em aberto), use a MESMA fonte do tv3ws e da
+      # borda (.env da raiz ou shell):
       # JWT_SECRET: ${JWT_SECRET:-tv30-dev-secret-nao-usar-em-producao}
       # JWT_ISSUER: ${JWT_ISSUER:-GenericIssuer}
     ports:

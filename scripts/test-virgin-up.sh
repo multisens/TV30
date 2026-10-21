@@ -1,13 +1,9 @@
 #!/bin/bash
 # Teste temporario: simula maquina virgem (sem tv3ws/.env e sem user-files)
-# e sobe o stack com um unico comando.
-#
-# ATENCAO: derruba a stack (down --remove-orphans) e a sobe do zero.
-# No fim (trap EXIT, inclusive em erro ou Ctrl+C) devolve o tv3ws/.env e o
-# CONTEUDO original de ./user-files (perfis e thumbs do usuario; o semeado
-# pelo teste e descartado) e recria tv3ws e aop, que leem os dois, para a
-# stack voltar a usar os dados originais. O backup fica num diretorio de
-# mktemp; se a restauracao falhar, o caminho dele e impresso.
+# e sobe o stack com um unico comando. ATENCAO: derruba a stack e a sobe do
+# zero; no fim (trap EXIT) devolve o tv3ws/.env e o conteudo original de
+# ./user-files e recria tv3ws e aop. Se a restauracao falhar, o caminho do
+# backup (mktemp) e impresso.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 

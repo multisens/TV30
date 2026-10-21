@@ -1,27 +1,14 @@
 #!/usr/bin/env bash
 # test-template.sh — executa DE FATO o template de componente
-# (templates/componente): copia a pasta para um diretorio temporario, troca o
-# nome do componente (passo 1 do README do template), sobe o componente de
-# exemplo com o compose do template e confere:
-#   1. o container entrou na ginga_net e so nela (o projeto nao cria rede
-#      propria), com restart unless-stopped e init;
-#   2. o exemplo falou com o redis e com o mosquitto PELO NOME DO SERVICO:
-#      logs de PING e de conexao com redis:6379 e mosquitto:1883, e um ping
-#      por MQTT que volta com o valor que o teste acabou de gravar no Redis;
-#   3. GET /health pela porta publicada no host;
-#   4. morre-inteiro: matar o processo do componente derruba o container
-#      (evento die) e o restart: unless-stopped o traz de volta
-#      (RestartCount sobe), respondendo de novo ao ping.
-# No fim (trap EXIT, inclusive em erro/Ctrl+C) derruba o projeto do
-# componente (container e imagem construida), apaga a chave de teste do Redis
-# e o diretorio temporario.
-#
-# Roda contra a stack JA DE PE (rede ginga_net, containers redis e
-# mqtt-broker) e nao mexe nela. Imprime PASS/FAIL por verificacao e sai com
-# codigo != 0 se alguma falhar.
+# (templates/componente): copia a pasta, troca o nome do componente (passo 1 do
+# README do template), sobe o exemplo com o compose do template e confere a
+# rede (so ginga_net), restart e init, o redis e o mosquitto pelo nome do
+# servico (ping MQTT que volta com o valor gravado no Redis), o /health pela
+# porta publicada e o morre-inteiro (kill no node derruba o container e o
+# restart o religa). Roda contra a stack JA DE PE e nao mexe nela; no fim
+# (trap EXIT) apaga o projeto do componente, a chave de teste e a copia.
 #
 # Uso (Linux/WSL, com acesso ao docker):  bash scripts/test-template.sh
-#   (no WSL desta maquina: wsl.exe -u root bash /mnt/d/.../scripts/test-template.sh)
 # Variaveis opcionais:
 #   TPL_PORT     porta do host para o /health (padrao: a primeira livre de
 #                18090 a 18129)
@@ -185,9 +172,8 @@ if [ -n "$PIDN" ]; then
     fi
     sleep 1
   done
-  # --until 2 s no futuro: o docker events espera ate la. Com o "agora" (como
-  # antes de 11/10), o die de um restart rapido podia ficar fora da janela e o
-  # caso falhava de vez em quando, com o container caindo e voltando certo.
+  # --until 2 s no futuro: o docker events espera ate la; com o "agora", o die
+  # de um restart rapido pode ficar fora da janela.
   DIE=$(docker events --since "$T0" --until "$(( $(date +%s) + 2 ))" --filter "container=$NAME" --filter event=die \
         --format '{{.Actor.Attributes.exitCode}}' 2>/dev/null | head -1)
   if [ -n "$DIE" ]; then pass "kill -9 no node derrubou o container (evento die, exitCode=$DIE)"
