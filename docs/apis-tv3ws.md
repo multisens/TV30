@@ -24,7 +24,7 @@ O cliente não fala com o tv3ws diretamente: todo acesso às APIs passa pela **b
 - **Falha do Redis.** Comando sem resposta em 1,5 s falha (`tv3ws/src/redis-client.ts`), e a API responde 404 `{"error":200}`.
 - **CORS.** Quem aplica é a borda. O tv3ws não envia cabeçalhos CORS, com uma exceção: o `/manifest` manda `Access-Control-Expose-Headers` com os seis nomes da C.3.4.
 - **Versão (C.3.6).** Quem negocia é a borda, rota a rota, pelas versões do `routes.json` (campo `versions`; ausente = 2.0). Sem `Accept-Version` vale a 2.0; fora do formato X.Y, 101; versão que a rota não serve, 100. A versão decidida chega ao tv3ws no cabeçalho interno `X-TV30-API-Version`, e ele responde nela, com `API-Version` em toda resposta sob `/tv3` (C.3.6.6). No erro 100, `API-Version` é a versão mais recente do servidor, 100.0.
-  - **2.0** é a norma. **100.0** é a proposta do testbed para o remote-device por *handle* (as versões de 100 em diante ficam reservadas às propostas do testbed). A C.6.15.5 serve as duas: na 2.0 a listagem traz o `url` de cada aparelho; na 100.0, só os *handles*. `GET` e `DELETE /tv3/remote-device/device/{handle}` só existem na 100.0: pedidas com 2.0, ou sem o cabeçalho, dão 100.
+  - **2.0** é a norma. **100.0** é uma extensão do testbed para o remote-device por *handle* (as versões de 100 em diante ficam reservadas às extensões do testbed). A C.6.15.5 serve as duas: na 2.0 a listagem traz o `url` de cada aparelho; na 100.0, só os *handles*. `GET` e `DELETE /tv3/remote-device/device/{handle}` só existem na 100.0: pedidas com 2.0, ou sem o cabeçalho, dão 100.
   - Fora de `/tv3`, o `/health` e o `/manifest` não levam `API-Version`.
 
 ---
@@ -56,8 +56,8 @@ As 26 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou 
 | POST | `/tv3/remote-device` | C.6.15.2 | `token` | todas | 2.0 |
 | DELETE | `/tv3/remote-device/{handle}` | C.6.15.3 | `token` | todas | 2.0 |
 | GET | `/tv3/remote-device/devices/{classId}` | C.6.15.5 | `token` | `local-associated`, `local-autonomous` | 2.0, 100.0 |
-| GET | `/tv3/remote-device/device/{handle}` | proposta do testbed (100.0) | `token` | `local-associated`, `local-autonomous` | 100.0 |
-| DELETE | `/tv3/remote-device/device/{handle}` | proposta do testbed (100.0) | `token` | `local-associated`, `local-autonomous` | 100.0 |
+| GET | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `local-associated`, `local-autonomous` | 100.0 |
+| DELETE | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `local-associated`, `local-autonomous` | 100.0 |
 | GET | `/tv3/sensory-effect-renderers` | C.6.16.1 | `token` | todas | 2.0 |
 | GET | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.2 | `token` | todas | 2.0 |
 | POST | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.3 | `token+bind` (108 sem serviço) | todas | 2.0 |

@@ -49,7 +49,7 @@ Se o componente for passar a fazer parte da stack, cole o bloco do serviço no `
 | Publicar só a porta que um cliente fora do Docker usa | Clientes das APIs da norma acessam a **borda** (44642, porta fixa da C.3.4, e 44643), não a implementação interna. |
 | Tolerar dependência ainda subindo | O `depends_on` não alcança serviços de outro projeto compose. Tente de novo ou saia com erro e deixe o `restart` religar. |
 | Componente novo **não valida credencial** | Decisão do projeto: access token e bind-token são validados só na borda (plugin `tv30-auth`). Uma rota nova da norma entra em `infra/edgegateway/routes.json`, com `auth` e `classes`. |
-| Mesmo `JWT_SECRET`/`JWT_ISSUER` do tv3ws e da borda, só se o componente **emitir** accessToken | A borda valida o token que o tv3ws assina, e os dois leem o `.env` da raiz, com o padrão `tv30-dev-secret-nao-usar-em-producao` / `GenericIssuer`. Outro emissor de token além do tv3ws é caso em aberto. |
+| Mesmo `JWT_SECRET`/`JWT_ISSUER` do tv3ws e da borda, só se o componente **emitir** accessToken | A borda valida o token que o tv3ws assina, e os dois leem o `.env` da raiz, com o padrão `tv30-dev-secret-nao-usar-em-producao` / `GenericIssuer`. |
 | `clientId` MQTT fixo só se houver uma única instância | O broker derruba a conexão anterior quando chega outra com o mesmo `clientId`. Por isso o mesmo módulo não pode rodar no host e em container ao mesmo tempo (vale para `tv3ws-client`, `aop-core` e `bcast_svc`). |
 
 ## O mesmo componente rodando no host

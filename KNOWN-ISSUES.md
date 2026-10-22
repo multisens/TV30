@@ -11,7 +11,7 @@ Problemas conhecidos do testbed, cada um com o sintoma, a causa e o contorno. A 
 ## Local associado reconhecido pelo `Origin`: `Origin` forjado passa
 
 - **Sintoma:** um cliente fora do navegador que mande no `Origin` a origem de uma app de emissora em execução passa como local associado: dispensa o access token e, no contexto de serviço daquela origem, o bind-token, inclusive em `POST` e `DELETE /tv3/bind-context`. Vale nos dois modos.
-- **Causa:** sem `Authorization`, a borda reconhece o local associado pelo `Origin` presente em `origins:associated` (`evaluate`, em `infra/edgegateway/plugin/handler.go`), e o tv3ws usa o mesmo critério (`classifyClient`, em `tv3ws/src/api/client-identification/controller.ts`). Fora do navegador, o `Origin` pode ser forjado. A C.4.1.7 deixa o mecanismo de diferenciação à implementação; o `Origin` é decisão do projeto, com esse risco aceito.
+- **Causa:** sem `Authorization`, a borda reconhece o local associado pelo `Origin` presente em `origins:associated` (`evaluate`, em `infra/edgegateway/plugin/handler.go`), e o tv3ws usa o mesmo critério (`classifyClient`, em `tv3ws/src/api/client-identification/controller.ts`). Fora do navegador, o `Origin` pode ser forjado. A C.4.1.7 deixa o mecanismo de diferenciação à implementação; o testbed usa o `Origin`.
 - **Contorno:** nenhum no testbed.
 
 ## Portas fixas dentro da faixa efêmera do Linux: bind recusado de vez em quando
@@ -35,13 +35,13 @@ Problemas conhecidos do testbed, cada um com o sintoma, a causa e o contorno. A 
 ## Pareamento: challenge sem prazo e desafio errado que não encerra a tentativa
 
 - **Sintoma:** o challenge do pareamento (QR code ou PIN) vale até o `/tv3/token` com a resposta certa ou até o tv3ws reiniciar. O `/tv3/token` com a resposta errada dá 102, e o mesmo challenge pode ser respondido de novo, sem limite.
-- **Causa:** lacuna ainda sem decisão. O material do pareamento só fica na memória do tv3ws, sem prazo nem limite de tentativas (`tv3ws/src/api/client-identification/service.ts`). A trava de 120 s (`PAIRING_POPUP_TIMEOUT_MS`) fecha o pop-up e libera a camada gráfica, mas não invalida o challenge.
+- **Causa:** o material do pareamento só fica na memória do tv3ws, sem prazo nem limite de tentativas (`tv3ws/src/api/client-identification/service.ts`). A trava de 120 s (`PAIRING_POPUP_TIMEOUT_MS`) fecha o pop-up e libera a camada gráfica, mas não invalida o challenge.
 - **Contorno:** reiniciar o tv3ws (`docker compose restart tv3ws`) descarta os pareamentos em andamento.
 
 ## Cinco perfis e nenhuma remoção: a criação do sexto é recusada
 
 - **Sintoma:** com cinco perfis em `users:index`, o AoP recusa o sexto com 400 e a mensagem "O limite de 5 perfis foi atingido. O perfil não foi criado.", e o telespectador não tem como remover um perfil.
-- **Causa:** o AoP limita os perfis a cinco e não despeja nenhum (`MAX_PROFILES`, em `aop/src/modules/profile-manager/service.js`). A remoção de perfil pelo telespectador, com confirmação explícita, não existe (lacuna ainda sem decisão), e a função que removeria o perfil com os atributos de emissora (`tv30_perfil_remove`) não tem chamador.
+- **Causa:** o AoP limita os perfis a cinco e não despeja nenhum (`MAX_PROFILES`, em `aop/src/modules/profile-manager/service.js`). A remoção de perfil pelo telespectador, com confirmação explícita, não existe, e a função que removeria o perfil com os atributos de emissora (`tv30_perfil_remove`) não tem chamador.
 - **Contorno:** remover um perfil por fora, com `docker exec redis redis-cli FCALL tv30_perfil_remove 0 <id>` (o arquivo do avatar fica em `user-files/thumbs`), ou `docker compose down -v`, que apaga o volume do Redis, com todos os perfis, e os retidos do broker.
 
 ## Aviso da C.6.14.5 com o id do serviço, e não o nome da emissora

@@ -76,7 +76,7 @@ O plugin avalia nesta ordem, e a primeira etapa que falha define o erro (`evalua
 
 ## Lacunas
 
-- O local associado é reconhecido pelo `Origin`, forjável fora do navegador (risco aceito pelo projeto). A chamada sem `Origin` também fica de fora do 106 dado ao associado nas rotas que não o admitem.
+- O local associado é reconhecido pelo `Origin`, forjável fora do navegador. A chamada sem `Origin` também fica de fora do 106 dado ao associado nas rotas que não o admitem.
 - Os recursos compartilhados (C.4.4) não são liberados ao fechar a app associada, ao remover a autorização nem ao revogar uma chave: dependem do Application Lifecycle Manager e do menu de autorizações, que não existem no testbed.
 - O 304 não é emitido: o testbed não conhece o Application Catalog (o tópico `aop/services` não tem publicador).
 

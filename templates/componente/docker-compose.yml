@@ -53,7 +53,7 @@ services:
       # Componente novo NAO valida credencial: quem valida access token e
       # bind-token e a borda (plugin tv30-auth). Rota nova da norma entra em
       # infra/edgegateway/routes.json com auth/classes. So se o componente
-      # EMITIR accessToken (caso em aberto), use a MESMA fonte do tv3ws e da
+      # EMITIR accessToken, use a MESMA fonte do tv3ws e da
       # borda (.env da raiz ou shell):
       # JWT_SECRET: ${JWT_SECRET:-tv30-dev-secret-nao-usar-em-producao}
       # JWT_ISSUER: ${JWT_ISSUER:-GenericIssuer}
