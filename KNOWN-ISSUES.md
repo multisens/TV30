@@ -50,6 +50,12 @@ Problemas conhecidos do testbed, cada um com o sintoma, a causa e o contorno. A 
 - **Causa:** o nome é o `serviceName` do serviço corrente (`session:current-service`), quando a gravação é nele; sem nome, vale o id (`notifyUserOfWrite`, em `tv3ws/src/api/user/service.ts`). O `serviceName` não tem fonte no testbed: o `aop/services` só traz o `serviceContextId` de cada BAM, e não há SLT.
 - **Contorno:** nenhum. O aviso também não tira pop-up da tela: com um sim/não, QR code, PIN ou outro aviso aberto, ele espera numa fila, e com 3 avisos já esperando o novo é descartado, com registro no console da página (`INFO_QUEUE_MAX`, em `aop/public/js/popup.js`).
 
+## Companion de exemplo do webmedia: só registra com a borda em `warn`
+
+- **Sintoma:** com `AUTH_ENFORCE=enforce` (o padrão), a página companion do webmedia não se registra como dispositivo remoto: o `POST /tv3/remote-device` volta 404 `{"error":107}` (access token ausente).
+- **Causa:** a página chama a 44642 por HTTP sem credencial (`bcast/src/modules/webmedia/companion/companion.ejs`). O registro exige access token, e o cliente da rede doméstica só o obtém pelo pareamento (`/tv3/authorize` e `/tv3/token`, C.6.1), pela superfície HTTPS; por HTTP, o não local recebe 106.
+- **Contorno:** subir a borda com `AUTH_ENFORCE=warn` para a demonstração do webmedia. Em `warn`, a requisição passa com o cabeçalho de aviso `X-TV30-Auth-Warn`.
+
 ## Apps de emissora: não carregam com o AoP aberto de outra máquina, nem recebem teclas sem a ponte
 
 - **Sintoma:** com a tela do AoP aberta de outra máquina, as apps de emissora não carregam. Uma app que não inclui a ponte não recebe teclas, `timeupdate` nem `stream_event`.

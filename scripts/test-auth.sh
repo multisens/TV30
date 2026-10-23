@@ -47,6 +47,7 @@ REDIS_CID=$(uuid) # /authorize com o redis congelado: nunca autorizado
 C103=$(uuid)      # 103 com a camada grafica ocupada: o pedido que espera o sim/nao
 C103B=$(uuid)     # e o outro cliente que chega nessa hora (recebe 103, nunca gravado)
 WARN_CID=$(uuid)  # autorizado pela funcao: o access token valido do 304 em warn
+NL_PEND=$(uuid)   # nao local que responde sim e nao conclui o pareamento
 SVC_A="urn:tv30:test:auth-a-$RUN"
 SVC_B="urn:tv30:test:auth-b-$RUN"
 SVC_FORA="urn:tv30:test:auth-fora-$RUN"         # nunca anunciado: fora do Application Catalog
@@ -241,9 +242,9 @@ restaura_redis() {
   # bind-context, entao nao ha funcao para isso. O que sobra (os conjuntos sem
   # os ids de teste) cumpre o esquema; a auditoria no fim confere.
   rc DEL "bind-context:$SVC_A" "bind-context:$SVC_B" "client:$CLIENT" "client:$REFUSED" \
-    "client:$REUSE" "client:$NL_QR" "client:$NL_KEX" "client:$REDIS_CID" "client:$C103" "client:$C103B" "client:$WARN_CID" >/dev/null
-  rc SREM clients:authorized "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" "$WARN_CID" >/dev/null
-  rc SREM clients:blocked "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" "$WARN_CID" >/dev/null
+    "client:$REUSE" "client:$NL_QR" "client:$NL_KEX" "client:$REDIS_CID" "client:$C103" "client:$C103B" "client:$WARN_CID" "client:$NL_PEND" >/dev/null
+  rc SREM clients:authorized "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" "$WARN_CID" "$NL_PEND" >/dev/null
+  rc SREM clients:blocked "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" "$WARN_CID" "$NL_PEND" >/dev/null
   echo "Redis restaurado (servico corrente='$(rc GET session:current-service-id)')"
 }
 
@@ -1416,6 +1417,42 @@ if docker pause tv3ws >/dev/null 2>&1; then
   expect_pass "[44642] tv3ws descongelado volta a responder" GET "$H_INT/tv3/current-service" "${TOK[@]}"
 else
   fail "docker pause tv3ws falhou (caso do backend lento nao testado)"
+fi
+
+echo; echo "-- nao local: sim no pop-up sem /tv3/token nao grava nada --"
+# o QR code da tentativa fica na tela ate a trava de 120 s; por isso este caso vem no fim
+: >"$TMP/popp"
+docker exec mqtt-broker mosquitto_sub -R -C 1 -W 20 -t "$POP_QR" >"$TMP/popp" 2>/dev/null &
+bgp=$!
+( docker exec mqtt-broker mosquitto_sub -C 1 -W 15 -t "$POP/message" >/dev/null 2>&1 \
+    && docker exec mqtt-broker mosquitto_pub -q 1 -t "$POP/response" -m true ) &
+bgy=$!
+sleep 1.5
+req GET "$H_INT/tv3/authorize?clientid=$NL_PEND&display-name=tv30-test-pendente&pm=qrcode"
+wait "$bgy" 2>/dev/null; wait "$bgp" 2>/dev/null
+if [ "$ST" = 200 ] && [ -n "$(json_str challenge)" ]; then
+  pass "[nao local] sim no pop-up: /tv3/authorize devolve o desafio"
+  if [ "$(rc EXISTS "client:$NL_PEND")" = 0 ] && [ "$(rc SISMEMBER clients:authorized "$NL_PEND")" = 0 ]; then
+    pass "[nao local] sem /tv3/token: sem client:{id} e fora de clients:authorized"
+  else
+    fail "[nao local] sem /tv3/token: client:{id}=$(rc EXISTS "client:$NL_PEND") authorized=$(rc SISMEMBER clients:authorized "$NL_PEND") (esperado 0 e 0)"
+  fi
+  # novo pedido do mesmo clientid nunca da 101; com o QR code da tentativa na tela, 103
+  : >"$TMP/popp2"
+  ( docker exec mqtt-broker mosquitto_sub -C 1 -W 6 -t "$POP/message" >"$TMP/popp2" 2>/dev/null \
+      && docker exec mqtt-broker mosquitto_pub -q 1 -t "$POP/response" -m false ) &
+  bgy=$!
+  req GET "$H_INT/tv3/authorize?clientid=$NL_PEND&display-name=tv30-test-pendente&pm=qrcode"
+  wait "$bgy" 2>/dev/null
+  if [ "$ST" = 404 ] && body | grep -q '"error":103'; then
+    pass "[nao local] novo /tv3/authorize com a tentativa pendente: 103 com o QR code na tela, e nao 101"
+  elif [ -s "$TMP/popp2" ]; then
+    pass "[nao local] novo /tv3/authorize com a tentativa pendente: pop-up de novo, e nao 101"
+  else
+    fail "[nao local] novo /tv3/authorize com a tentativa pendente: status=$ST corpo=$(short) (esperado 103 ou o pop-up, nunca 101)"
+  fi
+else
+  fail "[nao local] sim no pop-up: /tv3/authorize sem desafio (status=$ST corpo=$(short))"
 fi
 
 echo; echo "-- BAMT de teste retirada: o servico sai do catalogo e a borda passa a dar 304 --"

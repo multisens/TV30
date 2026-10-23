@@ -18,6 +18,8 @@ Quem está implementando algo num dos módulos (tv3ws, aop, bcast ou um componen
 ./scripts/test-dev-host.sh --build       # repassa --build ao compose (ex.: borda nova)
 ```
 
+O script precisa do bash 4 ou mais novo. No macOS, o `/bin/bash` é o 3.2: instale com `brew install bash` e rode `/opt/homebrew/bin/bash scripts/test-dev-host.sh`.
+
 Para cada cenário, o script:
 
 1. para o container de cada módulo que vai para o host;
