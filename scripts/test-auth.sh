@@ -6,7 +6,8 @@
 # Uso (Linux/WSL, com acesso ao docker):  bash scripts/test-auth.sh
 #
 # Recria a borda em warn e depois em enforce, pausa/para tv3ws e redis em
-# alguns casos e publica aop/currentService no lugar da plataforma. No fim
+# alguns casos, publica aop/currentService no lugar da plataforma e uma BAMT de
+# teste no lugar do bcast (servicos de teste no Application Catalog). No fim
 # (trap EXIT, inclusive em erro/Ctrl+C) volta tudo e desfaz no Redis o que
 # semeou (ids com o sufixo desta execucao); grava pelas funcoes do esquema
 # (fcall), como o servico gravaria, e termina com a auditoria do esquema.
@@ -14,6 +15,7 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 H_INT=${H_INT:-http://localhost:44642}
+AOP=${AOP_URL:-http://localhost:8080}
 # Com EDGE_EXT_PUBLISH=44643 (so o numero) o Docker escolhe a porta de host:
 # ext_url a le e e chamada de novo a cada recriacao da borda (edge_mode).
 # H_EXT no ambiente fixa o endereco e desliga a descoberta.
@@ -44,8 +46,11 @@ NL_KEX=$(uuid)   # nao local, pm=kex
 REDIS_CID=$(uuid) # /authorize com o redis congelado: nunca autorizado
 C103=$(uuid)      # 103 com a camada grafica ocupada: o pedido que espera o sim/nao
 C103B=$(uuid)     # e o outro cliente que chega nessa hora (recebe 103, nunca gravado)
+WARN_CID=$(uuid)  # autorizado pela funcao: o access token valido do 304 em warn
 SVC_A="urn:tv30:test:auth-a-$RUN"
 SVC_B="urn:tv30:test:auth-b-$RUN"
+SVC_FORA="urn:tv30:test:auth-fora-$RUN"         # nunca anunciado: fora do Application Catalog
+LLS_TOPIC="tlm/lls/tv30-test-auth-$RUN/bamt"    # BAMT de teste, no lugar do bcast
 ASSOC="http://tv30-test-assoc-$RUN.invalid"     # origem "associada" simulada
 OTHER_ORIGIN="http://tv30-test-cliente.invalid"  # navegador qualquer (CORS)
 # serviceContextId constante (regressao): o scid e o globalServiceId do
@@ -102,6 +107,8 @@ ORIG_SVC=$(rc GET session:current-service-id)
 CS_TOPIC=aop/currentService
 ORIG_CS=$(docker exec mqtt-broker mosquitto_sub -t "$CS_TOPIC" -C 1 -W 2 --retained-only 2>/dev/null)
 ORIG_CS_HASH=$(rc HGETALL session:current-service | base64 | tr -d "\n")
+# servicos do Application Catalog antes do teste (ids sem espaco, um por linha)
+ORIG_ANUNCIADOS=$(rc --raw SMEMBERS services:announced | tr -d '\r')
 echo "== borda: modo=$ORIG_MODE variante=$ORIG_VARIANT; servico corrente='${ORIG_SVC}'; $CS_TOPIC retido='${ORIG_CS}' =="
 # sem a biblioteca de funcoes o script nao faz o papel dos servicos
 VERSAO_ESQUEMA=$(rc --raw FCALL_RO tv30_versao 0 2>&1)
@@ -153,6 +160,45 @@ cs_publish() {
   return 1
 }
 
+# anuncia <id>...: poe os servicos no Application Catalog; sem argumento,
+# retira. Com o AoP no ar, por uma BAMT de teste retida, que o AoP
+# (aop-transport-layer-metadata-lls) grava em services:announced e publica em
+# aop/services; sem ele, ou se ele nao gravar, pela funcao, no lugar do AoP.
+ANUNCIO_PELA_LLS=0; LLS_RETIDO=0; ANUNCIO_FCALL=0; TESTE_ANUNCIADOS=""
+ICON_JSON='<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"/>'
+anuncia() {
+  local s i ok n=0 bamt=""
+  if [ "$(docker inspect -f '{{.State.Running}}' aop 2>/dev/null)" = true ]; then
+    if [ $# -gt 0 ]; then
+      for s in "$@"; do
+        n=$((n+1))
+        bamt="$bamt${bamt:+,}{\"globalServiceId\":\"$s\",\"appVersion\":1,\"appName\":\"Teste $n\",\"appIcon\":\"$ICON_JSON\",\"bannerIcon\":\"$ICON_JSON\",\"backgroundColor\":\"#202020\",\"foregroundColor\":\"#e0e0e0\"}"
+      done
+      docker exec mqtt-broker mosquitto_pub -r -q 1 -t "$LLS_TOPIC" -m "[$bamt]" || return 1
+      LLS_RETIDO=1
+    else
+      docker exec mqtt-broker mosquitto_pub -r -q 1 -t "$LLS_TOPIC" -n || return 1
+      LLS_RETIDO=0
+    fi
+    for i in $(seq 1 40); do
+      ok=1
+      if [ $# -gt 0 ]; then
+        for s in "$@"; do [ "$(rc SISMEMBER services:announced "$s")" = 1 ] || ok=0; done
+      else
+        for s in $TESTE_ANUNCIADOS; do [ "$(rc SISMEMBER services:announced "$s")" = 0 ] || ok=0; done
+      fi
+      if [ "$ok" = 1 ]; then ANUNCIO_PELA_LLS=1; ANUNCIO_FCALL=0; TESTE_ANUNCIADOS="$*"; return 0; fi
+      sleep 0.25
+    done
+    echo "ATENCAO: o AoP nao refletiu a BAMT de teste em services:announced em 10 s; gravando pela funcao" >&2
+  fi
+  ANUNCIO_PELA_LLS=0
+  # shellcheck disable=SC2086
+  fcall tv30_servicos_anunciados $ORIG_ANUNCIADOS "$@" >/dev/null || return 1
+  if [ $# -gt 0 ]; then ANUNCIO_FCALL=1; else ANUNCIO_FCALL=0; fi
+  TESTE_ANUNCIADOS="$*"
+}
+
 # Desfaz o que a suite semeou no Redis (uma vez: no fim normal, antes da
 # auditoria, ou no trap se o script cair no meio).
 REDIS_RESTAURADO=0
@@ -184,15 +230,20 @@ restaura_redis() {
     fi
   fi
   servico_corrente "$ORIG_SVC" || echo "ATENCAO: session:current-service-id de antes ('$ORIG_SVC') nao passou no esquema"
+  # sem a BAMT de teste o AoP regrava a lista sem os servicos dela; gravada pela
+  # funcao, volta a de antes
+  if [ "$LLS_RETIDO" = 1 ] || [ "$ANUNCIO_FCALL" = 1 ]; then
+    anuncia 2>/dev/null || echo "ATENCAO: servicos de teste ainda em services:announced: $(rc --raw SMEMBERS services:announced | tr '\n' ' ')"
+  fi
   fcall tv30_origem_remove "$ASSOC" >/dev/null
   # Dados de teste (ids e servicos com o sufixo desta execucao): escrita
   # direta DE PROPOSITO — nenhum servico apaga cliente nem a lista inteira de
   # bind-context, entao nao ha funcao para isso. O que sobra (os conjuntos sem
   # os ids de teste) cumpre o esquema; a auditoria no fim confere.
   rc DEL "bind-context:$SVC_A" "bind-context:$SVC_B" "client:$CLIENT" "client:$REFUSED" \
-    "client:$REUSE" "client:$NL_QR" "client:$NL_KEX" "client:$REDIS_CID" "client:$C103" "client:$C103B" >/dev/null
-  rc SREM clients:authorized "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" >/dev/null
-  rc SREM clients:blocked "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" >/dev/null
+    "client:$REUSE" "client:$NL_QR" "client:$NL_KEX" "client:$REDIS_CID" "client:$C103" "client:$C103B" "client:$WARN_CID" >/dev/null
+  rc SREM clients:authorized "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" "$WARN_CID" >/dev/null
+  rc SREM clients:blocked "$CLIENT" "$REFUSED" "$REUSE" "$NL_QR" "$NL_KEX" "$REDIS_CID" "$C103" "$C103B" "$WARN_CID" >/dev/null
   echo "Redis restaurado (servico corrente='$(rc GET session:current-service-id)')"
 }
 
@@ -420,12 +471,12 @@ out('AT_EXPIRED', jwt(H('HS256'),
 out('AT_BADSIG', jwt(H('HS256'),
   { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'local-autonomous' },
   hs('HS256', 'tv30-test-outro-segredo-' + crypto.randomBytes(8).toString('hex'))));
-// token valido com class local-associated (o bloqueio C.4.2.2 vale tambem para ele)
-out('AT_ASSOC', jwt(H('HS256'),
-  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'local-associated' },
+// valido, do cliente que o script poe em clients:authorized no lugar do tv3ws
+out('AT_WARN', jwt(H('HS256'),
+  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.WARN, class: 'local-autonomous' },
   hs('HS256', process.env.SECRET)));
 JS
-docker run --rm -i -e ISS="$EDGE_ISSUER" -e SUB="$CLIENT" -e SECRET="$EDGE_SECRET" "$NODE_IMG" node - <"$TMP/gen.js" >"$TMP/mat" 2>"$TMP/mat.err" \
+docker run --rm -i -e ISS="$EDGE_ISSUER" -e SUB="$CLIENT" -e WARN="$WARN_CID" -e SECRET="$EDGE_SECRET" "$NODE_IMG" node - <"$TMP/gen.js" >"$TMP/mat" 2>"$TMP/mat.err" \
   || { cat "$TMP/mat.err"; die "falha gerando chaves/tokens no container $NODE_IMG"; }
 while IFS='=' read -r k v; do [ -n "$k" ] && printf -v "$k" '%s' "$v"; done <"$TMP/mat"
 [ -n "${BT_RS512:-}" ] || die "material de teste incompleto"
@@ -657,6 +708,12 @@ fi
 # ext_skip <nome>: true (e imprime) se o caso de repasse pela 44643 deve ser pulado
 ext_skip() { if [ "$1" = "$H_EXT" ] && [ "$EXT_OK" != 1 ]; then info "pulado (sem HTTPS no tv3ws): $2"; return 0; fi; return 1; }
 
+# C.6.14.2 e C.6.14.5 com servico fora do Application Catalog dao 304: os
+# servicos de teste entram nele; $SVC_FORA nunca
+anuncia "$SVC_A" "$SVC_B" || die "nao consegui por $SVC_A e $SVC_B no Application Catalog"
+if [ "$ANUNCIO_PELA_LLS" = 1 ]; then info "$SVC_A e $SVC_B no Application Catalog pela BAMT de teste ($LLS_TOPIC), gravada pelo AoP"
+else info "$SVC_A e $SVC_B no Application Catalog pela funcao tv30_servicos_anunciados, no lugar do AoP"; fi
+
 # ============================================================== WARN ======
 echo; echo "== 1. modo warn (borda recriada com AUTH_ENFORCE=warn; o padrao e enforce) =="
 edge_mode warn || die "edgegateway nao subiu em warn"
@@ -684,6 +741,16 @@ if true; then
   expect_err "[warn 44642] POST bind-context pelo nao associado (106 tambem em warn)" 106 borda POST "$H_INT/tv3/bind-context" -H 'Content-Type: application/json' -d '{"alg":"HS256","key":"tv30-test-warn"}'
   expect_err "[warn 44643] POST bind-context (exclusiva do cliente local: 106 tambem em warn)" 106 borda POST "$H_EXT/tv3/bind-context" -H 'Content-Type: application/json' -d '{"alg":"HS256","key":"tv30-test-warn"}'
   expect_err "[warn 44643] GET /tv3/authorize (so por HTTP, C.4.1.8: 106 tambem em warn)" 106 borda GET "$H_EXT/tv3/authorize?clientid=x&display-name=y"
+  # o 304 bloqueia tambem em warn, como o 300: precisa de access token valido
+  # (o 107 em warn so avisa e encerra a decisao) de cliente autorizado
+  fcall tv30_cliente_autoriza "$WARN_CID" class local-autonomous refreshToken tv30-test-warn >/dev/null \
+    || fail "autorizacao de $WARN_CID pela funcao recusada"
+  servico_corrente "$SVC_A"
+  WARN_TOK=(-H "Authorization: Bearer $AT_WARN")
+  expect_err "[warn 44642] GET /tv3/$SVC_FORA/users/x (fora do catalogo: 304 tambem em warn)" 304 borda GET "$H_INT/tv3/$SVC_FORA/users/x" "${WARN_TOK[@]}" -H "bind-token: $BT_UNREG"
+  expect_err "[warn 44642] POST /tv3/$SVC_FORA/users/x (C.6.14.5 fora do catalogo, em warn)" 304 borda POST "$H_INT/tv3/$SVC_FORA/users/x" "${WARN_TOK[@]}" -H "bind-token: $BT_UNREG" -H 'Content-Type: application/json' -d '{}'
+  expect_warn "[warn 44642] GET /tv3/$SVC_A/users/x (do catalogo) com bind-token nao registrado" 108 GET "$H_INT/tv3/$SVC_A/users/x" "${WARN_TOK[@]}" -H "bind-token: $BT_UNREG"
+  servico_corrente "$ORIG_SVC"
   # caminho com quebra de linha (%0A) nao forja linha no log da borda
   MARK="tv30forjado$RUN"
   req GET "$H_INT/tv3/abc%0A$MARK"
@@ -890,13 +957,6 @@ desbloqueia "$CLIENT"
 expect_err "[44642] cliente desbloqueado, fora de clients:authorized" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
 fcall tv30_cliente_inclui_autorizado "$CLIENT" >/dev/null || fail "reinclusao de $CLIENT em clients:authorized pela funcao recusada"
 expect_pass "[44642] cliente de volta em clients:authorized passa" GET "$H_INT/tv3/current-service" "${TOK[@]}"
-# token valido com class local-associated: dispensa bind-token, mas nao o bloqueio
-TOK_ASSOC=(-H "Authorization: Bearer $AT_ASSOC")
-expect_pass "[44642] token de classe associado dispensa bind-token" GET "$H_INT/tv3/current-service/users/current-user" "${TOK_ASSOC[@]}"
-fcall tv30_cliente_bloqueia "$CLIENT" >/dev/null || fail "bloqueio de $CLIENT pela funcao recusado"
-expect_err "[44642] token de classe associado de cliente bloqueado" 107 borda GET "$H_INT/tv3/current-service/users/current-user" "${TOK_ASSOC[@]}"
-desbloqueia "$CLIENT"
-fcall tv30_cliente_inclui_autorizado "$CLIENT" >/dev/null || fail "reinclusao de $CLIENT em clients:authorized pela funcao recusada"
 
 echo; echo "-- reuso de clientid: 101 sem nova consulta ao espectador --"
 # cliente proprio do caso: se o 101 falhar e o pop-up sair, o timeout dele
@@ -964,8 +1024,51 @@ done
 ext_skip "$H_EXT" "[44643] $CU com bind-token RS512" \
   || expect_pass "[44643] $CU com bind-token RS512" GET "$H_EXT$CU" "${TOK[@]}" -H "bind-token: $BT_RS512"
 expect_pass "[44642] GET /tv3/$SVC_A/users/x (scid = globalServiceId do corrente)" GET "$H_INT/tv3/$SVC_A/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
-expect_err "[44642] GET /tv3/$SCID_CONST/users/x (constante fixa, nao e servico)" 108 borda GET "$H_INT/tv3/$SCID_CONST/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
+expect_err "[44642] GET /tv3/$SCID_CONST/users/x (constante fixa, nao e servico: fora do catalogo)" 304 borda GET "$H_INT/tv3/$SCID_CONST/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
 expect_err "[44642] POST /tv3/$SVC_A/users com bind-token (rota fora da norma)" 100 borda POST "$H_INT/tv3/$SVC_A/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+
+echo; echo "-- servico fora do Application Catalog (304 da C.6.14.2 e da C.6.14.5) --"
+# 107 -> 300 -> 304 -> bind-token: fora de services:announced nao ha contexto
+# de bind, e o 304 vem antes do 104 e do 108
+expect_err "[44642] GET /tv3/$SVC_FORA/users/x com access token e bind-token valido de $SVC_A" 304 borda GET "$H_INT/tv3/$SVC_FORA/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
+expect_err "[44642] POST /tv3/$SVC_FORA/users/x (C.6.14.5) com access token e bind-token valido de $SVC_A" 304 borda POST "$H_INT/tv3/$SVC_FORA/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+expect_err "[44642] GET /tv3/$SVC_FORA/users/x sem bind-token (304 antes do 104)" 304 borda GET "$H_INT/tv3/$SVC_FORA/users/x" "${TOK[@]}"
+expect_err "[44642] GET /tv3/$SVC_FORA/users/x sem access token (107 antes do 304)" 107 borda GET "$H_INT/tv3/$SVC_FORA/users/x" -H "bind-token: $BT_HS256"
+expect_err "[44643] GET /tv3/$SVC_FORA/users/x com access token e bind-token valido de $SVC_A" 304 borda GET "$H_EXT/tv3/$SVC_FORA/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
+expect_err "associado em /tv3/$SVC_FORA/users/x sem credencial" 304 borda GET "$H_INT/tv3/$SVC_FORA/users/x" "${ASSOC_H[@]}"
+# o mesmo pedido com servico do catalogo segue para o bind-token
+expect_err "[44642] GET /tv3/$SVC_B/users/x (do catalogo, sem chave registrada) com bind-token de $SVC_A" 108 borda GET "$H_INT/tv3/$SVC_B/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
+expect_pass "[44642] POST /tv3/$SVC_A/users/x (C.6.14.5, do catalogo) com bind-token valido" POST "$H_INT/tv3/$SVC_A/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+# current-service e o servico sintonizado: nao confere o catalogo
+expect_pass "[44642] POST /tv3/current-service/users/x com bind-token valido (sem conferencia do catalogo)" POST "$H_INT/tv3/current-service/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
+
+echo; echo "-- Application Catalog: os mesmos servicos na tela, em services:announced, em aop/services e na borda --"
+if [ "$ANUNCIO_PELA_LLS" = 1 ] && curl -s -m 5 -o /dev/null "$AOP/appcat"; then
+  TELA=$(curl -s -m 5 "$AOP/appcat" | grep -o 'selectParam="[^"]*"' | sed 's/^selectParam="//; s/"$//' | sort)
+  NO_REDIS=$(rc --raw SMEMBERS services:announced | tr -d '\r' | sort)
+  NO_TOPICO=$(docker exec mqtt-broker mosquitto_sub -t aop/services -C 1 -W 2 --retained-only 2>/dev/null \
+    | grep -o '"serviceContextId":"[^"]*"' | sed 's/^"serviceContextId":"//; s/"$//' | sort)
+  # shellcheck disable=SC2086
+  if [ -n "$TELA" ] && [ "$TELA" = "$NO_REDIS" ]; then pass "tela do catalogo = services:announced ($(echo $TELA))"
+  else fail "tela do catalogo '$(echo $TELA)' diferente de services:announced '$(echo $NO_REDIS)'"; fi
+  # shellcheck disable=SC2086
+  if [ "$NO_TOPICO" = "$NO_REDIS" ]; then pass "aop/services retido = services:announced"
+  else fail "aop/services retido '$(echo $NO_TOPICO)' diferente de services:announced '$(echo $NO_REDIS)'"; fi
+  if printf '%s\n' "$TELA" | grep -qxF "$SVC_A" && printf '%s\n' "$TELA" | grep -qxF "$SVC_B" && ! printf '%s\n' "$TELA" | grep -qxF "$SVC_FORA"; then
+    pass "tela do catalogo com $SVC_A e $SVC_B (BAMT de teste) e sem $SVC_FORA"
+  else fail "tela do catalogo sem $SVC_A ou $SVC_B, ou com $SVC_FORA: $(echo "$TELA" | tr '\n' ' ')"; fi
+  # todo servico da tela a borda reconhece: bind-token nao registrado da 108, nao 304
+  N304=""
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    req GET "$H_INT/tv3/$s/users/x" "${TOK[@]}" -H "bind-token: $BT_UNREG"
+    body | grep -q '"error":304' && N304="$N304 $s"
+  done <<<"$TELA"
+  if [ -z "$N304" ]; then pass "a borda reconhece cada servico da tela (nenhum 304)"
+  else fail "a borda respondeu 304 a servico(s) da tela:$N304"; fi
+else
+  info "sem o AoP gravando a LLS (ou fora do ar em $AOP): tela do catalogo e aop/services nao conferidos"
+fi
 
 echo; echo "-- bind-token invalido --"
 expect_err "bind-token de chave nao registrada" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_UNREG"
@@ -975,7 +1078,7 @@ expect_err "bind-token expirado" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-
 expect_err "bind-token com iat no futuro" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_IAT"
 expect_err "bind-token alg none" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_NONE"
 expect_err "bind-token que nao e JWT" 108 borda GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: abc"
-expect_err "scid de outro servico com bind-token do corrente (valem as chaves daquele servico)" 108 borda GET "$H_INT/tv3/outro-scid/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
+expect_err "scid de outro servico do catalogo com bind-token do corrente (valem as chaves daquele servico)" 108 borda GET "$H_INT/tv3/$SVC_B/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256"
 expect_err "POST /tv3/xyz/users com bind-token valido (rota fora da norma)" 100 borda POST "$H_INT/tv3/xyz/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
 expect_err "POST /tv3/Current-Service/users (caixa trocada: nao casa com current-service)" 100 borda POST "$H_INT/tv3/Current-Service/users" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
 
@@ -1027,7 +1130,6 @@ echo; echo "-- associado de verdade: app do bcast aberta pelo AoP na origem prop
 # origem gravada e chama a borda com ela. Selecionar o servico republica
 # aop/currentService (o trap devolve o retido), e o script devolve
 # session:current-service-id a SVC_A logo depois.
-AOP=${AOP_URL:-http://localhost:8080}
 SID_USERS_TEST=${USERS_TEST_SID:-urn:tv30:service:users-test}
 if curl -s -m 5 -o /dev/null "$AOP/appcat"; then
   curl -s -m 5 -o /dev/null "$AOP/appcat/select?id=$SID_USERS_TEST"
@@ -1230,11 +1332,19 @@ expect_err "[44642] GET /tv3/remote-device/device/x sem Accept-Version (so exist
 expect_err "[44642] GET /tv3/remote-device/device/x com 2.0" 100 borda GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 2.0'
 expect_pass "[44642] GET /tv3/remote-device/devices/x com 100.0 (C.6.15.5, so handles)" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
 expect_api_version "[44642] C.6.15.5 com 100.0" 100.0
+# a 100.0 chega ao tv3ws no caminho interno /v100.0, onde estao os tratadores
+# dela: handle inexistente da o 101 do tv3ws
+expect_err "[44642] GET /tv3/remote-device/device/x com 100.0 (handle inexistente)" 101 tv3ws GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
+expect_api_version "[44642] rota por handle com 100.0" 100.0
+expect_err "[44642] DELETE /tv3/remote-device/device/x com 100.0 (handle inexistente)" 101 tv3ws DELETE "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
 
 echo; echo "-- rota nao declarada e preflight CORS --"
 for H in "$H_INT" "$H_EXT"; do
   S="[${H##*:}]"
   expect_err "$S GET /tv3/naoexiste" 100 borda GET "$H/tv3/naoexiste"
+  # o caminho interno (borda -> servico) vindo do cliente nao e rota declarada
+  expect_err "$S GET /v100.0/tv3/remote-device/device/x (caminho interno)" 100 borda GET "$H/v100.0/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
+  expect_err "$S GET /v100.0/tv3/remote-device/devices/x (caminho interno)" 100 borda GET "$H/v100.0/tv3/remote-device/devices/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
   expect_err "$S GET /tv3/xyz/abc" 100 borda GET "$H/tv3/xyz/abc"
   expect_err "$S GET /tv3/abc" 100 borda GET "$H/tv3/abc"
   expect_err "$S POST /tv3/users (rota nao declarada)" 100 borda POST "$H/tv3/users" -H 'Content-Type: application/json' -d '{}'
@@ -1306,6 +1416,19 @@ if docker pause tv3ws >/dev/null 2>&1; then
   expect_pass "[44642] tv3ws descongelado volta a responder" GET "$H_INT/tv3/current-service" "${TOK[@]}"
 else
   fail "docker pause tv3ws falhou (caso do backend lento nao testado)"
+fi
+
+echo; echo "-- BAMT de teste retirada: o servico sai do catalogo e a borda passa a dar 304 --"
+# o tv3ws religado acima reescreve session:current-service-id pelo retido
+servico_corrente "$SVC_A"
+if anuncia; then
+  expect_err "[44642] GET /tv3/$SVC_A/users/x depois da retirada, com bind-token valido" 304 borda GET "$H_INT/tv3/$SVC_A/users/x" "${TOK[@]}" -H "bind-token: $BT_HS512"
+  if [ "$ANUNCIO_PELA_LLS" = 1 ]; then
+    if curl -s -m 5 "$AOP/appcat" | grep -qF "selectParam=\"$SVC_A\""; then fail "tela do catalogo ainda mostra $SVC_A depois da retirada"
+    else pass "tela do catalogo sem $SVC_A depois da retirada"; fi
+  fi
+else
+  fail "nao consegui retirar $SVC_A e $SVC_B do Application Catalog"
 fi
 
 echo; echo "-- esquema do Redis: auditoria depois de desfazer o que a suite semeou --"

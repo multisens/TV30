@@ -32,22 +32,22 @@ Problemas conhecidos do testbed, cada um com o sintoma, a causa e o contorno. A 
 - **Causa:** defeito do roteador Gin embutido no KrakenD 2.7.2. O plugin, carregado nas duas superfícies, casa método e caminho com as rotas da tabela (`infra/edgegateway/routes.json`) **antes** do roteador e responde fora dela 404 `{"error":100,"description":"API not found: <método> <caminho>"}` (C.3.2.1, C.3.3.2); um `recover()` em volta do roteador transforma um panic restante em 404 `{"error":200}`. O panic continua no roteador; o plugin só o torna inalcançável.
 - **Contorno:** a borda não sobe sem o plugin. O build da imagem falha quando o `.so` não casa com o binário (`krakend check-plugin` e `krakend test-plugin`, no `infra/edgegateway/Dockerfile`), e configuração inválida do plugin derruba o container.
 
-## Pareamento: challenge sem prazo e desafio errado que não encerra a tentativa
+## Pareamento: tentativa pendente sem prazo e sem limite, e desafio errado que não a encerra
 
-- **Sintoma:** o challenge do pareamento (QR code ou PIN) vale até o `/tv3/token` com a resposta certa ou até o tv3ws reiniciar. O `/tv3/token` com a resposta errada dá 102, e o mesmo challenge pode ser respondido de novo, sem limite.
-- **Causa:** o material do pareamento só fica na memória do tv3ws, sem prazo nem limite de tentativas (`tv3ws/src/api/client-identification/service.ts`). A trava de 120 s (`PAIRING_POPUP_TIMEOUT_MS`) fecha o pop-up e libera a camada gráfica, mas não invalida o challenge.
-- **Contorno:** reiniciar o tv3ws (`docker compose restart tv3ws`) descarta os pareamentos em andamento.
+- **Sintoma:** depois do "sim" ao cliente não local, a tentativa de pareamento (QR code ou PIN) vale até o `/tv3/token` com a resposta certa, até um novo `/tv3/authorize` do mesmo `clientid` ou até o tv3ws reiniciar. O `/tv3/token` com a resposta errada dá 102, e o mesmo challenge pode ser respondido de novo, sem limite. Cada "sim" a um cliente não local que não conclui o pareamento deixa uma tentativa pendente na memória do tv3ws, sem limite de quantidade.
+- **Causa:** a tentativa pendente, com o material do pareamento, só fica na memória do tv3ws, sem prazo, sem limite de respostas erradas e sem teto de quantidade (`pendingClients`, em `tv3ws/src/modules/auth-manager/manager.ts`; `tv3ws/src/api/client-identification/service.ts`). A trava de 120 s (`PAIRING_POPUP_TIMEOUT_MS`) fecha o pop-up e libera a camada gráfica, mas não descarta a tentativa.
+- **Contorno:** reiniciar o tv3ws (`docker compose restart tv3ws`) descarta as tentativas pendentes. Nada delas está no Redis, e o cliente pode recomeçar com o mesmo `clientid`.
 
-## Cinco perfis e nenhuma remoção: a criação do sexto é recusada
+## C.6.14.3 sem perfil corrente responde `{"id":""}`
 
-- **Sintoma:** com cinco perfis em `users:index`, o AoP recusa o sexto com 400 e a mensagem "O limite de 5 perfis foi atingido. O perfil não foi criado.", e o telespectador não tem como remover um perfil.
-- **Causa:** o AoP limita os perfis a cinco e não despeja nenhum (`MAX_PROFILES`, em `aop/src/modules/profile-manager/service.js`). A remoção de perfil pelo telespectador, com confirmação explícita, não existe, e a função que removeria o perfil com os atributos de emissora (`tv30_perfil_remove`) não tem chamador.
-- **Contorno:** remover um perfil por fora, com `docker exec redis redis-cli FCALL tv30_perfil_remove 0 <id>` (o arquivo do avatar fica em `user-files/thumbs`), ou `docker compose down -v`, que apaga o volume do Redis, com todos os perfis, e os retidos do broker.
+- **Sintoma:** entre a remoção do perfil corrente e a escolha de outro no seletor, `GET /tv3/current-service/users/current-user` (C.6.14.3) responde 200 `{"id":""}`.
+- **Causa:** a remoção do perfil corrente publica `aop/currentUser` vazio (retido), e o tv3ws devolve o `session:current-user` como está (`getCurrentUser`, em `tv3ws/src/api/user/service.ts`). A resposta da C.6.14.3 sem perfil corrente não está definida no testbed.
+- **Contorno:** escolher um perfil no seletor.
 
 ## Aviso da C.6.14.5 com o id do serviço, e não o nome da emissora
 
-- **Sintoma:** o aviso que a camada gráfica mostra quando uma emissora grava atributos do perfil (`aop/display/layers/popup/info`) traz o id do serviço (por exemplo, `urn:tv30:service:users-test`). O 304 (serviço fora do Application Catalog) também não é emitido.
-- **Causa:** o nome é o `serviceName` do serviço corrente (`session:current-service`), quando a gravação é nele; sem nome, vale o id (`notifyUserOfWrite`, em `tv3ws/src/api/user/service.ts`). O nome viria de `aop/services`, e nenhum módulo deste repositório publica esse tópico; é o mesmo catálogo de que o 304 depende.
+- **Sintoma:** o aviso que a camada gráfica mostra quando uma emissora grava atributos do perfil (`aop/display/layers/popup/info`) traz o id do serviço (por exemplo, `urn:tv30:service:users-test`).
+- **Causa:** o nome é o `serviceName` do serviço corrente (`session:current-service`), quando a gravação é nele; sem nome, vale o id (`notifyUserOfWrite`, em `tv3ws/src/api/user/service.ts`). O `serviceName` não tem fonte no testbed: o `aop/services` só traz o `serviceContextId` de cada BAM, e não há SLT.
 - **Contorno:** nenhum. O aviso também não tira pop-up da tela: com um sim/não, QR code, PIN ou outro aviso aberto, ele espera numa fila, e com 3 avisos já esperando o novo é descartado, com registro no console da página (`INFO_QUEUE_MAX`, em `aop/public/js/popup.js`).
 
 ## Apps de emissora: não carregam com o AoP aberto de outra máquina, nem recebem teclas sem a ponte
@@ -64,9 +64,9 @@ Problemas conhecidos do testbed, cada um com o sintoma, a causa e o contorno. A 
 
 ## Certificado do receptor só para `localhost` e `127.0.0.1`
 
-- **Sintoma:** quem confere o nome do servidor recusa o certificado da 44643 e dos `wss://` quando chega pelo IP da rede, mesmo confiando no certificado.
+- **Sintoma:** quem confere o nome do servidor recusa o certificado da 44643 e do `wss://` do ponto de entrada do dispositivo remoto quando chega pelo IP da rede, mesmo confiando no certificado.
 - **Causa:** o `tls-init` gera o certificado autoassinado com `subjectAltName` só para `localhost` e `127.0.0.1` (`infra/edgegateway/tls-init.sh`). O cliente não local o recebe no `serverCert` do pareamento (Tabela C.4).
-- **Contorno:** `curl -k`; ou pôr em `.tv30/tls` um `cert.pem` e um `key.pem` próprios e recriar a stack (o `tls-init` só gera o par quando falta um dos dois). App de navegador que não confia no certificado: `TV3WS_WS_TLS=false`, para os pontos de entrada em `ws://`.
+- **Contorno:** `curl -k`; ou pôr em `.tv30/tls` um `cert.pem` e um `key.pem` próprios e recriar a stack (o `tls-init` só gera o par quando falta um dos dois). Dispositivo remoto que não confia no certificado: `TV3WS_WS_TLS=false`, para o ponto de entrada dele em `ws://`; o ponto de entrada local sai sempre em `ws://`.
 
 ## Anunciante SSDP: nada o reinicia
 

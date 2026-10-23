@@ -56,6 +56,12 @@
 # Bash/PowerShell com Docker no WSL) NAO e coberto: host-gateway aponta para
 # a VM do WSL, nao para o Windows. Ver docs/dev-local.md.
 set -u
+# vetores associativos (declare -A) pedem bash 4; o /bin/bash do macOS e o 3.2
+if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
+  echo "test-dev-host.sh precisa do bash 4 ou mais novo (este e o $BASH_VERSION)." >&2
+  echo "No macOS: brew install bash e rode /opt/homebrew/bin/bash scripts/test-dev-host.sh" >&2
+  exit 2
+fi
 cd "$(dirname "$0")/.." || exit 2
 ROOT=$(pwd)
 

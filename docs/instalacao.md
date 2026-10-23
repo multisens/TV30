@@ -42,7 +42,7 @@ Com o `.env.example`, o compose usa as imagens publicadas no Docker Hub (`DOCKER
 
 Duas coisas acontecem sozinhas na subida:
 
-- **Certificado do receptor.** O serviço `tls-init` gera em `.tv30/tls` um certificado autoassinado, usado no TLS da 44643, no HTTPS interno do tv3ws, no `serverCert` do pareamento e nos `wss://` do remote-device ([HTTPS](https://github.com/multisens/TV30/blob/main/README.md#https) no `README.md` da raiz).
+- **Certificado do receptor.** O serviço `tls-init` gera em `.tv30/tls` um certificado autoassinado, usado no TLS da 44643, no HTTPS interno do tv3ws, no `serverCert` do pareamento e no `wss://` do ponto de entrada do dispositivo remoto ([HTTPS](https://github.com/multisens/TV30/blob/main/README.md#https) no `README.md` da raiz).
 - **Descoberta SSDP (C.3.4).** O `./tv30 up` compila e sobe, no host e fora do Docker, o anunciante de `infra/edgegateway/ssdp/`, com o IP da máquina detectado. Libere a UDP 1900 e a TCP 44642 no firewall. Arranjo e permissões em [Descoberta SSDP]({{ site.baseurl }}/ssdp).
 
 ---
@@ -117,7 +117,7 @@ O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla
 | `AUTH_ENFORCE` | comentada (padrão `enforce`) | `enforce` recusa a credencial inválida; `warn`, opção transitória, só avisa nas recusas de credencial (104, 107, 108) ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)) |
 | `REDIS_COMMANDER_USER`, `REDIS_COMMANDER_PASSWORD` | comentadas (padrões `admin` e `tv30-redis-admin`) | Login da interface do redis-commander. A conexão com o banco (6379) segue sem senha |
 | `SERVER_URL` | `localhost` | Host que aparelhos externos usam para abrir os WebSockets de remote-device; numa rede de verdade, o IP desta máquina |
-| `TV3WS_WS_TLS` | comentada (padrão: `wss://`) | `false` = WebSockets de remote-device em `ws://` |
+| `TV3WS_WS_TLS` | comentada (padrão: `wss://`) | `false` = ponto de entrada do dispositivo remoto (registro, C.6.15.2) em `ws://`. O ponto de entrada local sai sempre em `ws://` |
 | `SSDP_ENABLED`, `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Liga o anunciante (padrão `true`), fixa o host do anúncio e do `/manifest` (sobreposição; sem ele, o IP detectado) e força a interface |
 | `WEBMEDIA_REMOTE_MEDIA_PATH`, `WEBMEDIA_REMOTE_USERFILES_PATH` | comentadas | Caminhos no dispositivo remoto do demo webmedia |
 

@@ -84,7 +84,7 @@ O `./tv30 up` faz o `docker compose up -d` e sobe o anunciante da descoberta SSD
 | `EDGE_EXT_PUBLISH` | `44643:44643` | Publicação da superfície externa da borda. |
 | `EDGE_VARIANT` | `linux` | `linux` = tv3ws em container; `windows` = tv3ws no host ([`docs/dev-local.md`](./docs/dev-local.md)). |
 | `SERVER_URL` | `localhost` | Host que os dispositivos externos usam para abrir os WebSockets de remote-device. |
-| `TV3WS_WS_TLS` | `true` | `false` = WebSockets de remote-device em `ws://` em vez de `wss://`. |
+| `TV3WS_WS_TLS` | `true` | `false` = ponto de entrada do dispositivo remoto (registro, C.6.15.2) em `ws://` em vez de `wss://`. O ponto de entrada local sai sempre em `ws://`. |
 | `JWT_SECRET` / `JWT_ISSUER` | default de desenvolvimento / `GenericIssuer` | Segredo e emissor do access token, os mesmos para o tv3ws e para a borda. Defina-os aqui, e não no `tv3ws/.env`. |
 | `AUTH_ENFORCE` | `enforce` | `warn` só registra as recusas de credencial (log `[tv30-auth] WARN` e cabeçalho `X-TV30-Auth-Warn`). |
 | `SSDP_ENABLED` | `true` | `false` = o `./tv30 up` não sobe o anunciante SSDP. |
@@ -99,10 +99,10 @@ O `./tv30 up` faz o `docker compose up -d` e sobe o anunciante da descoberta SSD
 A superfície externa da borda (44643) fala HTTPS. O certificado é autoassinado, gerado na primeira subida em `.tv30/tls`, e não há nada a configurar. O mesmo certificado serve:
 - ao HTTPS interno do tv3ws;
 - ao pareamento do cliente não local;
-- aos WebSockets de remote-device (`wss://`).
+- ao ponto de entrada WebSocket do dispositivo remoto (`wss://`). O ponto de entrada local (C.6.15.5 e ativação por *handle*) sai sempre em `ws://`.
 
 - **Cliente de teste:** `curl -k https://localhost:44643/...`, ou confie no `.tv30/tls/cert.pem`.
-- **App de navegador com `wss://`:** o navegador não abre `wss://` com certificado em que não confia. Confie no certificado ou use `TV3WS_WS_TLS=false`.
+- **Dispositivo remoto que não confia no certificado:** confie no certificado ou use `TV3WS_WS_TLS=false`, que abre o ponto de entrada dele em `ws://`.
 - **Trocar o certificado:** ponha `cert.pem` e `key.pem` em `.tv30/tls` e recrie a stack.
 - **tv3ws no host (`npm run dev`):** `TV30_TLS_DIR=../.tv30/tls`.
 
@@ -131,7 +131,7 @@ Detalhes: [`docs/ssdp.md`](./docs/ssdp.md).
 | edgegateway, superfície externa | 44643 | HTTPS |
 | edgegateway, docs | dinâmica | Swagger UI: `docker port edgegateway 8085` |
 | tv3ws | — | Não publicado no host: os clientes entram pela borda |
-| tv3ws, WebSockets de remote-device | 45000–45199 | `wss://SERVER_URL:<porta>`, devolvida no registro |
+| tv3ws, WebSockets de remote-device | 45000–45199 | `wss://SERVER_URL:<porta>`, devolvida no registro; o ponto de entrada local, `ws://SERVER_URL:<porta>` |
 | Anunciante SSDP (no host) | UDP 1900 | Subido pelo `./tv30 up` |
 | bcast (broadcaster) | dinâmica | `docker compose port bcast 8081` |
 | Mosquitto MQTT | 1883 | Broker TCP |

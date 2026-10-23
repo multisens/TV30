@@ -129,7 +129,9 @@ Cada achado é `[chave, familia, motivo]`, e a auditoria vazia é o estado esper
 
 ## Criação de perfil recusada: `O limite de 5 perfis foi atingido`
 
-O AoP recusa o sexto perfil, sem despejar nenhum (10.3.3; `MAX_PROFILES`, em `aop/src/modules/profile-manager/service.js`). A remoção de perfil pelo telespectador não existe ([problemas conhecidos](https://github.com/multisens/TV30/blob/main/KNOWN-ISSUES.md)). Para remover um perfil por fora: `docker exec redis redis-cli FCALL tv30_perfil_remove 0 <id>`. Num ambiente de teste, `docker compose down -v` volta à carga inicial, apagando os perfis criados e os retidos do broker.
+O sexto perfil é recusado, sem despejar nenhum (10.3.3). Quem confere é a função `tv30_perfil_grava`, na mesma operação da gravação (`maxMembros` de `users:index`, em `infra/redis/esquema.json`): a recusa (`TV30ESQUEMA tv30_perfil_grava: users:index teto de 5 perfis atingido ...`) vira, no AoP, o 400 com a mensagem. Para abrir espaço, remova um perfil no seletor de perfil: a opção "Remove", embaixo de cada perfil, só aparece com mais de um perfil e pede confirmação; a remoção apaga o perfil, a visibilidade, os atributos de emissora e o arquivo do avatar ([Modelo de dados Redis]({{ site.baseurl }}/modelo-redis)). Num ambiente de teste, `docker compose down -v` volta à carga inicial, apagando os perfis criados e os retidos do broker.
+
+Com o Redis sem nenhum perfil, o AoP cria o perfil padrão "Viewer 1", sem avatar, idiomas nem visibilidade, na partida e ao abrir o seletor.
 
 ## WSL2 + Docker
 
@@ -254,7 +256,7 @@ A C.6.7.9 lista as 20 APIs nas duas superfícies: a restrição aparece pelo 106
 
 ## `POST /tv3/<scid>/users` dá 100
 
-`POST /tv3/{serviceContextId}/users` não existe na norma, que só define `POST /tv3/current-service/users` (C.6.14.1), e não está na tabela de rotas (`infra/edgegateway/routes.json`). A borda responde 404 `{"error":100}` em qualquer scid, inclusive o `globalServiceId` de um serviço e `Current-Service` com a caixa trocada, nas duas superfícies e nos dois modos. Use `POST /tv3/current-service/users`, com bind-token. As rotas `GET` e `POST /tv3/{serviceContextId}/users/{userid}` (C.6.14.2 e C.6.14.5) continuam.
+`POST /tv3/{serviceContextId}/users` não existe na norma, que só define `POST /tv3/current-service/users` (C.6.14.1), e não está na tabela de rotas (`infra/edgegateway/routes.json`). A borda responde 404 `{"error":100}` em qualquer scid, inclusive o `globalServiceId` de um serviço e `Current-Service` com a caixa trocada, nas duas superfícies e nos dois modos. Use `POST /tv3/current-service/users`, com bind-token. As rotas `GET` e `POST /tv3/{serviceContextId}/users/{userid}` (C.6.14.2 e C.6.14.5) são declaradas e conferem o catálogo (304, abaixo).
 
 ## Access token válido recebe 107 (`cliente fora de clients:authorized`)
 
@@ -271,17 +273,18 @@ docker exec redis redis-cli SISMEMBER clients:authorized <clientid>   # 1 = auto
 docker exec redis redis-cli SISMEMBER clients:blocked <clientid>      # 1 = bloqueado
 ```
 
-## Rota com bind-token dá 300, 104 ou 108
+## Rota com bind-token dá 300, 304, 104 ou 108
 
 Nas rotas `token+bind` (`infra/edgegateway/routes.json`), depois da classe e do access token (o local associado reconhecido pelo `Origin` não passa pelo token), a borda confere nesta ordem (`evaluate`, em `infra/edgegateway/plugin/handler.go`; [Borda e credenciais]({{ site.baseurl }}/borda-credenciais)):
 
 | Código | Quando | O que fazer |
 |---|---|---|
 | 300 | Nenhum serviço DTV selecionado, nas rotas cuja tabela lista o 300 (C.6.4.7 e C.6.14.1 a C.6.14.6). Vem antes do bind-token e sai nos dois modos | Selecione um serviço no catálogo do AoP. `docker exec redis redis-cli GET session:current-service-id` mostra o serviço corrente (vazio = nenhum) |
+| 304 | Em `/tv3/{serviceContextId}/users/{userid}` (C.6.14.2 e C.6.14.5), o serviço do caminho não está no Application Catalog (`services:announced`). Vem antes do bind-token e sai nos dois modos | Use o `globalServiceId` de um serviço anunciado: `docker exec redis redis-cli SMEMBERS services:announced` lista os que a BAMT trouxe; a lista vazia indica o bcast parado ou o AoP sem a BAMT (`docker logs aop \| grep '\[lls\]'`) |
 | 104 | Sem o cabeçalho `bind-token` | Mande o bind-token assinado pela emissora |
 | 108 | O bind-token não foi assinado por uma chave registrada (C.6.8.2) para o contexto de serviço da rota: o `{serviceContextId}` do caminho, que é o `globalServiceId` do BAM, ou o serviço corrente em `current-service`. Na C.6.16.3, também sem serviço selecionado | A app da emissora registra a chave pela C.6.8.2 (`POST /tv3/bind-context`, que grava no serviço corrente; `bindcontext.go`). Confira se o contexto da rota é esse serviço |
 
-A app de emissora reconhecida pelo `Origin` (local associado) dispensa o bind-token só no próprio contexto de serviço, o do serviço que a lançou (valor em `origins:associated`). Noutro contexto, recebe 104 ou 108 como qualquer cliente (C.4.1.1). O 104 e o 108 seguem o modo: em `warn`, só o aviso `X-TV30-Auth-Warn`.
+A app de emissora reconhecida pelo `Origin` (local associado) dispensa o bind-token só no próprio contexto de serviço, o do serviço que a lançou (valor em `origins:associated`). Noutro contexto, recebe 104 ou 108 como qualquer cliente (C.4.1.1). Um access token de classe `local-associated` não dispensa o bind-token: segue a regra geral. O 104 e o 108 seguem o modo: em `warn`, só o aviso `X-TV30-Auth-Warn`.
 
 ## A página da TV não conecta no MQTT (`/mqtt`)
 
@@ -307,15 +310,15 @@ O pop-up do QR code e o do PIN ficam na tela até o fim do pareamento (C.4.3.2 e
 
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
-| Some antes do fim do pareamento | A trava de 120 s acabou. Outra autorização não toma o lugar dele (recebe 103), e o aviso da C.6.14.5 (`popup/info`) espera o QR code ou o PIN sair | Se o cliente já leu o código, o pareamento continua valendo: o challenge não expira. Se não leu, repita o `/tv3/authorize` com `clientid` novo (o antigo dá 101) |
+| Some antes do fim do pareamento | A trava de 120 s acabou. Outra autorização não toma o lugar dele (recebe 103), e o aviso da C.6.14.5 (`popup/info`) espera o QR code ou o PIN sair | Se o cliente já leu o código, o pareamento continua valendo: a tentativa pendente não expira. Se não leu, repita o `/tv3/authorize`, com o mesmo `clientid` ou outro: a tentativa pendente não conta como uso, e o novo pedido a descarta |
 | Fica na tela depois do `/tv3/token` | O `/tv3/token` não concluiu o pareamento: falhou (102, por exemplo, com o desafio errado, que deixa a tentativa aberta) ou foi uma renovação por `refresh-token`; ou o tv3ws reiniciou entre o `/authorize` e o `/token` e perdeu o pareamento (o `/token` dá 102); ou o pop-up na tela é de outro cliente | A trava de 120 s o fecha. No fim do pareamento, o log do tv3ws mostra `Closing QRCode popup` ou `Closing PIN popup` |
 
-## A 44643 recusa o certificado, ou a app não abre o `wss://`
+## A 44643 recusa o certificado, ou o dispositivo remoto não abre o `wss://`
 
-A 44643 (superfície externa) fala TLS com o certificado autoassinado do receptor, que o `tls-init` gera em `.tv30/tls` na primeira subida (`docker logs tv30-tls-init` mostra o assunto e a validade). O mesmo certificado vale para o HTTPS do tv3ws, o `serverCert` do pareamento (Tabela C.4) e os `wss://` do remote-device.
+A 44643 (superfície externa) fala TLS com o certificado autoassinado do receptor, que o `tls-init` gera em `.tv30/tls` na primeira subida (`docker logs tv30-tls-init` mostra o assunto e a validade). O mesmo certificado vale para o HTTPS do tv3ws, o `serverCert` do pareamento (Tabela C.4) e o `wss://` do ponto de entrada do dispositivo remoto (registro, C.6.15.2). O ponto de entrada local (C.6.15.5 e ativação por *handle*) sai sempre em `ws://` e não depende do certificado.
 
 - **`curl` na 44643 falha com erro de certificado:** use `curl -k https://localhost:44643/...`, ou `--cacert .tv30/tls/cert.pem`. O certificado vale para `localhost` e `127.0.0.1` (`subjectAltName`, `infra/edgegateway/tls-init.sh`): por outro endereço, o nome não confere, e só o `-k` resolve.
-- **App de navegador não abre o `wss://` do remote-device:** o navegador não abre `wss://` com certificado autoassinado em que não confia. Confie no certificado, ou defina `TV3WS_WS_TLS=false` no `.env` da raiz e recrie o tv3ws (`docker compose up -d tv3ws`): os pontos de entrada voltam a `ws://`.
+- **Dispositivo remoto não abre o `wss://`:** um aparelho não abre `wss://` com certificado autoassinado em que não confia. Confie no certificado nele, ou defina `TV3WS_WS_TLS=false` no `.env` da raiz e recrie o tv3ws (`docker compose up -d tv3ws`): o ponto de entrada do dispositivo remoto sai em `ws://`.
 - **Trocar o certificado:** ponha `cert.pem` e `key.pem` em `.tv30/tls` e recrie a stack. O `tls-init` só gera o par quando falta um dos dois.
 
 ## `errors/<client_id>`: `INVALID_JSON` num payload que parece JSON, ou mensagem com `"truncated":true`
@@ -339,6 +342,7 @@ docker exec redis redis-cli HGETALL user:<id>              # id em UUID
 docker exec redis redis-cli GET session:current-user
 docker exec redis redis-cli GET session:current-service-id # servico corrente (vazio = nenhum)
 docker exec redis redis-cli HGETALL origins:associated   # origem da app em execucao -> servico
+docker exec redis redis-cli SMEMBERS services:announced  # servicos do Application Catalog (BAMT)
 docker exec redis redis-cli FCALL_RO tv30_auditoria 0    # chaves fora do esquema; vazio = ok
 docker exec redis redis-cli FCALL_RO tv30_versao 0       # versao do esquema carregado
 docker exec redis redis-cli SMEMBERS clients:authorized  # clientes que a borda aceita
