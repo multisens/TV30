@@ -1,9 +1,9 @@
 #!/bin/bash
-# Teste temporario: simula maquina virgem (sem tv3ws/.env e sem user-files)
-# e sobe o stack com um unico comando. ATENCAO: derruba a stack e a sobe do
-# zero; no fim (trap EXIT) devolve o tv3ws/.env e o conteudo original de
-# ./user-files e recria tv3ws e aop. Se a restauracao falhar, o caminho do
-# backup (mktemp) e impresso.
+# Temporary test: simulates a fresh machine (no tv3ws/.env and no
+# user-files) and brings the stack up with a single command. It brings the
+# stack down and up from scratch; at the end (trap EXIT) it restores
+# tv3ws/.env and the original content of ./user-files and recreates tv3ws
+# and aop. If the restore fails, the path of the backup (mktemp) is printed.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -14,9 +14,9 @@ restore() {
   set +e
   local ok=1
   if [ "$HAD_UF" = 1 ]; then
-    # restaura o CONTEUDO (nao o diretorio): os containers montam
-    # ./user-files por bind, e trocar o diretorio deixaria a montagem
-    # apontando para o semeado ja apagado
+    # Restores the content, not the directory: the containers mount
+    # ./user-files by bind, and replacing the directory would leave the mount
+    # pointing to the deleted seeded one.
     mkdir -p user-files
     find user-files -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
       && cp -a "$BAK/user-files/." user-files/ \

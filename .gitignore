@@ -3,10 +3,10 @@
 .claude/
 user-files/
 
-# Material que nao pode ir pro repositorio publico:
-# norma ABNT (licenciada) e artigos em PDF; codigo de terceiros sem licenca
+# Material that cannot go to the public repository: the ABNT standard
+# (licensed) and papers in PDF; third-party code without a license.
 docs/*.pdf
 *.zip
 
-# estado local do ./tv30 (binario do anunciante SSDP, pid, log)
+# Local state of ./tv30 (binary of the SSDP announcer, pid, log).
 /.tv30/

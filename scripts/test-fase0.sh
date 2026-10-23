@@ -1,5 +1,6 @@
 #!/bin/bash
-# Smoke do broker (plugin sem ACL, validacao de schema) e de rotas do AoP.
+# Smoke test of the broker (plugin without ACL, schema validation) and of
+# routes of the AoP.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Aceite da borda unica (edgegateway) e do redis consolidado.
+# Acceptance of the single edge (edgegateway) and of the consolidated redis.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -14,9 +14,9 @@ docker ps --format '{{.Names}}\t{{.Status}}' | sort
 echo; echo "== redis consolidado =="
 docker inspect redis --format 'health={{.State.Health.Status}}'
 docker exec redis redis-cli --raw SCARD users:index | xargs echo "users:index SCARD ="
-# biblioteca de funcoes carregada antes da carga inicial, e auditoria do
-# esquema: achado = chave fora do esquema (escrita manual ou volume antigo;
-# docs/modelo-redis.md)
+# Function library loaded before the initial load, and the schema audit: a
+# finding is a key outside the schema (a manual write or an old volume;
+# docs/modelo-redis.md).
 docker logs redis 2>&1 | grep -E "biblioteca de funcoes|carga" | tail -2
 docker exec redis redis-cli --raw FCALL_RO tv30_versao 0 | xargs echo "funcoes tv30: esquema versao ="
 AUD=$(docker exec redis redis-cli --raw FCALL_RO tv30_auditoria 0)
@@ -25,11 +25,12 @@ else
   echo "auditoria do esquema: ACHADOS (chave | familia | motivo)"
   printf '%s\n' "$AUD" | awk 'NR%3==1{k=$0} NR%3==2{f=$0} NR%3==0{print "  " k " | " f " | " $0}'
 fi
-# A UI do commander exige login; a conexao com o banco (6379) segue sem senha.
-# No redis-commander 0.9.0 o login nao e HTTP basic: POST /signin troca
-# usuario/senha por um token, e GET /connections da 401 sem ele. A senha nao
-# entra em argv nem em env do container de teste (ps e docker inspect a
-# mostrariam): vai pela entrada padrao ate o curl (--data-urlencode "password@-").
+# The commander UI requires a login; the database connection (6379) has no
+# password. In redis-commander 0.9.0 the login is not HTTP basic: POST
+# /signin exchanges user and password for a token, and GET /connections
+# gives 401 without it. The password goes neither in argv nor in the env of
+# the test container (ps and docker inspect would show it): it goes by
+# standard input to curl (--data-urlencode "password@-").
 CMD_USER=$(docker exec redis printenv REDIS_COMMANDER_USER)
 export CMD_USER
 docker exec redis printenv REDIS_COMMANDER_PASSWORD \
@@ -50,8 +51,8 @@ docker exec redis printenv REDIS_COMMANDER_PASSWORD \
 docker exec redis redis-cli ping | xargs echo "redis-cli ping sem senha (6379 segue aberto) ="
 PORTA_CMD=$(docker port redis 18081/tcp | head -1)
 echo "commander no host: $PORTA_CMD"
-# morre-inteiro tambem para o commander: o container do redis cai e o restart
-# (unless-stopped) o traz de volta, saudavel depois da carga.
+# The commander exiting also brings the redis container down, and the
+# restart (unless-stopped) brings it back, healthy after the load.
 echo "-- matando o commander (o container do redis deve cair e voltar) --"
 REINICIOS_ANTES=$(docker inspect -f '{{.RestartCount}}' redis)
 docker exec redis pkill -f redis-commander
@@ -71,10 +72,10 @@ docker run --rm --network ginga_net alpine:3 sh -c '
   wget -q -O- http://edgegateway:8085/specs/openapi-internal.json | head -c 60; echo " ...spec interna OK"
   wget -q -O /dev/null http://edgegateway:8085/ && echo "swagger UI OK"'
 
-# POST /tv3/current-service/users (C.6.14.1) tem de chegar ao tv3ws pelas duas
-# portas; POST /tv3/users, nao declarada, volta 404 com corpo C.3.2
-# {"error":100,...} (C.3.2.1), e nao conexao resetada (000). As exclusivas do
-# cliente local (106 na 44643) ficam no scripts/test-auth.sh.
+# POST /tv3/current-service/users (C.6.14.1) must reach tv3ws through both
+# ports; POST /tv3/users, not declared, comes back 404 with a C.3.2 body
+# {"error":100,...} (C.3.2.1), not a reset connection (000). The routes
+# exclusive to the local client (106 on 44643) are in scripts/test-auth.sh.
 echo; echo "== edgegateway: rota declarada x caminho nao declarado =="
 docker run --rm --network ginga_net --entrypoint sh curlimages/curl:8.10.1 -c '
   for s in 44642 44643; do
