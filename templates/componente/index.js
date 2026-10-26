@@ -1,9 +1,9 @@
-// Componente de EXEMPLO do template (ver README.md). So biblioteca padrao do
-// node, para subir sem npm install (na rede do laboratorio o proxy intercepta
-// SSL e o npm quebra no build); um componente real usa mqtt e ioredis.
-// Redis e MQTT pelo NOME DO SERVICO: responde <EXEMPLO_TOPICO>/ping em
-// <EXEMPLO_TOPICO>/pong com o valor de EXEMPLO_CHAVE no Redis; GET /health so
-// abre com os dois conectados; sem um deles, sai com 1 e o restart religa.
+// EXAMPLE component of the template (see README.md). Only the node standard
+// library, to start without npm install; a real component uses mqtt and
+// ioredis. Redis and MQTT by service name: answers <EXEMPLO_TOPICO>/ping on
+// <EXEMPLO_TOPICO>/pong with the value of EXEMPLO_CHAVE in Redis; GET /health
+// opens only with both connected; without one of them, exits with 1 and the
+// restart brings it back.
 'use strict';
 const net = require('net');
 const http = require('http');
@@ -17,11 +17,12 @@ const REDIS_PORT = Number(process.env.REDIS_PORT || 6379);
 const PORT = Number(process.env.PORT || 8090);
 const TOPICO = process.env.EXEMPLO_TOPICO || `tv30/${NOME}/exemplo`;
 const CHAVE = process.env.EXEMPLO_CHAVE || `tv30:${NOME}:exemplo`;
-// clientId com sufixo aleatorio: o broker derruba a conexao anterior quando
-// chega outra com o mesmo id; assim o exemplo pode rodar no host e em
-// container ao mesmo tempo (regra do clientId no README).
+// clientId with a random suffix: the broker drops the previous connection
+// when another one arrives with the same id, so the example can run on the
+// host and in a container at the same time.
 const CLIENT_ID = `${NOME}-${crypto.randomBytes(4).toString('hex')}`;
-const KEEPALIVE = 30; // segundos
+// Seconds.
+const KEEPALIVE = 30;
 
 const log = (msg) => console.log(`[${NOME}] ${msg}`);
 function morre(motivo) {
@@ -39,8 +40,8 @@ function respEncode(args) {
   return Buffer.concat(partes);
 }
 
-// uma resposta a partir de buf[i]: {valor, erro, fim}, ou null se ainda nao
-// chegou inteira
+// One reply from buf[i]: `{valor, erro, fim}`, or null if it has not fully
+// arrived.
 function respParse(buf, i) {
   if (i >= buf.length) return null;
   const crlf = buf.indexOf('\r\n', i);
@@ -75,8 +76,8 @@ function respParse(buf, i) {
   }
 }
 
-// conecta e devolve redis(...args) -> Promise da resposta (um comando por
-// vez na fila, como o RESP garante a ordem)
+// Connects and returns redis(...args), a Promise of the reply (one command
+// at a time in the queue, as RESP keeps the order).
 function redisConnect() {
   return new Promise((resolve, reject) => {
     const sock = net.connect(REDIS_PORT, REDIS_HOST);
@@ -122,8 +123,8 @@ function mqttStr(s) {
 }
 const pacote = (cabecalho, corpo) => Buffer.concat([Buffer.from([cabecalho]), remLen(corpo.length), corpo]);
 
-// conecta (CONNECT/CONNACK) e devolve {publish, subscribe}; onMessage(topico,
-// texto) recebe cada PUBLISH
+// Connects (CONNECT/CONNACK) and returns {publish, subscribe};
+// onMessage(topic, text) gets each PUBLISH.
 function mqttConnect(onMessage) {
   return new Promise((resolve, reject) => {
     const sock = net.connect(MQTT_PORT, MQTT_HOST);
@@ -133,7 +134,7 @@ function mqttConnect(onMessage) {
     const publish = (topico, texto) => sock.write(pacote(0x30, Buffer.concat([mqttStr(topico), Buffer.from(texto, 'utf8')])));
     const subscribe = (filtro) => sock.write(pacote(0x82, Buffer.concat([Buffer.from([0, 1]), mqttStr(filtro), Buffer.from([0])])));
     sock.on('connect', () => {
-      // "MQTT", nivel 4 (3.1.1), clean session, keepalive
+      // "MQTT", level 4 (3.1.1), clean session, keepalive.
       const vh = Buffer.concat([mqttStr('MQTT'), Buffer.from([4, 0x02, KEEPALIVE >> 8, KEEPALIVE & 255])]);
       sock.write(pacote(0x10, Buffer.concat([vh, mqttStr(CLIENT_ID)])));
     });
@@ -146,7 +147,8 @@ function mqttConnect(onMessage) {
       ultimo = Date.now();
       buf = Buffer.concat([buf, d]);
       for (;;) {
-        // cabecalho fixo: tipo/flags + comprimento restante (1 a 4 bytes)
+        // Fixed header: type and flags, then the remaining length (1 to 4
+        // bytes).
         let i = 1, len = 0, mult = 1, b;
         do {
           if (i >= buf.length) return;
@@ -157,20 +159,23 @@ function mqttConnect(onMessage) {
         if (buf.length < i + len) return;
         const tipo = buf[0] >> 4, flags = buf[0] & 15, corpo = buf.subarray(i, i + len);
         buf = buf.subarray(i + len);
-        if (tipo === 2) {                       // CONNACK
+        if (tipo === 2) {
+          // CONNACK
           if (corpo[1] !== 0) { reject(new Error(`CONNACK recusado (codigo ${corpo[1]})`)); sock.destroy(); return; }
           conectado = true;
           resolve({ publish, subscribe });
-        } else if (tipo === 3) {                // PUBLISH recebido
+        } else if (tipo === 3) {
+          // PUBLISH received
           const tl = corpo.readUInt16BE(0);
           const qos = (flags >> 1) & 3;
           const ini = 2 + tl + (qos > 0 ? 2 : 0);
           onMessage(corpo.toString('utf8', 2, 2 + tl), corpo.toString('utf8', ini));
         }
-        // SUBACK e PINGRESP so contam como sinal de vida (ultimo)
+        // SUBACK and PINGRESP only count as a sign of life (ultimo).
       }
     });
-    // PINGREQ na metade do keepalive; broker mudo por 1,5 keepalive => morre
+    // PINGREQ at half the keepalive; a broker silent for 1.5 keepalive exits
+    // the process.
     setInterval(() => {
       if (!conectado) return;
       if (Date.now() - ultimo > KEEPALIVE * 1500) morre(`broker ${MQTT_HOST}:${MQTT_PORT} sem resposta (keepalive)`);
@@ -213,6 +218,6 @@ async function main() {
     .listen(PORT, () => log(`http :${PORT} (GET /health)`));
 }
 
-// docker stop: o init do compose (init: true) repassa o SIGTERM
+// docker stop: the init of the compose (init: true) forwards SIGTERM.
 process.on('SIGTERM', () => { log('SIGTERM: encerrando'); process.exit(0); });
 main();

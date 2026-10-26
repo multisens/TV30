@@ -1,7 +1,7 @@
 #!/bin/sh
-# Semeia ./user-files a partir do template (one-shot userfiles-seed do compose,
-# a cada subida): copia os arquivos que faltam e nao sobrescreve os existentes.
-# Arquivo do template apagado de ./user-files volta na subida seguinte.
+# Seeds ./user-files from the template, on every startup: copies the missing
+# files and does not overwrite existing ones. A template file deleted from
+# ./user-files comes back on the next startup.
 set -eu
 
 DEST=/user-files
@@ -11,8 +11,8 @@ mkdir -p "$DEST/thumbs"
 
 copiados=0
 mantidos=0
-# lista antes do laco (o laco fica no shell corrente e conta); nome com quebra
-# de linha nao funciona (o template nao tem)
+# List built before the loop, so that the loop runs in the current shell and
+# counts; a name with a line break does not work.
 LISTA=$(cd "$TPL" && find . -type f | sed 's|^\./||' | sort)
 while IFS= read -r f; do
   [ -n "$f" ] || continue
