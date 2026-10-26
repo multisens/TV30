@@ -98,6 +98,14 @@ services:
       # Port range of the remote-device WebSockets.
       WS_PORT_MIN: 45000
       WS_PORT_MAX: 45199
+      # Port draws before giving up on opening a WebSocket server (version
+      # 100.0).
+      LISTEN_ATTEMPTS: 10
+      # Receiver limit on registered remote devices (version 100.0).
+      MAX_REGISTRATIONS: 32
+      # Interval of the keep-alive ping on the WebSockets, in ms (version
+      # 100.0).
+      PING_INTERVAL_MS: 15000
       REDIS_HOST: redis
       REDIS_PORT: 6379
       USER_THUMBS:    /user-files/thumbs

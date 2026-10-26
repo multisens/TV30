@@ -651,7 +651,8 @@ cenario_1() {
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
     USER_THUMBS="$ud/thumbs" \
-    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 LOG_LEVEL=INFO || return
+    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 \
+    LISTEN_ATTEMPTS=10 MAX_REGISTRATIONS=32 PING_INTERVAL_MS=15000 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || { host_stop; return; }
   checar_redis_mqtt
@@ -738,7 +739,8 @@ cenario_4() {
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
     USER_THUMBS="$ud/thumbs" \
-    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 LOG_LEVEL=INFO || return
+    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 \
+    LISTEN_ATTEMPTS=10 MAX_REGISTRATIONS=32 PING_INTERVAL_MS=15000 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || return
 
