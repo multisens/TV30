@@ -1,17 +1,17 @@
 # Known Issues
 
-Problemas conhecidos do testbed, cada um com o sintoma, a causa e o contorno. A triagem de erros de operação (porta presa, Redis que não sobe, códigos de erro das APIs) está em [`docs/troubleshooting.md`](./docs/troubleshooting.md).
+Problemas de operação do testbed, cada um com o sintoma, a causa e o contorno. O que a norma especifica e o testbed não implementa está em [Não implementado](./docs/nao-implementado.md). A triagem de erros de operação (porta presa, Redis que não sobe, códigos de erro das APIs) está em [`docs/troubleshooting.md`](./docs/troubleshooting.md).
 
 ## Redis sem senha: escrita direta alcança as decisões da borda
 
 - **Sintoma:** quem alcança a 6379 (a própria máquina ou um container na `ginga_net`) grava no Redis sem credencial, e a borda decide em `enforce` a partir dessas chaves. `HSET origins:associated <origem> <serviço>` faz uma origem passar por local associado (sem access token e, no contexto daquele serviço, sem bind-token); `RPUSH bind-context:<serviço>` registra uma chave de bind.
-- **Causa:** a conexão com o banco não tem senha (decisão do projeto); só a interface administrativa (redis-commander) pede login (`REDIS_COMMANDER_USER` e `REDIS_COMMANDER_PASSWORD`, na tabela de variáveis do `README.md`). As funções do esquema (`infra/redis/esquema.json`) não impedem a escrita direta: o Redis aplica o ACL de quem chama dentro da função, então não há como liberar só a escrita pela função.
+- **Causa:** a conexão com o banco não tem senha (decisão do projeto); só a interface administrativa (redis-commander) pede login (`REDIS_COMMANDER_USER` e `REDIS_COMMANDER_PASSWORD`, em [Instalação](./docs/instalacao.md)). As funções do esquema (`infra/redis/esquema.json`) não impedem a escrita direta: o Redis aplica o ACL de quem chama dentro da função, então não há como liberar só a escrita pela função.
 - **Contorno:** a 6379 é publicada só em `127.0.0.1` (`infra/redis/docker-compose.yml`), fora do alcance dos outros aparelhos da rede. A auditoria (`docker exec redis redis-cli FCALL_RO tv30_auditoria 0`) mostra uma escrita direta que saia do esquema; uma que cumpra o esquema, como os dois exemplos acima com valores válidos, não se distingue da do código.
 
 ## Local associado reconhecido pelo `Origin`: `Origin` forjado passa
 
 - **Sintoma:** um cliente fora do navegador que mande no `Origin` a origem de uma app de emissora em execução passa como local associado: dispensa o access token e, no contexto de serviço daquela origem, o bind-token, inclusive em `POST` e `DELETE /tv3/bind-context`. Vale nos dois modos.
-- **Causa:** sem `Authorization`, a borda reconhece o local associado pelo `Origin` presente em `origins:associated` (`evaluate`, em `infra/edgegateway/plugin/handler.go`), e o tv3ws usa o mesmo critério (`classifyClient`, em `tv3ws/src/api/client-identification/controller.ts`). Fora do navegador, o `Origin` pode ser forjado. A C.4.1.7 deixa o mecanismo de diferenciação à implementação; o testbed usa o `Origin`.
+- **Causa:** sem `Authorization`, a borda reconhece o local associado pelo `Origin` presente em `origins:associated` (`evaluate`, em `infra/edgegateway/plugin/handler.go`), e o tv3ws usa o mesmo critério (`classifyClient`, em `tv3ws/src/api/client-identification/controller.ts`). Fora do navegador, o `Origin` pode ser forjado.
 - **Contorno:** nenhum no testbed.
 
 ## Portas fixas dentro da faixa efêmera do Linux: bind recusado de vez em quando
@@ -24,7 +24,7 @@ Problemas conhecidos do testbed, cada um com o sintoma, a causa e o contorno. A 
 
 - **Sintoma:** uma rota repassada ao tv3ws cujo backend demora mais de 2 s, ou está fora do ar, recebe 404 `{"error":200,"description":"Platform resource unavailable: <motivo>"}`, e não a resposta.
 - **Causa:** das 26 rotas de `infra/edgegateway/routes.json`, 21 são repassadas ao tv3ws; as outras 5 (C.6.8 e C.6.7.8/C.6.7.9) a própria borda responde. Nas 20 repassadas sem `timeout` próprio, a borda espera o tv3ws por no máximo 2 s, o padrão do KrakenD (`infra/edgegateway/generate.js`). Só o `GET /tv3/authorize` tem limite próprio, de 15 s, porque o pop-up de autorização espera a resposta do espectador por até 10 s. O plugin `tv30-auth` troca o 5xx do KrakenD por esse erro 200, com `Content-Type: application/json`, `Access-Control-Allow-Origin: *` e `API-Version`, nos dois modos. Com o Redis fora do ar, o tv3ws desiste de um comando em 1,5 s (`commandTimeout`, em `tv3ws/src/redis-client.ts`) e responde ele mesmo o 404 `{"error":200}`, antes dos 2 s da borda.
-- **Contorno:** o limite é deliberado: um tv3ws travado ou fora do ar não deixa o cliente esperando. Uma rota que precise de mais tempo recebe um `timeout` próprio no `routes.json` (por exemplo, `15s` ou `500ms`), que entra no rebuild da borda.
+- **Contorno:** uma rota que precise de mais tempo recebe um `timeout` próprio no `routes.json` (por exemplo, `15s` ou `500ms`), que entra no rebuild da borda.
 
 ## Panic do roteador do KrakenD em caminho não declarado, contido pelo plugin
 
@@ -37,18 +37,6 @@ Problemas conhecidos do testbed, cada um com o sintoma, a causa e o contorno. A 
 - **Sintoma:** depois do "sim" ao cliente não local, a tentativa de pareamento (QR code ou PIN) vale até o `/tv3/token` com a resposta certa, até um novo `/tv3/authorize` do mesmo `clientid` ou até o tv3ws reiniciar. O `/tv3/token` com a resposta errada dá 102, e o mesmo challenge pode ser respondido de novo, sem limite. Cada "sim" a um cliente não local que não conclui o pareamento deixa uma tentativa pendente na memória do tv3ws, sem limite de quantidade.
 - **Causa:** a tentativa pendente, com o material do pareamento, só fica na memória do tv3ws, sem prazo, sem limite de respostas erradas e sem teto de quantidade (`pendingClients`, em `tv3ws/src/modules/auth-manager/manager.ts`; `tv3ws/src/api/client-identification/service.ts`). A trava de 120 s (`PAIRING_POPUP_TIMEOUT_MS`) fecha o pop-up e libera a camada gráfica, mas não descarta a tentativa.
 - **Contorno:** reiniciar o tv3ws (`docker compose restart tv3ws`) descarta as tentativas pendentes. Nada delas está no Redis, e o cliente pode recomeçar com o mesmo `clientid`.
-
-## C.6.14.3 sem perfil corrente responde `{"id":""}`
-
-- **Sintoma:** entre a remoção do perfil corrente e a escolha de outro no seletor, `GET /tv3/current-service/users/current-user` (C.6.14.3) responde 200 `{"id":""}`.
-- **Causa:** a remoção do perfil corrente publica `aop/currentUser` vazio (retido), e o tv3ws devolve o `session:current-user` como está (`getCurrentUser`, em `tv3ws/src/api/user/service.ts`). A resposta da C.6.14.3 sem perfil corrente não está definida no testbed.
-- **Contorno:** escolher um perfil no seletor.
-
-## Aviso da C.6.14.5 com o id do serviço, e não o nome da emissora
-
-- **Sintoma:** o aviso que a camada gráfica mostra quando uma emissora grava atributos do perfil (`aop/display/layers/popup/info`) traz o id do serviço (por exemplo, `urn:tv30:service:users-test`).
-- **Causa:** o nome é o `serviceName` do serviço corrente (`session:current-service`), quando a gravação é nele; sem nome, vale o id (`notifyUserOfWrite`, em `tv3ws/src/api/user/service.ts`). O `serviceName` não tem fonte no testbed: o `aop/services` só traz o `serviceContextId` de cada BAM, e não há SLT.
-- **Contorno:** nenhum. O aviso também não tira pop-up da tela: com um sim/não, QR code, PIN ou outro aviso aberto, ele espera numa fila, e com 3 avisos já esperando o novo é descartado, com registro no console da página (`INFO_QUEUE_MAX`, em `aop/public/js/popup.js`).
 
 ## Companion de exemplo do webmedia: só registra com a borda em `warn`
 
@@ -83,5 +71,5 @@ Problemas conhecidos do testbed, cada um com o sintoma, a causa e o contorno. A 
 ## Volume do Redis com perfis fora do esquema
 
 - **Sintoma:** a auditoria (`docker exec redis redis-cli FCALL_RO tv30_auditoria 0`) aponta perfis com `{id} da chave: deve ser UUID ...` ou `campo avatar: SVG em linha nao serve`, a regravação deles é recusada, e o `scripts/test-auth.sh` dá FAIL.
-- **Causa:** o esquema (`infra/redis/esquema.json`) exige o id do perfil em UUID estrito, em minúsculas (Tabela 7), e o `avatar` como nome de um arquivo do diretório de miniaturas, sem compatibilidade com outros formatos. A carga inicial só roda em banco vazio (`seed:done`), então não corrige um volume `redis_data` já gravado. Com o id fora do esquema, `tv30_perfil_grava` e `tv30_atributos_emissora` recusam a escrita; `tv30_perfil_ultimo_acesso` e `tv30_perfil_remove` funcionam (`infra/redis/README.md`).
+- **Causa:** o esquema (`infra/redis/esquema.json`) exige o id do perfil em UUID estrito, em minúsculas (Tabela 7), e o `avatar` como nome de um arquivo do diretório de miniaturas, sem compatibilidade com outros formatos. A carga inicial só roda em banco vazio (`seed:done`), então não corrige um volume `redis_data` já gravado. Com o id fora do esquema, `tv30_perfil_grava` e `tv30_atributos_emissora` recusam a escrita; `tv30_perfil_ultimo_acesso` e `tv30_perfil_remove` funcionam ([Modelo de dados Redis](./docs/modelo-redis.md)).
 - **Contorno:** `docker compose down -v`, que apaga o volume do Redis, com os perfis criados, e os retidos do broker; ou corrigir as chaves apontadas, como em [`docs/troubleshooting.md`](./docs/troubleshooting.md), seção *Auditoria do Redis com achados*.

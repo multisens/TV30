@@ -1,7 +1,7 @@
 ---
 title: Borda e credenciais
 parent: Como funciona
-nav_order: 5
+nav_order: 6
 ---
 
 # Borda e credenciais
@@ -20,7 +20,7 @@ As duas têm as 26 rotas da tabela. O que muda é o 106:
 | Superfície | Porta | Protocolo | Regra própria | Backend no tv3ws |
 |---|---|---|---|---|
 | interna | 44642, fixa pela C.3.4 (`Server-BaseURL`) | HTTP | o cliente não local só usa `/tv3/authorize` e `/tv3/token`; nas demais rotas, 106 (C.4.1.6) | `http://tv3ws:44652` |
-| externa | 44643 (`Server-SecureBaseURL`) | **TLS**, terminado na borda | as rotas de uso exclusivo do cliente local (`POST`/`DELETE /tv3/bind-context`, C.6.15.5, rotas por `handle`) e o `/tv3/authorize` respondem 106 a qualquer requisição (C.4.1.8) | `https://tv3ws:44653` |
+| externa | 44643 (`Server-SecureBaseURL`) | **TLS**, terminado na borda | as rotas de uso exclusivo do cliente local (`POST`/`DELETE /tv3/bind-context`, C.6.15.5, rotas por `handle`) e o `/tv3/authorize` respondem 106 a qualquer requisição (C.4.1.8; na C.6.15.5, a Tabela C.80 lista 107 para o não local: [Não implementado]({{ site.baseurl }}/nao-implementado)) | `https://tv3ws:44653` |
 
 - **Uma tabela de rotas só.** O `infra/edgegateway/routes.json` declara método, caminho, política (`auth`, `classes`), a linha da Tabela C.2 (`api`), as versões servidas (`versions`), o erro sem serviço selecionado (`no_service`) e o erro do serviço fora do catálogo (`not_in_catalog`). O `generate.js` gera dela, no build da imagem, as configurações do KrakenD (variantes `linux` e `windows`, com um endpoint por par rota × versão), os dois OpenAPI e a tabela de rotas do plugin.
 - **Certificado.** O serviço `tls-init` gera na primeira subida um certificado X.509 autoassinado em `.tv30/tls` (fora do git), sem ação do usuário (C.4.1.1). A borda termina com ele o TLS da 44643; o tv3ws o usa no HTTPS da 44653, no `serverCert` do pareamento (Tabela C.4) e no `wss://` do ponto de entrada do dispositivo remoto (Tabela C.76).
@@ -60,10 +60,70 @@ O plugin avalia nesta ordem, e a primeira etapa que falha define o erro (`evalua
 
 ---
 
+## CORS
+
+O plugin responde todo o CORS (C.4.1.9); a configuração do KrakenD não tem o módulo CORS. Os valores vêm do bloco `cors` do `routes.json`.
+
+- **Toda resposta** leva um `Access-Control-Allow-Origin: *` (C.4.1.9.2), também sem `Origin` na requisição, e `Access-Control-Expose-Headers: Content-Length, X-TV30-Auth-Warn`.
+- **Preflight** (`OPTIONS` com `Access-Control-Request-Method`), em qualquer caminho e com a lista pedida em qualquer ordem: 200 com `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: *`, `Access-Control-Allow-Headers: Content-Type, Authorization, bind-token, Accept, Accept-Version, key` (os da C.4.1.9.3, mais o `key` do `DELETE /tv3/bind-context`, C.6.8.4) e `Access-Control-Max-Age: 43200`.
+- **`OPTIONS` sem preflight**, num caminho declarado: 200 com os três primeiros cabeçalhos (C.4.1.9.3); num caminho não declarado, 100.
+
+---
+
+## Repasse ao tv3ws
+
+- O KrakenD repassa só os cabeçalhos e as query strings declarados em cada rota, mais o `bind-token` nas rotas `token+bind` e os cabeçalhos internos `X-TV30-API-Version` e `X-TV30-Host`. Toda rota repassada é proxy *no-op*: status e corpo do tv3ws chegam intactos ao cliente.
+- A borda espera o tv3ws por 2 s, o padrão do KrakenD, salvo `timeout` próprio da rota (`GET /tv3/authorize`, 15 s). A resposta 5xx do KrakenD, ou um panic do roteador, vira 404 `{"error":200}` (`serveNext`, em `handler.go`).
+- A superfície externa repassa ao HTTPS do tv3ws (44653), com o certificado do receptor; o KrakenD aceita o certificado autoassinado do backend (`allow_insecure_connections`). Sem certificado nenhum, o tv3ws sobe só em HTTP, e as rotas que a 44643 repassa respondem 404 `{"error":200}`.
+- As rotas que a borda responde sozinha também têm endpoint no KrakenD, que nunca é alcançado e só mantém o caminho registrado no roteador.
+
+---
+
+## Build da imagem
+
+O `infra/edgegateway/Dockerfile` roda os testes de `generate.js` e gera de `routes.json` as configurações do KrakenD (`krakend-{internal,external}.{linux,windows}.json`) e os dois OpenAPI; roda `go vet` e `go test` no plugin e o compila com `-buildmode=plugin`; e confere a configuração (`krakend check`) e o plugin (`krakend check-plugin`, `krakend test-plugin`). O build falha se qualquer passo falhar.
+
+O `.so` só carrega num binário com o mesmo Go, a mesma libc e a mesma arquitetura. O Go do build segue a arquitetura (`TARGETARCH`): em amd64, o `krakend/builder:2.7.2`; em arm64, o `golang:1.22.7-alpine3.19` com `binutils-gold`. Outra arquitetura falha no build. As versões são fixas.
+
+A documentação Swagger das duas superfícies sai na 8085 do container, numa porta de host escolhida pelo Docker (`docker port edgegateway 8085`).
+
+---
+
 ## O que a borda responde sozinha
 
-- **C.6.8** (`POST`, `GET` e `DELETE /tv3/bind-context`; `bindcontext.go`): registro, consulta e revogação das chaves de bind-token, em `bind-context:{serviceId}`. O `serviceContextId` das respostas é o `globalServiceId` de cada serviço. A borda é a única que escreve essa chave (a auditoria do esquema também a lê).
-- **C.6.7.8 e C.6.7.9** (`GET /tv3/api-info[/{apiId}]`; `apiinfo.go`): as 20 APIs implementadas, nas duas superfícies, cada uma com a versão mais recente que serve (100.0 para a `tv3ws-remotedevice-communication`, 2.0 para as demais).
+### C.6.8, bind-context (`bindcontext.go`)
+
+As chaves ficam em `bind-context:{serviceId}`, uma LIST de JSON `{"alg","key","registeredAt"}`, gravada pelas funções `tv30_bind_registra` e `tv30_bind_remove` do Redis. A borda é a única que escreve essa chave.
+
+| Rota | Sucesso | Erros |
+|---|---|---|
+| `POST /tv3/bind-context`, corpo `{alg, key}` | `{"serviceContextId": <globalServiceId do serviço corrente>}` | 101: corpo que não é objeto JSON, `alg` fora de HS256, HS512, RS256 e RS512 ou chave incompatível com ele. 105: falta `alg` ou `key`. 300: sem serviço corrente |
+| `GET /tv3/bind-context`, cabeçalho `bind-token` | `{"boundServices": [{serviceContextId, serviceName?, serviceId?}]}`, um item por serviço, entre todos com chave registrada, cuja chave valida o token | 104: sem o cabeçalho. 108: não é JWT, ou a assinatura confere e o token está fora do prazo. 101: nenhuma chave valida a assinatura |
+| `DELETE /tv3/bind-context`, cabeçalho `key` | `{}`, também se a chave não existe ou não há serviço corrente | 105: sem o cabeçalho |
+
+- **Sem duplicata.** Uma chave HS só é duplicata com o segredo idêntico; uma RSA, com a mesma chave pública em qualquer codificação. O mesmo segredo com outro `alg` é outra entrada.
+- **Nome e id do serviço** só saem para o serviço corrente (`session:current-service`); para os demais, são omitidos (C.3.2.2).
+- **Recusa do esquema do Redis** responde 200, com o motivo no `description`.
+
+### C.6.7.8 e C.6.7.9, api-info (`apiinfo.go`)
+
+As 20 APIs implementadas, iguais nas duas superfícies, na ordem da Tabela C.2, tiradas do campo `api` das rotas no `routes.json`. Cada uma vem com a versão mais recente que serve: 100.0 para a `tv3ws-remotedevice-communication` e 2.0 para as demais. Um id da Tabela C.2 não implementado dá 101, e um subsistema desconhecido também; sem `subsystem`, a lista traz todas; `ncl` e `nclua` dão lista vazia.
+
+---
+
+## Configuração do plugin
+
+O bloco do plugin é gerado pelo `generate.js`, a partir do `routes.json`, no build da imagem. O ambiente do container (`infra/docker-compose.yml`):
+
+| Variável | Padrão | Uso |
+|---|---|---|
+| `AUTH_ENFORCE` | `enforce` | `warn` só avisa nas recusas de credencial (104, 107, 108) |
+| `JWT_SECRET` | obrigatória | o segredo com que o tv3ws assina o access token |
+| `JWT_ISSUER` | `GenericIssuer` | o `iss` exigido no access token |
+| `REDIS_HOST` / `REDIS_PORT` | `redis` / `6379` | o Redis da stack |
+| `REDIS_TIMEOUT_MS` | `500` | limite de cada comando |
+
+Configuração inválida derruba o processo (`[tv30-auth] FATAL`, `loadConfig` em `config.go`): `JWT_SECRET` ausente; `AUTH_ENFORCE` diferente de `warn` e `enforce` (vazio vale `enforce`); porta ou limite inválidos; `surface` ausente ou lista de rotas vazia; rota inválida, inclusive com o prefixo `/v<X.Y>`; `surface_error` diferente de 106; `no_service` diferente de 300 ou fora de rota `token+bind`; `not_in_catalog` diferente de 304 ou fora de rota `token+bind` com `{serviceContextId}`; `versions` vazio, fora do formato X.Y ou com versão repetida; `current_service_context_id` presente; CORS ou lista de APIs inválidos.
 
 ---
 
@@ -75,10 +135,9 @@ O plugin avalia nesta ordem, e a primeira etapa que falha define o erro (`evalua
 
 ---
 
-## Lacunas
+## O que não está implementado
 
-- O local associado é reconhecido pelo `Origin`, forjável fora do navegador. A chamada sem `Origin` também fica de fora do 106 dado ao associado nas rotas que não o admitem.
-- Os recursos compartilhados (C.4.4) não são liberados ao fechar a app associada, ao remover a autorização nem ao revogar uma chave: dependem do Application Lifecycle Manager e do menu de autorizações, que não existem no testbed.
+O que a borda não implementa da norma está em [Não implementado]({{ site.baseurl }}/nao-implementado); as limitações de operação, como o `Origin` forjável fora do navegador, em [Known Issues](https://github.com/multisens/TV30/blob/main/KNOWN-ISSUES.md).
 
 ---
 
