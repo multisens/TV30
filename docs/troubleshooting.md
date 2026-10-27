@@ -250,7 +250,7 @@ O QtWebEngine não foi testado com os nomes `*.apps.localhost`.
 As duas superfícies têm as 26 rotas; o que muda de uma para a outra é o 106 ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). Sai nos dois modos, `enforce` e `warn`:
 
 - **Na 44643 (externa, HTTPS):** as rotas de uso exclusivo do cliente local (`POST` e `DELETE /tv3/bind-context`, `GET /tv3/remote-device/devices/{classId}` da C.6.15.5 e as rotas por *handle*, `GET` e `DELETE /tv3/remote-device/device/{handle}`) e o `GET /tv3/authorize` respondem 404 `{"error":106}` a qualquer requisição (C.4.1.8; a C.6.1.2 "can only be accessed via the HTTP protocol"; na C.6.15.5, a Tabela C.80 lista 107 para o não local: [Não implementado]({{ site.baseurl }}/nao-implementado)). Use a 44642.
-- **Na 44642 (interna, HTTP):** o access token de classe `non-local` só vale no `/tv3/authorize` e no `/tv3/token`; nas demais rotas, 106 (C.4.1.6), com o log `cliente nao local por HTTP fora da C.6.1.2/C.6.1.3`. Depois de obter o token, o cliente não local usa a 44643. Nas rotas só do cliente local, ele recebe antes o 106 da regra de classe (`rota nao disponivel para non-local`; `infra/edgegateway/plugin/handler.go`).
+- **Na 44642 (interna, HTTP):** o access token de classe `nonLocal` só vale no `/tv3/authorize` e no `/tv3/token`; nas demais rotas, 106 (C.4.1.6), com o log `cliente nao local por HTTP fora da C.6.1.2/C.6.1.3`. Depois de obter o token, o cliente não local usa a 44643. Nas rotas só do cliente local, ele recebe antes o 106 da regra de classe (`rota nao disponivel para nonLocal`; `infra/edgegateway/plugin/handler.go`).
 
 A C.6.7.9 lista as 20 APIs nas duas superfícies: a restrição aparece pelo 106 no uso, e não na lista.
 
@@ -260,7 +260,7 @@ A C.6.7.9 lista as 20 APIs nas duas superfícies: a restrição aparece pelo 106
 
 ## Access token válido recebe 107 (`cliente fora de clients:authorized`)
 
-A borda exige que o `sub` do access token esteja no SET `clients:authorized`, nas rotas que pedem token (`token` e `token+bind`; as de `auth: none` não mudam). Fora dele, a resposta é 404 `{"error":107}` (em `warn`, só o aviso `X-TV30-Auth-Warn: 107`), como a do cliente bloqueado, também com token de classe `local-associated`. O log da borda diz `cliente fora de clients:authorized: autorizacao do espectador ausente ou removida`; token sem `sub` dá `access token sem sub: cliente fora de clients:authorized`, e o bloqueado mantém `cliente bloqueado pelo usuario (C.4.2.2)`, porque é conferido antes.
+A borda exige que o `sub` do access token esteja no SET `clients:authorized`, nas rotas que pedem token (`token` e `token+bind`; as de `auth: none` não mudam). Fora dele, a resposta é 404 `{"error":107}` (em `warn`, só o aviso `X-TV30-Auth-Warn: 107`), como a do cliente bloqueado, também com token de classe `associated`. O log da borda diz `cliente fora de clients:authorized: autorizacao do espectador ausente ou removida`; token sem `sub` dá `access token sem sub: cliente fora de clients:authorized`, e o bloqueado mantém `cliente bloqueado pelo usuario (C.4.2.2)`, porque é conferido antes.
 
 | Causa | O que fazer |
 |---|---|
@@ -284,7 +284,7 @@ Nas rotas `token+bind` (`infra/edgegateway/routes.json`), depois da classe e do 
 | 104 | Sem o cabeçalho `bind-token` | Mande o bind-token assinado pela emissora |
 | 108 | O bind-token não foi assinado por uma chave registrada (C.6.8.2) para o contexto de serviço da rota: o `{serviceContextId}` do caminho, que é o `globalServiceId` do BAM, ou o serviço corrente em `current-service`. Na C.6.16.3, também sem serviço selecionado | A app da emissora registra a chave pela C.6.8.2 (`POST /tv3/bind-context`, que grava no serviço corrente; `bindcontext.go`). Confira se o contexto da rota é esse serviço |
 
-A app de emissora reconhecida pelo `Origin` (local associado) dispensa o bind-token só no próprio contexto de serviço, o do serviço que a lançou (valor em `origins:associated`). Noutro contexto, recebe 104 ou 108 como qualquer cliente (C.4.1.1). Um access token de classe `local-associated` não dispensa o bind-token: segue a regra geral. O 104 e o 108 seguem o modo: em `warn`, só o aviso `X-TV30-Auth-Warn`.
+A app de emissora reconhecida pelo `Origin` (local associado) dispensa o bind-token só no próprio contexto de serviço, o do serviço que a lançou (valor em `origins:associated`). Noutro contexto, recebe 104 ou 108 como qualquer cliente (C.4.1.1). Um access token de classe `associated` não dispensa o bind-token: segue a regra geral. O 104 e o 108 seguem o modo: em `warn`, só o aviso `X-TV30-Auth-Warn`.
 
 ## A página da TV não conecta no MQTT (`/mqtt`)
 

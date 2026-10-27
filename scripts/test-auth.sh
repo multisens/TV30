@@ -495,16 +495,16 @@ out('BT_EXP', jwt(H('HS256'), { iat: now - 7200, nbf: now - 7200, exp: now - 360
 out('BT_IAT', jwt(H('HS256'), { iat: now + 3600, nbf: now - 10, exp: now + 7200 }, hs('HS256', hs256)));
 out('BT_NONE', jwt({ alg: 'none', typ: 'JWT' }, ok, () => ''));
 out('AT_EXPIRED', jwt(H('HS256'),
-  { iat: now - 7200, nbf: now - 7200, exp: now - 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'local-autonomous' },
+  { iat: now - 7200, nbf: now - 7200, exp: now - 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'standAlone' },
   hs('HS256', process.env.SECRET)));
 // Within its period, but signed with another secret (tampered, for warn).
 out('AT_BADSIG', jwt(H('HS256'),
-  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'local-autonomous' },
+  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'standAlone' },
   hs('HS256', 'tv30-test-outro-segredo-' + crypto.randomBytes(8).toString('hex'))));
 // Valid, of the client the script puts in clients:authorized in place of
 // tv3ws.
 out('AT_WARN', jwt(H('HS256'),
-  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.WARN, class: 'local-autonomous' },
+  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.WARN, class: 'standAlone' },
   hs('HS256', process.env.SECRET)));
 JS
 docker run --rm -i -e ISS="$EDGE_ISSUER" -e SUB="$CLIENT" -e WARN="$WARN_CID" -e SECRET="$EDGE_SECRET" "$NODE_IMG" node - <"$TMP/gen.js" >"$TMP/mat" 2>"$TMP/mat.err" \
@@ -677,8 +677,8 @@ pair() {
   else
     fail "$S [44642] primeiro /token por HTTP -> esperado corpo cifrado application/octet-stream (C.6.1.3.3), veio '$ct'"
   fi
-  if [ -n "$NL_AT" ] && [ "$NL_CLASS" = non-local ] && [ "$NL_SUB" = "$cid" ] && [ -n "$NL_RT" ]; then
-    pass "$S accessToken com class=non-local e sub=clientid, mais refreshToken (tokenType=$NL_TT, expiresIn=$NL_EXP)"
+  if [ -n "$NL_AT" ] && [ "$NL_CLASS" = nonLocal ] && [ "$NL_SUB" = "$cid" ] && [ -n "$NL_RT" ]; then
+    pass "$S accessToken com class=nonLocal e sub=clientid, mais refreshToken (tokenType=$NL_TT, expiresIn=$NL_EXP)"
   else
     fail "$S credencial do primeiro /token: class='$NL_CLASS' sub='$NL_SUB' accessToken=${NL_AT:+presente} refreshToken=${NL_RT:+presente}"
     return 1
@@ -780,7 +780,7 @@ if true; then
   expect_err "[warn 44643] GET /tv3/authorize (so por HTTP, C.4.1.8: 106 tambem em warn)" 106 borda GET "$H_EXT/tv3/authorize?clientid=x&display-name=y"
   # 304 also blocks in warn, as 300: it needs a valid access token (107 in
   # warn only warns and ends the decision) of an authorized client.
-  fcall tv30_cliente_autoriza "$WARN_CID" class local-autonomous refreshToken tv30-test-warn >/dev/null \
+  fcall tv30_cliente_autoriza "$WARN_CID" class standAlone refreshToken tv30-test-warn >/dev/null \
     || fail "autorizacao de $WARN_CID pela funcao recusada"
   servico_corrente "$SVC_A"
   WARN_TOK=(-H "Authorization: Bearer $AT_WARN")
@@ -1248,7 +1248,7 @@ req DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: tv30-test-inexiste
 [ "$ST" = 200 ] && pass "DELETE de chave inexistente -> 200" || fail "DELETE inexistente -> status=$ST corpo=$(short)"
 expect_err "DELETE sem cabecalho key" 105 borda DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}"
 expect_err "DELETE por nao associado" 106 borda DELETE "$H_INT/tv3/bind-context" -H "key: $HS512_KEY"
-# The DELETE (classes: local-associated) also gives 106 on 44643.
+# The DELETE (classes: associated) also gives 106 on 44643.
 expect_err "[44643] DELETE bind-context (exclusiva do cliente local)" 106 borda DELETE "$H_EXT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: $HS512_KEY"
 expect_pass "a HS512 continua registrada depois do DELETE recusado na 44643" GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS512"
 servico_corrente ""
@@ -1368,8 +1368,8 @@ for PM in qrcode kex; do
     req GET "$H_EXT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
     RCT=$(hdr Content-Type)
     if [ "$ST" = 200 ] && nl_node MODO=token CT="$RCT" BODY="$(base64 <"$TMP/b" | tr -d "\n")" SECRET="$NL_SECRET" \
-       && [ "$NL_ENC" = 0 ] && [ -n "$NL_AT" ] && [ "$NL_CLASS" = non-local ]; then
-      pass "$S [44643] renovacao com refresh-token -> 200 JSON sem a cifra do primeiro acesso, accessToken class=non-local"
+       && [ "$NL_ENC" = 0 ] && [ -n "$NL_AT" ] && [ "$NL_CLASS" = nonLocal ]; then
+      pass "$S [44643] renovacao com refresh-token -> 200 JSON sem a cifra do primeiro acesso, accessToken class=nonLocal"
     else
       fail "$S [44643] renovacao com refresh-token -> status=$ST content-type='$RCT' corpo=$(short) ${NL_ERR}"
     fi

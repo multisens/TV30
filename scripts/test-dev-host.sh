@@ -455,7 +455,7 @@ c.on("error",e=>{console.log(e.message);process.exit(1)});'
 # HS256 accessToken with the same claims tv3ws issues (manager.ts).
 JS_TOKEN='const c=require("crypto");const b=o=>Buffer.from(JSON.stringify(o)).toString("base64url");
 const n=Math.floor(Date.now()/1000);
-const h=b({alg:"HS256",typ:"JWT"}),p=b({iat:n,nbf:n,exp:n+600,iss:process.env.ISS,sub:"tv30-devhost-teste",class:"local-autonomous"});
+const h=b({alg:"HS256",typ:"JWT"}),p=b({iat:n,nbf:n,exp:n+600,iss:process.env.ISS,sub:"tv30-devhost-teste",class:"standAlone"});
 process.stdout.write(h+"."+p+"."+c.createHmac("sha256",process.env.SEC).update(h+"."+p).digest("base64url"));'
 
 # Both checks run in the environment of the CURRENT module; the label says

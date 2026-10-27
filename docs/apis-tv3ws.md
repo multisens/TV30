@@ -38,12 +38,12 @@ As 26 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou 
 |--------|------|-------|--------|-----------|---------|
 | GET | `/health` | testbed (fora da norma) | `none` | todas | 2.0 |
 | GET | `/manifest` | resposta ao `LOCATION` do anúncio SSDP | `none` | todas | 2.0 |
-| GET | `/tv3/authorize` | C.6.1.2 | `none` | `local-autonomous`, `non-local` | 2.0 |
-| GET | `/tv3/token` | C.6.1.3 | `none` | `local-autonomous`, `non-local` | 2.0 |
+| GET | `/tv3/authorize` | C.6.1.2 | `none` | `standAlone`, `nonLocal` | 2.0 |
+| GET | `/tv3/token` | C.6.1.3 | `none` | `standAlone`, `nonLocal` | 2.0 |
 | GET | `/tv3/current-service` | C.6.3.1 | `token` | todas | 2.0 |
-| POST | `/tv3/bind-context` | C.6.8.2 (borda) | `none` | `local-associated` | 2.0 |
-| GET | `/tv3/bind-context` | C.6.8.3 (borda) | `token` | `local-autonomous`, `non-local` | 2.0 |
-| DELETE | `/tv3/bind-context` | C.6.8.4 (borda) | `none` | `local-associated` | 2.0 |
+| POST | `/tv3/bind-context` | C.6.8.2 (borda) | `none` | `associated` | 2.0 |
+| GET | `/tv3/bind-context` | C.6.8.3 (borda) | `token` | `standAlone`, `nonLocal` | 2.0 |
+| DELETE | `/tv3/bind-context` | C.6.8.4 (borda) | `none` | `associated` | 2.0 |
 | GET | `/tv3/api-info/{apiId}` | C.6.7.8 (borda) | `token` | todas | 2.0 |
 | GET | `/tv3/api-info` | C.6.7.9 (borda) | `token` | todas | 2.0 |
 | GET | `/tv3/current-service/apps/{appid}/files` | C.6.4.7 | `token+bind` (300 sem serviço) | todas | 2.0 |
@@ -56,9 +56,9 @@ As 26 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou 
 | GET | `/tv3/current-service/users/files` | C.6.14.6 | `token+bind` (300 sem serviço) | todas | 2.0 |
 | POST | `/tv3/remote-device` | C.6.15.2 | `token` | todas | 2.0 |
 | DELETE | `/tv3/remote-device/{handle}` | C.6.15.3 | `token` | todas | 2.0 |
-| GET | `/tv3/remote-device/devices/{classId}` | C.6.15.5 | `token` | `local-associated`, `local-autonomous` | 2.0, 100.0 |
-| GET | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `local-associated`, `local-autonomous` | 100.0 |
-| DELETE | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `local-associated`, `local-autonomous` | 100.0 |
+| GET | `/tv3/remote-device/devices/{classId}` | C.6.15.5 | `token` | `associated`, `standAlone` | 2.0, 100.0 |
+| GET | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `associated`, `standAlone` | 100.0 |
+| DELETE | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `associated`, `standAlone` | 100.0 |
 | GET | `/tv3/sensory-effect-renderers` | C.6.16.1 | `token` | todas | 2.0 |
 | GET | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.2 | `token` | todas | 2.0 |
 | POST | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.3 | `token+bind` (108 sem serviço) | todas | 2.0 |
@@ -94,7 +94,7 @@ A tentativa pendente do não local (o "sim" dado e o pareamento não concluído)
 - **Quando grava.** O "não" é gravado na hora, em `clients:blocked`, para as duas classes. O "sim" do local autônomo é gravado na hora (`client:{id}` e `clients:authorized`). O "sim" do não local fica só na memória do tv3ws, como tentativa pendente com o material do pareamento (`StartPairing`, em `manager.ts`): `client:{id}` e `clients:authorized` só são gravados quando o `/tv3/token` confere o `challenge-response` (`AuthorizePairedClient`), e só então sai a credencial. Se essa gravação falhar, a resposta é 404 `{"error":200}`, e o material volta ao cliente. A trava de 120 s só fecha o pop-up; um reinício do tv3ws perde a tentativa.
 - **No `/tv3/token`,** o fluxo por `challenge-response` aceita a tentativa pendente; o por `refresh-token` exige a autorização gravada (`clients:authorized`). Sem o que o fluxo exige, 102. Um cliente bloqueado depois de autorizado recebe 102, como pede a C.4.2.2 ("it is not able to request the access token").
 - O bloqueio só acontece na recusa do pop-up (ou quando ele expira). A tela de gerenciamento da C.4.2.2 não existe ([Não implementado]({{ site.baseurl }}/nao-implementado)).
-- A borda recusa com 107 o token de um `sub` que está em `clients:blocked`, o de um `sub` que não está em `clients:authorized` e o token sem `sub`. Vale nas rotas que pedem token, para toda classe; o bloqueio é conferido antes e mantém a mensagem dele. O token de classe `local-associated` segue a regra geral, com bind-token nas rotas `token+bind`; o tv3ws não emite essa classe.
+- A borda recusa com 107 o token de um `sub` que está em `clients:blocked`, o de um `sub` que não está em `clients:authorized` e o token sem `sub`. Vale nas rotas que pedem token, para toda classe; o bloqueio é conferido antes e mantém a mensagem dele. O token de classe `associated` segue a regra geral, com bind-token nas rotas `token+bind`; o tv3ws não emite essa classe.
 
 O 102 fica só para a recusa no próprio pop-up ("If the user does not grant access"), o que inclui o pop-up que expira sem resposta: o tempo esgotado conta como recusa e também bloqueia o cliente (`showYesNoPopUpAsync`, em `tv3ws/src/core.ts`, e `checkAuthorization`, em `controller.ts`).
 
