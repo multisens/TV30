@@ -59,7 +59,7 @@ EDGE_ISSUER=$(env_of edgegateway JWT_ISSUER)
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-fcall tv30_cliente_autoriza "$CLIENT" class standAlone refreshToken "tv30-test-rd100" \
+fcall tv30_client_authorize "$CLIENT" class standAlone refreshToken "tv30-test-rd100" \
   || die "nao consegui autorizar o cliente de teste pela funcao"
 
 cat >"$TMP/test.mjs" <<'EOF'

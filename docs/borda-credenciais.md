@@ -93,7 +93,7 @@ A documentação Swagger das duas superfícies sai na 8085 do container, numa po
 
 ### C.6.8, bind-context (`bindcontext.go`)
 
-As chaves ficam em `bind-context:{serviceId}`, uma LIST de JSON `{"alg","key","registeredAt"}`, gravada pelas funções `tv30_bind_registra` e `tv30_bind_remove` do Redis. A borda é a única que escreve essa chave.
+As chaves ficam em `bind-context:{serviceId}`, uma LIST de JSON `{"alg","key","registeredAt"}`, gravada pelas funções `tv30_bind_register` e `tv30_bind_remove` do Redis. A borda é a única que escreve essa chave.
 
 | Rota | Sucesso | Erros |
 |---|---|---|
