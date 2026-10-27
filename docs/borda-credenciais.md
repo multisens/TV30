@@ -15,7 +15,7 @@ A norma define as classes de cliente (C.3.1), o access token (C.4.1.2, C.6.1), o
 
 ## As duas superfícies
 
-As duas têm as 26 rotas da tabela. O que muda é o 106:
+As duas têm as 27 rotas da tabela. O que muda é o 106:
 
 | Superfície | Porta | Protocolo | Regra própria | Backend no tv3ws |
 |---|---|---|---|---|
@@ -46,7 +46,7 @@ O plugin avalia nesta ordem, e a primeira etapa que falha define o erro (`evalua
 
 - **O `serviceContextId` é o `globalServiceId` do BAM.** Na C.6.14.2 e na C.6.14.5, ele tem de estar no Application Catalog (`services:announced`), senão 304, para todo cliente, inclusive o associado; `current-service` não confere.
 - **O local associado** usa as rotas que o admitem sem access token. No próprio contexto de serviço (o serviço que lançou a app, valor de `origins:associated`), também sem bind-token; em contexto de outra emissora, segue a regra geral: 104, 108, ou atende com bind-token válido daquele contexto (C.4.1.1). Um access token de classe `associated` segue a regra geral, com bind-token nas rotas `token+bind`.
-- **Versão repassada.** A borda manda ao serviço a versão decidida no cabeçalho interno `X-TV30-API-Version`, e o Host original do cliente em `X-TV30-Host` (para o `/manifest`), apagando o que vier do cliente. O tv3ws não interpreta o `Accept-Version`. A versão não escolhe o serviço de destino: ele é sempre o backend da superfície. Nas versões de 100 em diante (extensões do testbed), o caminho do salto borda → serviço é `/v<X.Y>` + o caminho público (`internalPath`, em `edge.go`), e o `generate.js` cria um endpoint do KrakenD por par rota × versão. O cliente usa só o caminho público; `/v...` vindo dele não é rota declarada (100).
+- **Versão repassada.** A borda manda ao serviço a versão decidida no cabeçalho interno `X-TV30-API-Version`, o Host original do cliente em `X-TV30-Host` (para o `/manifest`) e a classe e a identidade do cliente local em `X-TV30-Client-Class` e `X-TV30-Client-Id` (`associated`, só a classe; `standAlone`, a classe e o `clientid`; `nonLocal`, nenhum dos dois), apagando o que vier do cliente. O tv3ws não interpreta o `Accept-Version`. A versão não escolhe o serviço de destino: ele é sempre o backend da superfície. Nas versões de 100 em diante (extensões do testbed), o caminho do salto borda → serviço é `/v<X.Y>` + o caminho público (`internalPath`, em `edge.go`), e o `generate.js` cria um endpoint do KrakenD por par rota × versão. O cliente usa só o caminho público; `/v...` vindo dele não é rota declarada (100).
 - **Relógio do bind-token:** o do host, sem tolerância (`checkTime`, `jwt.go`). A emissora simulada e o receptor rodam na mesma máquina.
 - **Falha do Redis** durante a decisão dá o código 200 ("Platform resource unavailable").
 
@@ -72,7 +72,7 @@ O plugin responde todo o CORS (C.4.1.9); a configuração do KrakenD não tem o 
 
 ## Repasse ao tv3ws
 
-- O KrakenD repassa só os cabeçalhos e as query strings declarados em cada rota, mais o `bind-token` nas rotas `token+bind` e os cabeçalhos internos `X-TV30-API-Version` e `X-TV30-Host`. Toda rota repassada é proxy *no-op*: status e corpo do tv3ws chegam intactos ao cliente.
+- O KrakenD repassa só os cabeçalhos e as query strings declarados em cada rota, mais o `bind-token` nas rotas `token+bind` e os cabeçalhos internos `X-TV30-API-Version`, `X-TV30-Host`, `X-TV30-Client-Class` e `X-TV30-Client-Id`. Toda rota repassada é proxy *no-op*: status e corpo do tv3ws chegam intactos ao cliente.
 - A borda espera o tv3ws por 2 s, o padrão do KrakenD, salvo `timeout` próprio da rota (`GET /tv3/authorize`, 15 s). A resposta 5xx do KrakenD, ou um panic do roteador, vira 404 `{"error":200}` (`serveNext`, em `handler.go`).
 - A superfície externa repassa ao HTTPS do tv3ws (44653), com o certificado do receptor; o KrakenD aceita o certificado autoassinado do backend (`allow_insecure_connections`). Sem certificado nenhum, o tv3ws sobe só em HTTP, e as rotas que a 44643 repassa respondem 404 `{"error":200}`.
 - As rotas que a borda responde sozinha também têm endpoint no KrakenD, que nunca é alcançado e só mantém o caminho registrado no roteador.
@@ -107,7 +107,7 @@ As chaves ficam em `bind-context:{serviceId}`, uma LIST de JSON `{"alg","key","r
 
 ### C.6.7.8 e C.6.7.9, api-info (`apiinfo.go`)
 
-As 20 APIs implementadas, iguais nas duas superfícies, na ordem da Tabela C.2, tiradas do campo `api` das rotas no `routes.json`. Cada uma vem com a versão mais recente que serve: 100.0 para a `tv3ws-remotedevice-communication` e 2.0 para as demais. Um id da Tabela C.2 não implementado dá 101, e um subsistema desconhecido também; sem `subsystem`, a lista traz todas; `ncl` e `nclua` dão lista vazia.
+As 22 APIs implementadas, iguais nas duas superfícies, na ordem da Tabela C.2, tiradas do campo `api` das rotas no `routes.json`. Cada uma vem com a versão mais recente que serve: 100.0 para as APIs da C.6.15 e da C.6.2 e 2.0 para as demais. Um id da Tabela C.2 não implementado dá 101, e um subsistema desconhecido também; sem `subsystem`, a lista traz todas; `ncl` e `nclua` dão lista vazia.
 
 ---
 

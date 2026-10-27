@@ -10,7 +10,7 @@ O **tv3ws** é a implementação dos **TV 3.0 WebServices** da ABNT NBR 25608 (A
 
 Dois grupos de APIs declarados na borda **não** chegam ao tv3ws: a borda os responde sozinha (C.6.8, `/tv3/bind-context`, e C.6.7.8/C.6.7.9, `/tv3/api-info`). Eles aparecem na tabela abaixo, marcados "(borda)". Qual processo responde cada API é decisão deste testbed; a norma só define as APIs.
 
-O cliente não fala com o tv3ws diretamente: todo acesso às APIs passa pela **borda** ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). As duas superfícies têm as 26 rotas: a interna, `http://<host>:44642` (`Server-BaseURL`), e a externa, `https://<host>:44643` (`Server-SecureBaseURL`, com TLS). A exceção são os WebSockets de remote-device: o tv3ws publica a faixa 45000–45199 no host, e o cliente abre direto a URL que a API devolve. O ponto de entrada do dispositivo remoto (registro, C.6.15.2) sai em `wss://<SERVER_URL>:<porta>`, com o certificado do receptor (ou `ws://` com `TV3WS_WS_TLS=false`); o local (C.6.15.5 e ativação por *handle*), sempre em `ws://<SERVER_URL>:<porta>`.
+O cliente não fala com o tv3ws diretamente: todo acesso às APIs passa pela **borda** ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). As duas superfícies têm as 27 rotas: a interna, `http://<host>:44642` (`Server-BaseURL`), e a externa, `https://<host>:44643` (`Server-SecureBaseURL`, com TLS). A exceção são os WebSockets de remote-device: o tv3ws publica a faixa 45000–45199 no host, e o cliente abre direto a URL que a API devolve. O ponto de entrada do dispositivo remoto (registro, C.6.15.2) sai em `wss://<SERVER_URL>:<porta>`, com o certificado do receptor (ou `ws://` com `TV3WS_WS_TLS=false`); o local (C.6.15.5 e ativação por *handle*), sempre em `ws://<SERVER_URL>:<porta>`.
 
 > Borda, mensageria e Redis são decisões de implementação do testbed, não da norma.
 
@@ -24,15 +24,15 @@ O cliente não fala com o tv3ws diretamente: todo acesso às APIs passa pela **b
 - **Falha do Redis.** Comando sem resposta em 1,5 s falha (`tv3ws/src/redis-client.ts`), e a API responde 404 `{"error":200}`.
 - **CORS.** Quem aplica é a borda. O tv3ws não envia cabeçalhos CORS, com uma exceção: o `/manifest` manda `Access-Control-Expose-Headers` com os seis nomes da C.3.4.
 - **Versão (C.3.6).** Quem negocia é a borda, rota a rota, pelas versões do `routes.json` (campo `versions`; ausente = 2.0). Sem `Accept-Version` vale a 2.0; fora do formato X.Y, 101; versão que a rota não serve, 100. A versão decidida chega ao tv3ws no cabeçalho interno `X-TV30-API-Version`, e ele responde nela, com `API-Version` em toda resposta (C.3.6.6). No erro 100, `API-Version` é a versão mais recente do servidor, 100.0.
-  - **2.0** é a norma. **100.0** é uma extensão do testbed para o remote-device por *handle* (as versões de 100 em diante ficam reservadas às extensões do testbed). A C.6.15.5 serve as duas: na 2.0 a listagem traz o `url` de cada aparelho; na 100.0, só os *handles*. `GET` e `DELETE /tv3/remote-device/device/{handle}` só existem na 100.0: pedidas com 2.0, ou sem o cabeçalho, dão 100.
-  - **Caminho interno das extensões.** Nas versões de 100 em diante, a borda repassa ao tv3ws em `/v<X.Y>` + o caminho público, e o tv3ws registra os tratadores da 100.0 sob `/v100.0/tv3/remote-device/...` (`routerV100`, em `tv3ws/src/api/remote-device/index.ts`), sem ramificar pelo cabeçalho. O cliente usa só o caminho público: `/v...` vindo dele não é rota declarada e dá 100.
+  - **2.0** é a norma. **100.0** é uma extensão do testbed com a proposta v2 da C.6.15 (as versões de 100 em diante ficam reservadas às extensões do testbed). O registro, o cancelamento e a listagem de dispositivos remotos servem as duas; a atualização do registro (`POST /tv3/remote-device/{handle}`) e as notificações (`GET /tv3/notifications/{className}`, `DELETE /tv3/notifications/{handle}`) só existem na 100.0: pedidas com 2.0, ou sem o cabeçalho, dão 100.
+  - **Caminho interno das extensões.** Nas versões de 100 em diante, a borda repassa ao tv3ws em `/v<X.Y>` + o caminho público, e o tv3ws registra os tratadores da 100.0 sob `/v100.0` (`tv3ws/src/v100.0/`). O cliente usa só o caminho público: `/v...` vindo dele não é rota declarada e dá 100.
   - Fora de `/tv3`, o `/health` e o `/manifest` não levam `API-Version`.
 
 ---
 
 ## Endpoints declarados na borda
 
-As 26 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou `token+bind`; **`classes`** = as classes de cliente que a rota admite ("todas" quando o campo falta); **versões** = as que a rota serve. Na externa, as rotas só do cliente local e o `/tv3/authorize` respondem 106 a qualquer requisição (C.4.1.8); na interna, o não local recebe 106 fora de `/tv3/authorize` e `/tv3/token` (C.4.1.6).
+As 27 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou `token+bind`; **`classes`** = as classes de cliente que a rota admite ("todas" quando o campo falta); **versões** = as que a rota serve. Na externa, as rotas só do cliente local e o `/tv3/authorize` respondem 106 a qualquer requisição (C.4.1.8); na interna, o não local recebe 106 fora de `/tv3/authorize` e `/tv3/token` (C.4.1.6).
 
 | Método | Rota | Norma | `auth` | `classes` | versões |
 |--------|------|-------|--------|-----------|---------|
@@ -54,18 +54,19 @@ As 26 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou 
 | POST | `/tv3/current-service/users/current-user` | C.6.14.4 | `token+bind` (300 sem serviço) | todas | 2.0 |
 | POST | `/tv3/{serviceContextId}/users/{userid}` | C.6.14.5 | `token+bind` (300 sem serviço; 304 fora do catálogo) | todas | 2.0 |
 | GET | `/tv3/current-service/users/files` | C.6.14.6 | `token+bind` (300 sem serviço) | todas | 2.0 |
-| POST | `/tv3/remote-device` | C.6.15.2 | `token` | todas | 2.0 |
-| DELETE | `/tv3/remote-device/{handle}` | C.6.15.3 | `token` | todas | 2.0 |
+| POST | `/tv3/remote-device` | C.6.15.2 | `token` | todas | 2.0, 100.0 |
+| POST | `/tv3/remote-device/{handle}` | C.6.15.2 (atualização) | `token` | todas | 100.0 |
+| DELETE | `/tv3/remote-device/{handle}` | C.6.15.3 | `token` | todas | 2.0, 100.0 |
 | GET | `/tv3/remote-device/devices/{classId}` | C.6.15.5 | `token` | `associated`, `standAlone` | 2.0, 100.0 |
-| GET | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `associated`, `standAlone` | 100.0 |
-| DELETE | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `associated`, `standAlone` | 100.0 |
+| GET | `/tv3/notifications/{className}` | C.6.2.2 (só na 100.0) | `token` | `associated`, `standAlone` | 100.0 |
+| DELETE | `/tv3/notifications/{handle}` | C.6.2.3 (só na 100.0) | `token` | `associated`, `standAlone` | 100.0 |
 | GET | `/tv3/sensory-effect-renderers` | C.6.16.1 | `token` | todas | 2.0 |
 | GET | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.2 | `token` | todas | 2.0 |
 | POST | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.3 | `token+bind` (108 sem serviço) | todas | 2.0 |
 
 **Notas:**
 
-- **C.6.7.8 e C.6.7.9 (borda).** Listam as 20 APIs implementadas nas duas superfícies, cada uma com a versão mais recente que serve (100.0 para a `tv3ws-remotedevice-communication`, 2.0 para as demais). Um id da Tabela C.2 não implementado dá 101; sem `subsystem`, a lista traz todas.
+- **C.6.7.8 e C.6.7.9 (borda).** Listam as 22 APIs implementadas nas duas superfícies, cada uma com a versão mais recente que serve (100.0 para as APIs da C.6.15 e da C.6.2, 2.0 para as demais). Um id da Tabela C.2 não implementado dá 101; sem `subsystem`, a lista traz todas.
 - **`GET /tv3/current-service`** (C.6.3.1, Tabela C.8). Sem serviço em uso, 404 `{"error":300}`. Com serviço, 200 com `serviceContextId` (o `globalServiceId`), `transportStreamId` e `originalNetworkId`. O `serviceName` e o `serviceId` inteiro ficam de fora: sem SLT, o testbed não os tem, e o `aop/services` só traz o `serviceContextId`. O 302 não é emitido ([Não implementado]({{ site.baseurl }}/nao-implementado)).
 - **304 (serviço fora do catálogo).** Na C.6.14.2 e na C.6.14.5 com `{serviceContextId}` explícito, a borda responde 304 ("DTV service not found", Tabelas C.71 e C.74) ao serviço fora de `services:announced`, a lista dos serviços anunciados na LLS que o AoP grava e que o Application Catalog mostra; `current-service` não confere. Vem depois do 107 e do 300 e antes do bind-token, para todo cliente e nos dois modos; Redis fora, 200.
 - **`POST /tv3/current-service/users/current-user`** (C.6.14.4, Tabela C.73). Sem `id` no corpo, 105; sem serviço DTV em uso, 300; `id` fora de `users:index`, 305; perfil que não deu acesso à emissora do serviço corrente (`user:{id}:consent`), 405 (`setCurrentUser`, em `tv3ws/src/api/user/service.ts`). Aceito, o tv3ws grava `session:current-user` e publica `aop/currentUser` retido.

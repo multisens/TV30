@@ -247,12 +247,12 @@ O QtWebEngine não foi testado com os nomes `*.apps.localhost`.
 
 ## Rota exclusiva do cliente local, ou o `/tv3/authorize`, dá 106
 
-As duas superfícies têm as 26 rotas; o que muda de uma para a outra é o 106 ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). Sai nos dois modos, `enforce` e `warn`:
+As duas superfícies têm as 27 rotas; o que muda de uma para a outra é o 106 ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). Sai nos dois modos, `enforce` e `warn`:
 
-- **Na 44643 (externa, HTTPS):** as rotas de uso exclusivo do cliente local (`POST` e `DELETE /tv3/bind-context`, `GET /tv3/remote-device/devices/{classId}` da C.6.15.5 e as rotas por *handle*, `GET` e `DELETE /tv3/remote-device/device/{handle}`) e o `GET /tv3/authorize` respondem 404 `{"error":106}` a qualquer requisição (C.4.1.8; a C.6.1.2 "can only be accessed via the HTTP protocol"; na C.6.15.5, a Tabela C.80 lista 107 para o não local: [Não implementado]({{ site.baseurl }}/nao-implementado)). Use a 44642.
+- **Na 44643 (externa, HTTPS):** as rotas de uso exclusivo do cliente local (`POST` e `DELETE /tv3/bind-context`, `GET /tv3/remote-device/devices/{classId}` da C.6.15.5 e as notificações da 100.0, `GET /tv3/notifications/{className}` e `DELETE /tv3/notifications/{handle}`) e o `GET /tv3/authorize` respondem 404 `{"error":106}` a qualquer requisição (C.4.1.8; a C.6.1.2 "can only be accessed via the HTTP protocol"; na C.6.15.5, a Tabela C.80 lista 107 para o não local: [Não implementado]({{ site.baseurl }}/nao-implementado)). Use a 44642.
 - **Na 44642 (interna, HTTP):** o access token de classe `nonLocal` só vale no `/tv3/authorize` e no `/tv3/token`; nas demais rotas, 106 (C.4.1.6), com o log `cliente nao local por HTTP fora da C.6.1.2/C.6.1.3`. Depois de obter o token, o cliente não local usa a 44643. Nas rotas só do cliente local, ele recebe antes o 106 da regra de classe (`rota nao disponivel para nonLocal`; `infra/edgegateway/plugin/handler.go`).
 
-A C.6.7.9 lista as 20 APIs nas duas superfícies: a restrição aparece pelo 106 no uso, e não na lista.
+A C.6.7.9 lista as 22 APIs nas duas superfícies: a restrição aparece pelo 106 no uso, e não na lista.
 
 ## `POST /tv3/<scid>/users` dá 100
 

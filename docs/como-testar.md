@@ -110,7 +110,7 @@ cd infra/edgegateway
 node --test generate.test.js
 ```
 
-Eles cobrem as duas superfícies com as 26 rotas e o 106 de cada uma, as versões por rota e a regra de uma versão por API, o caminho interno das extensões (`/v<X.Y>` de 100 em diante, um endpoint por par rota × versão, e o prefixo recusado num caminho declarado), o `no_service`, o `not_in_catalog` (304 só na C.6.14.2 e na C.6.14.5), o TLS da externa, os arquivos gerados (duas variantes por superfície, `linux` e `windows`, e os dois OpenAPI), as 20 APIs da C.6.7.8/C.6.7.9 nas duas, o bloco `cors`, a recusa do campo `surfaces` por rota e a ausência de `POST /tv3/{serviceContextId}/users` na tabela.
+Eles cobrem as duas superfícies com as 27 rotas e o 106 de cada uma, as versões por rota e a regra de uma versão por API, o caminho interno das extensões (`/v<X.Y>` de 100 em diante, um endpoint por par rota × versão, e o prefixo recusado num caminho declarado), o `no_service`, o `not_in_catalog` (304 só na C.6.14.2 e na C.6.14.5), o TLS da externa, os arquivos gerados (duas variantes por superfície, `linux` e `windows`, e os dois OpenAPI), as 22 APIs da C.6.7.8/C.6.7.9 nas duas, o bloco `cors`, a recusa do campo `surfaces` por rota e a ausência de `POST /tv3/{serviceContextId}/users` na tabela.
 
 O plugin `tv30-auth` e o anunciante SSDP são Go, só com a biblioteca padrão. Rode os testes no compilador da imagem: `krakend/builder:2.7.2` (Go 1.22.7, Alpine) em amd64, ou `golang:1.22.7-alpine3.19` em arm64, como o Dockerfile escolhe pelo `TARGETARCH`:
 
@@ -185,7 +185,7 @@ bash scripts/test-auth.sh
 
 - **O que cobre:** a decisão de credencial do plugin `tv30-auth` contra a stack de pé, nas duas superfícies. Em `warn`, o que passa com aviso. Depois o script recria **só** a borda em `enforce` e cobre:
   - os erros 100, 104, 106, 107, 108 e 304, o CORS (preflight e `OPTIONS` sem preflight), a negociação de versão e a C.6.3.1, com o `serviceContextId` igual ao `globalServiceId`;
-  - a C.6.8 com chaves HS256, HS512, RS256 e RS512, o isolamento entre serviços e a C.6.7.8/C.6.7.9, com as 20 APIs nas duas superfícies;
+  - a C.6.8 com chaves HS256, HS512, RS256 e RS512, o isolamento entre serviços e a C.6.7.8/C.6.7.9, com as 22 APIs nas duas superfícies;
   - o 106 por superfície: na 44643, as rotas de uso exclusivo do cliente local e o `/tv3/authorize`; na 44642, o não local fora de `/tv3/authorize` e `/tv3/token`; a C.6.15.5 e as rotas por *handle* (só na 100.0) só para o cliente local; o 106 ao `Origin` associado também com token válido de outra classe;
   - as rotas por *handle* da 100.0 chegando ao tv3ws pelo caminho interno (o 101 do *handle* inexistente vem do tv3ws) e o `/v100.0/...` vindo do cliente com 100;
   - o 300 antes do bind-token e o associado em contexto de outra emissora;
