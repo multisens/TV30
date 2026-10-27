@@ -336,6 +336,22 @@ expect_api_version() {
   if [ "$v" = "$want" ]; then pass "$1 -> API-Version: $v"; else fail "$1 -> esperado API-Version: $want, veio '$v'"; fi
 }
 
+# expect_list_v100 NAME [curl args]: the listing of C.6.15.5 in 100.0
+# (proposal v2 of C.6.15), answered by tv3ws with sequence and API-Version
+# 100.0. tv3ws identifies the local client by the class and the identity the
+# edge passes on (X-TV30-Client-Class, X-TV30-Client-Id): without them, it
+# gives 107.
+expect_list_v100() {
+  local name=$1 why=""; shift
+  req GET "$H_INT/tv3/remote-device/devices/x" -H 'Accept-Version: 100.0' "$@"
+  [ "$CE" = 0 ] || why="$why curl=$CE"
+  [ "$ST" = 200 ] || why="$why status=$ST corpo=$(short)"
+  [ "$(origin_of)" = tv3ws ] || why="$why origem=borda"
+  body | grep -Eq '^\{"sequence":[0-9]+' || why="$why corpo=$(short)"
+  [ "$(hdr API-Version)" = 100.0 ] || why="$why api-version='$(hdr API-Version)'"
+  if [ -z "$why" ]; then pass "$name -> 200 do tv3ws $(short)"; else fail "$name -> esperado 200 do tv3ws com sequence:$why"; fi
+}
+
 # Reached tv3ws (X-Powered-By: Express) without a block or warning from the
 # edge.
 expect_pass() {
@@ -1284,7 +1300,11 @@ else
   fail "[44643] GET /tv3/api-info -> status=$ST origem=$(origin_of), esperada a lista da 44642 corpo=$(short)"
 fi
 expect_edge "[44643] GET /tv3/api-info/tv3ws-bind-context-register" '^\{"receiverApi":\{"id":"tv3ws-bind-context-register","version":"2.0"\}\}$' GET "$H_EXT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
-expect_edge "[44643] GET /tv3/api-info/tv3ws-remotedevice-communication" '^\{"receiverApi":\{"id":"tv3ws-remotedevice-communication","version":"[0-9.]+"\}\}$' GET "$H_EXT/tv3/api-info/tv3ws-remotedevice-communication" "${TOK[@]}"
+# C.6.7.8: the APIs of C.6.15 and C.6.2 report 100.0, the latest version
+# they serve.
+for API in tv3ws-remotedevice-register tv3ws-remotedevice-cancel tv3ws-remotedevice-communication tv3ws-register-notifications tv3ws-deregister-notifications; do
+  expect_edge "[44643] GET /tv3/api-info/$API" "^\\{\"receiverApi\":\\{\"id\":\"$API\",\"version\":\"100\\.0\"\\}\\}\$" GET "$H_EXT/tv3/api-info/$API" "${TOK[@]}"
+done
 expect_edge "[44642] GET /tv3/api-info/tv3ws-bind-context-register" '^\{"receiverApi":\{"id":"tv3ws-bind-context-register","version":"2.0"\}\}$' GET "$H_INT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=ncl (subsistema conhecido, sem API)" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=ncl" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=nclua" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=nclua" "${TOK[@]}"
@@ -1358,11 +1378,11 @@ for PM in qrcode kex; do
   # C.4.1.8).
   expect_err "$S [44642] GET /tv3/remote-device/devices/x (C.6.15.5, so cliente local)" 106 borda GET "$H_INT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
   expect_err "$S [44643] GET /tv3/remote-device/devices/x (exclusiva do cliente local)" 106 borda GET "$H_EXT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
-  # Routes by handle (100.0): the same rule.
-  for M in GET DELETE; do
-    expect_err "$S [44642] $M /tv3/remote-device/device/x (100.0, so cliente local)" 106 borda $M "$H_INT/tv3/remote-device/device/x" "${NL_TOK[@]}"
-    expect_err "$S [44643] $M /tv3/remote-device/device/x (exclusiva do cliente local)" 106 borda $M "$H_EXT/tv3/remote-device/device/x" "${NL_TOK[@]}"
-  done
+  # Notifications (C.6.2.2, C.6.2.3; only 100.0): the same rule.
+  expect_err "$S [44642] GET /tv3/notifications/remote-device (100.0, so cliente local)" 106 borda GET "$H_INT/tv3/notifications/remote-device" "${NL_TOK[@]}" -H 'Accept-Version: 100.0'
+  expect_err "$S [44643] GET /tv3/notifications/remote-device (exclusiva do cliente local)" 106 borda GET "$H_EXT/tv3/notifications/remote-device" "${NL_TOK[@]}" -H 'Accept-Version: 100.0'
+  expect_err "$S [44642] DELETE /tv3/notifications/x (100.0, so cliente local)" 106 borda DELETE "$H_INT/tv3/notifications/x" "${NL_TOK[@]}" -H 'Accept-Version: 100.0'
+  expect_err "$S [44643] DELETE /tv3/notifications/x (exclusiva do cliente local)" 106 borda DELETE "$H_EXT/tv3/notifications/x" "${NL_TOK[@]}" -H 'Accept-Version: 100.0'
   expect_err "$S [44642] renovacao por HTTP com refresh-token" 106 tv3ws GET "$H_INT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
   if ! ext_skip "$H_EXT" "$S [44643] renovacao com refresh-token"; then
     req GET "$H_EXT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
@@ -1382,16 +1402,35 @@ for PM in qrcode kex; do
 done
 
 expect_pass "[44642] GET /tv3/remote-device/devices/x (C.6.15.5) pelo cliente local" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}"
-expect_pass "[44642] GET /tv3/remote-device/device/x (100.0) pelo cliente local" GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
-expect_err "[44642] GET /tv3/remote-device/device/x sem Accept-Version (so existe na 100.0)" 100 borda GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}"
-expect_err "[44642] GET /tv3/remote-device/device/x com 2.0" 100 borda GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 2.0'
-expect_pass "[44642] GET /tv3/remote-device/devices/x com 100.0 (C.6.15.5, so handles)" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
-expect_api_version "[44642] C.6.15.5 com 100.0" 100.0
-# 100.0 reaches tv3ws on the internal path /v100.0, where its handlers are:
-# a nonexistent handle gives the 101 of tv3ws.
-expect_err "[44642] GET /tv3/remote-device/device/x com 100.0 (handle inexistente)" 101 tv3ws GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
-expect_api_version "[44642] rota por handle com 100.0" 100.0
-expect_err "[44642] DELETE /tv3/remote-device/device/x com 100.0 (handle inexistente)" 101 tv3ws DELETE "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
+# 100.0 (proposal v2 of C.6.15) reaches tv3ws on the internal path /v100.0.
+expect_list_v100 "[44642] C.6.15.5 com 100.0 pelo local autonomo (classe e clientid repassados)" "${TOK[@]}"
+expect_list_v100 "[44642] C.6.15.5 com 100.0 pelo associado (classe repassada)" "${ASSOC_H[@]}"
+expect_list_v100 "[44642] C.6.15.5 com 100.0 e X-TV30-Client-Class forjado (apagado pela borda)" "${TOK[@]}" -H 'X-TV30-Client-Class: associated' -H 'X-TV30-Client-Id: forjado'
+# Update of a registration (C.6.15.2): only 100.0; without Accept-Version,
+# 2.0, which does not serve it.
+expect_err "[44642] POST /tv3/remote-device/x sem Accept-Version (so existe na 100.0)" 100 borda POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
+expect_err "[44642] POST /tv3/remote-device/x com 2.0" 100 borda POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 2.0' -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
+expect_err "[44642] POST /tv3/remote-device/x com 100.0 (handle inexistente)" 305 tv3ws POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 100.0' -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
+expect_api_version "[44642] atualizacao com 100.0" 100.0
+# Deregistration (C.6.15.3) of a nonexistent handle: 305 in 100.0; the 2.0
+# keeps its 101.
+expect_err "[44642] DELETE /tv3/remote-device/x com 100.0 (handle inexistente)" 305 tv3ws DELETE "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
+expect_err "[44642] DELETE /tv3/remote-device/x com 2.0 (handle inexistente)" 101 tv3ws DELETE "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 2.0'
+# Notifications (C.6.2.2, C.6.2.3): only 100.0, for the local client.
+req GET "$H_INT/tv3/notifications/remote-device" "${TOK[@]}" -H 'Accept-Version: 100.0'
+if [ "$ST" = 200 ] && [ "$(origin_of)" = tv3ws ] && body | grep -q '"url":"ws://' && [ "$(hdr API-Version)" = 100.0 ]; then
+  pass "[44642] GET /tv3/notifications/remote-device com 100.0 -> 200 do tv3ws com a url do ouvinte"
+else
+  fail "[44642] GET /tv3/notifications/remote-device com 100.0 -> status=$ST origem=$(origin_of) api-version='$(hdr API-Version)' corpo=$(short)"
+fi
+expect_err "[44642] GET /tv3/notifications/remote-device sem Accept-Version (so existe na 100.0)" 100 borda GET "$H_INT/tv3/notifications/remote-device" "${TOK[@]}"
+expect_err "[44642] GET /tv3/notifications/remote-device com 2.0" 100 borda GET "$H_INT/tv3/notifications/remote-device" "${TOK[@]}" -H 'Accept-Version: 2.0'
+# The routes by handle of the former 100.0 no longer exist.
+for V in 2.0 100.0; do
+  for M in GET DELETE; do
+    expect_err "[44642] $M /tv3/remote-device/device/x com $V (rota retirada)" 100 borda $M "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H "Accept-Version: $V"
+  done
+done
 
 echo; echo "-- rota nao declarada e preflight CORS --"
 for H in "$H_INT" "$H_EXT"; do
@@ -1399,7 +1438,7 @@ for H in "$H_INT" "$H_EXT"; do
   expect_err "$S GET /tv3/naoexiste" 100 borda GET "$H/tv3/naoexiste"
   # The internal path (edge -> service) sent by the client is not a declared
   # route.
-  expect_err "$S GET /v100.0/tv3/remote-device/device/x (caminho interno)" 100 borda GET "$H/v100.0/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
+  expect_err "$S GET /v100.0/tv3/notifications/remote-device (caminho interno)" 100 borda GET "$H/v100.0/tv3/notifications/remote-device" "${TOK[@]}" -H 'Accept-Version: 100.0'
   expect_err "$S GET /v100.0/tv3/remote-device/devices/x (caminho interno)" 100 borda GET "$H/v100.0/tv3/remote-device/devices/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
   expect_err "$S GET /tv3/xyz/abc" 100 borda GET "$H/tv3/xyz/abc"
   expect_err "$S GET /tv3/abc" 100 borda GET "$H/tv3/abc"
