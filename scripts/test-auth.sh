@@ -1406,16 +1406,15 @@ expect_pass "[44642] GET /tv3/remote-device/devices/x (C.6.15.5) pelo cliente lo
 expect_list_v100 "[44642] C.6.15.5 com 100.0 pelo local autonomo (classe e clientid repassados)" "${TOK[@]}"
 expect_list_v100 "[44642] C.6.15.5 com 100.0 pelo associado (classe repassada)" "${ASSOC_H[@]}"
 expect_list_v100 "[44642] C.6.15.5 com 100.0 e X-TV30-Client-Class forjado (apagado pela borda)" "${TOK[@]}" -H 'X-TV30-Client-Class: associated' -H 'X-TV30-Client-Id: forjado'
-# Update of a registration (C.6.15.2): only 100.0; without Accept-Version,
-# 2.0, which does not serve it.
-expect_err "[44642] POST /tv3/remote-device/x sem Accept-Version (so existe na 100.0)" 100 borda POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
-expect_err "[44642] POST /tv3/remote-device/x com 2.0" 100 borda POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 2.0' -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
+# Update of a registration (C.6.15.2) of a nonexistent handle: 305 in both
+# versions.
+expect_err "[44642] POST /tv3/remote-device/x sem Accept-Version (2.0, handle inexistente)" 305 tv3ws POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
+expect_err "[44642] POST /tv3/remote-device/x com 2.0 (handle inexistente)" 305 tv3ws POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 2.0' -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
 expect_err "[44642] POST /tv3/remote-device/x com 100.0 (handle inexistente)" 305 tv3ws POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 100.0' -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
 expect_api_version "[44642] atualizacao com 100.0" 100.0
-# Deregistration (C.6.15.3) of a nonexistent handle: 305 in 100.0; the 2.0
-# keeps its 101.
+# Deregistration (C.6.15.3) of a nonexistent handle: 305 in both versions.
 expect_err "[44642] DELETE /tv3/remote-device/x com 100.0 (handle inexistente)" 305 tv3ws DELETE "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
-expect_err "[44642] DELETE /tv3/remote-device/x com 2.0 (handle inexistente)" 101 tv3ws DELETE "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 2.0'
+expect_err "[44642] DELETE /tv3/remote-device/x com 2.0 (handle inexistente)" 305 tv3ws DELETE "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 2.0'
 # Notifications (C.6.2.2, C.6.2.3): only 100.0, for the local client.
 req GET "$H_INT/tv3/notifications/remote-device" "${TOK[@]}" -H 'Accept-Version: 100.0'
 if [ "$ST" = 200 ] && [ "$(origin_of)" = tv3ws ] && body | grep -q '"url":"ws://' && [ "$(hdr API-Version)" = 100.0 ]; then

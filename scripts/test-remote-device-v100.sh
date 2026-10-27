@@ -203,7 +203,9 @@ async function main() {
     const cross100 = await call('DELETE', `/tv3/remote-device/${reg20.json.handle}`, '100.0');
     check('DELETE na 100.0 com handle da 2.0 -> 305', cross100.status === 404 && cross100.json?.error === 305, JSON.stringify(cross100.json));
     const cross20 = await call('DELETE', `/tv3/remote-device/${reg100.json.handle}`, '2.0');
-    check('DELETE na 2.0 com handle da 100.0 -> 101', cross20.status === 404 && cross20.json?.error === 101, JSON.stringify(cross20.json));
+    check('DELETE na 2.0 com handle da 100.0 -> 305', cross20.status === 404 && cross20.json?.error === 305, JSON.stringify(cross20.json));
+    const crossUpdate20 = await call('POST', `/tv3/remote-device/${reg100.json.handle}`, '2.0', body);
+    check('atualizacao na 2.0 com handle da 100.0 -> 305', crossUpdate20.status === 404 && crossUpdate20.json?.error === 305, JSON.stringify(crossUpdate20.json));
     const update20 = await call('POST', `/tv3/remote-device/${reg20.json.handle}`, '100.0', body);
     check('atualizacao na 100.0 com handle da 2.0 -> 305', update20.status === 404 && update20.json?.error === 305, JSON.stringify(update20.json));
     const again20 = await call('GET', listPath);
@@ -238,7 +240,7 @@ async function main() {
     const del100 = await call('DELETE', `/tv3/remote-device/${reg100.json.handle}`, '100.0');
     check('DELETE na 100.0 do proprio registro -> 200 {}', del100.status === 200 && JSON.stringify(del100.json) === '{}', `status=${del100.status} corpo=${JSON.stringify(del100.json)}`);
     const del20 = await call('DELETE', `/tv3/remote-device/${reg20.json.handle}`);
-    check('DELETE na 2.0 do proprio registro -> 204', del20.status === 204, `status=${del20.status}`);
+    check('DELETE na 2.0 do proprio registro -> 200 {}', del20.status === 200 && JSON.stringify(del20.json) === '{}', `status=${del20.status} corpo=${JSON.stringify(del20.json)}`);
     dev20.close();
     dev100.close();
 }

@@ -24,7 +24,7 @@ O cliente não fala com o tv3ws diretamente: todo acesso às APIs passa pela **b
 - **Falha do Redis.** Comando sem resposta em 1,5 s falha (`tv3ws/src/redis-client.ts`), e a API responde 404 `{"error":200}`.
 - **CORS.** Quem aplica é a borda. O tv3ws não envia cabeçalhos CORS, com uma exceção: o `/manifest` manda `Access-Control-Expose-Headers` com os seis nomes da C.3.4.
 - **Versão (C.3.6).** Quem negocia é a borda, rota a rota, pelas versões do `routes.json` (campo `versions`; ausente = 2.0). Sem `Accept-Version` vale a 2.0; fora do formato X.Y, 101; versão que a rota não serve, 100. A versão decidida chega ao tv3ws no cabeçalho interno `X-TV30-API-Version`, e ele responde nela, com `API-Version` em toda resposta (C.3.6.6). No erro 100, `API-Version` é a versão mais recente do servidor, 100.0.
-  - **2.0** é a norma. **100.0** é uma extensão do testbed com a proposta v2 da C.6.15 (as versões de 100 em diante ficam reservadas às extensões do testbed). O registro, o cancelamento e a listagem de dispositivos remotos servem as duas; a atualização do registro (`POST /tv3/remote-device/{handle}`) e as notificações (`GET /tv3/notifications/{className}`, `DELETE /tv3/notifications/{handle}`) só existem na 100.0: pedidas com 2.0, ou sem o cabeçalho, dão 100.
+  - **2.0** é a norma. **100.0** é uma extensão do testbed com a proposta v2 da C.6.15 (as versões de 100 em diante ficam reservadas às extensões do testbed). O registro, a atualização do registro (`POST /tv3/remote-device/{handle}`), o cancelamento e a listagem de dispositivos remotos servem as duas; nas duas, `handle` inexistente dá 305, o cancelamento responde `{}`, o corpo é validado (101 para corpo que não é objeto JSON ou valor inválido, 105 para campo ausente) e a classe é livre (guia operacional, Seção 9). As notificações (`GET /tv3/notifications/{className}`, `DELETE /tv3/notifications/{handle}`) só existem na 100.0: pedidas com 2.0, ou sem o cabeçalho, dão 100.
   - **Caminho interno das extensões.** Nas versões de 100 em diante, a borda repassa ao tv3ws em `/v<X.Y>` + o caminho público, e o tv3ws registra os tratadores da 100.0 sob `/v100.0` (`tv3ws/src/v100.0/`). O cliente usa só o caminho público: `/v...` vindo dele não é rota declarada e dá 100.
   - Fora de `/tv3`, o `/health` e o `/manifest` não levam `API-Version`.
 
@@ -55,7 +55,7 @@ As 27 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou 
 | POST | `/tv3/{serviceContextId}/users/{userid}` | C.6.14.5 | `token+bind` (300 sem serviço; 304 fora do catálogo) | todas | 2.0 |
 | GET | `/tv3/current-service/users/files` | C.6.14.6 | `token+bind` (300 sem serviço) | todas | 2.0 |
 | POST | `/tv3/remote-device` | C.6.15.2 | `token` | todas | 2.0, 100.0 |
-| POST | `/tv3/remote-device/{handle}` | C.6.15.2 (atualização) | `token` | todas | 100.0 |
+| POST | `/tv3/remote-device/{handle}` | C.6.15.2 (atualização) | `token` | todas | 2.0, 100.0 |
 | DELETE | `/tv3/remote-device/{handle}` | C.6.15.3 | `token` | todas | 2.0, 100.0 |
 | GET | `/tv3/remote-device/devices/{classId}` | C.6.15.5 | `token` | `associated`, `standAlone` | 2.0, 100.0 |
 | GET | `/tv3/notifications/{className}` | C.6.2.2 (só na 100.0) | `token` | `associated`, `standAlone` | 100.0 |
