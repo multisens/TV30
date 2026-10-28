@@ -166,6 +166,15 @@ REDIS_TOUCHED=0
 # 1 after the C.6.3.1 cases publish aop/currentService.
 CS_TOUCHED=0
 
+# app_state <state>: publishes the change of state of the test associated
+# application, in place of the Application Lifecycle Manager (not
+# retained).
+APP_STATE_TOPIC=aop/application-lifecycle-manager/application-state
+app_state() {
+  docker exec mqtt-broker mosquitto_pub -q 1 -t "$APP_STATE_TOPIC" \
+    -m "{\"serviceContextId\":\"$SVC_A\",\"appId\":\"tv30-test-assoc-$RUN\",\"origin\":\"$ASSOC\",\"state\":\"$1\"}"
+}
+
 # cs_publish <sid>: publishes aop/currentService retained in place of the
 # platform (empty deletes the retained message; the broker delivers "" to the
 # subscribers, as in unsetCurrentService of aop) and waits for tv3ws to
@@ -260,6 +269,7 @@ restaura_redis() {
     anuncia 2>/dev/null || echo "ATENCAO: servicos de teste ainda em services:announced: $(rc --raw SMEMBERS services:announced | tr '\n' ' ')"
   fi
   fcall tv30_origin_remove "$ASSOC" >/dev/null
+  app_state ended >/dev/null 2>&1
   # Test data (ids and services with the suffix of this run): a direct write
   # on purpose, since no service deletes a client or the whole bind-context
   # list, so there is no function for it. What is left (the sets without the
@@ -901,6 +911,7 @@ echo "ok: as duas superficies registraram o plugin em enforce"
 # through the functions of the schema.
 servico_corrente "$SVC_A" || die "nao consegui gravar o servico corrente de teste pela funcao"
 fcall tv30_origin_register "$ASSOC" "$SVC_A" >/dev/null || die "nao consegui registrar a origem associada de teste pela funcao"
+app_state started || die "nao consegui publicar o inicio da aplicacao associada de teste"
 ASSOC_H=(-H "Origin: $ASSOC")
 
 echo; echo "-- access token (fluxo real /tv3/authorize + /tv3/token) --"
@@ -1404,6 +1415,9 @@ done
 expect_pass "[44642] GET /tv3/remote-device/devices/x (C.6.15.5) pelo cliente local" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}"
 # 100.0 (proposal v2 of C.6.15) reaches tv3ws on the internal path /v100.0.
 expect_list_v100 "[44642] C.6.15.5 com 100.0 pelo local autonomo (classe e clientid repassados)" "${TOK[@]}"
+# tv3ws keeps the running application in memory, and the suite restarts it:
+# the start of the test application is published again.
+app_state started || fail "inicio da aplicacao associada de teste nao publicado"
 expect_list_v100 "[44642] C.6.15.5 com 100.0 pelo associado (classe repassada)" "${ASSOC_H[@]}"
 expect_list_v100 "[44642] C.6.15.5 com 100.0 e X-TV30-Client-Class forjado (apagado pela borda)" "${TOK[@]}" -H 'X-TV30-Client-Class: associated' -H 'X-TV30-Client-Id: forjado'
 # Update of a registration (C.6.15.2) of a nonexistent handle: 305 in both
