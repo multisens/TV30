@@ -36,7 +36,8 @@ O critério do projeto é um dono por família de chave. Estado pelo código:
 | `origins:associated` | AoP (`src/core.js`): origem da app -> o serviço que a lançou; sem serviço corrente, a origem não é registrada | `tv30_origin_register`, `tv30_origin_remove`, `tv30_origins_clear` | borda, que compara o serviço com o contexto da rota; tv3ws (`classifyClient`) |
 | `services:announced` | AoP (`aop-transport-layer-metadata-lls`, `src/modules/transport-layer-metadata-lls/`): os serviços anunciados na LLS, regravados inteiros a cada BAMT recebida ou retirada e na partida | `tv30_announced_services` | AoP (Application Catalog); borda (304 da C.6.14.2 e da C.6.14.5) |
 | `bind-context:{serviceId}` | **só a borda**, na C.6.8.2 e na C.6.8.4 | `tv30_bind_register`, `tv30_bind_remove` | só a borda (bind-token e C.6.8.3); a auditoria do esquema (`tv30_audit`) também a lê, para conferir o formato |
-| `remote-devices:index`, `remote-devices:class:{classe}`, `remote-device:{handle}` | tv3ws: espelho dos dispositivos remotos conectados, limpo no boot | nenhuma: fora do alcance do esquema, escrita direta | só o próprio tv3ws, na limpeza do boot |
+| `v100.0:remote-device:{handle}` | tv3ws: projeção dos registros de dispositivo remoto da versão 100.0, regravada inteira depois de cada mudança em memória e limpa no boot | `tv30_v100_remote_device_write`, `tv30_v100_remote_device_remove`, `tv30_v100_remote_devices_clear` | nenhum componente por ora; a auditoria do esquema |
+| `remote-devices:index`, `remote-devices:class:{classe}`, `remote-device:{handle}` | tv3ws: espelho dos dispositivos remotos da 2.0 (classe, tipos, `url` e `registeredBy`), limpo no boot | nenhuma: fora do alcance do esquema, escrita direta | só o próprio tv3ws, na limpeza do boot |
 | `seed:done` | entrypoint do container `redis`, depois da carga inicial | nenhuma: fora do alcance do esquema (marca de controle) | o mesmo entrypoint e o healthcheck |
 
 ---
@@ -82,6 +83,7 @@ As funções são chamadas com `numkeys 0`: elas montam os nomes das chaves a pa
 | `tv30_origin_register` / `tv30_origin_remove` / `tv30_origins_clear` | `<origem> <serviço>` / `<origem>` / nada | `origins:associated` | AoP (lançamento e encerramento de app; boot) |
 | `tv30_announced_services` | `[<serviço> ...]` (nenhum = nenhum serviço) | regrava `services:announced` inteiro (`DEL` + `SADD`); devolve o número de serviços | AoP (`aop-transport-layer-metadata-lls`: BAMT recebida ou retirada, partida) |
 | `tv30_bind_register` / `tv30_bind_remove` | `<serviceId> <entrada JSON>` | `RPUSH` / `LREM 0` em `bind-context:{serviceId}` | borda (C.6.8.2, C.6.8.4) |
+| `tv30_v100_remote_device_write` / `tv30_v100_remote_device_remove` / `tv30_v100_remote_devices_clear` | `<handle> <campo> <valor> ...` / `<handle>` / nada | regrava `v100.0:remote-device:{handle}` inteiro / `DEL` dele / `DEL` de todos | tv3ws (projeção da 100.0; limpeza no boot) |
 | `tv30_audit` (só leitura) | nada | lista o que está fora do esquema | testes e desenvolvedor |
 | `tv30_version` (só leitura) | nada | versão do `schema.json` | desenvolvedor |
 
@@ -116,6 +118,7 @@ As invariantes entre chaves (`profile-indexed`, `profile-dependents`, `disjoint-
 | `clients:authorized`, `clients:blocked` | tv3ws | SET | ids de cliente não vazios |
 | `origins:associated` | AoP | HASH | campo = origem como o navegador a manda no `Origin` (esquema `http`/`https` e host em minúsculas, porta só se não for a padrão, sem caminho); valor = id de serviço |
 | `bind-context:{serviceId}` | borda | LIST | cada item é um objeto JSON `{alg, key, registeredAt}` e nada mais: `alg` em HS256/HS512/RS256/RS512, `key` não vazia e `registeredAt` inteiro |
+| `v100.0:remote-device:{handle}` | tv3ws | HASH | `deviceId` (UUID), `deviceClass` não vazio, `supportedTypes` (lista JSON de textos, pode ser vazia), `state` em `registered`/`connected`, `paired` (`"true"`/`"false"`), `disconnectedAt` (ms) e `registeredBy` (o `clientid` de quem registrou, ou a identidade `serviceContextId/appId` da aplicação associada); sem o token do ponto de entrada; nada além |
 | `services:announced` | AoP | SET | ids de serviço (1 a 256 caracteres): o `globalServiceId` de cada BAM |
 
 **Teto de perfis.** `tv30_profile_write` confere os cinco perfis na mesma operação da gravação: um id novo com `users:index` cheio é recusado (`users:index limit of 5 profiles reached`), regravar um perfil existente não conta como novo, e nenhum perfil é despejado. A auditoria aponta o conjunto acima do teto.

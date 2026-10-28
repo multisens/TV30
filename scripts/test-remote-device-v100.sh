@@ -66,6 +66,7 @@ cat >"$TMP/test.mjs" <<'EOF'
 // Remote devices of 2.0 and of 100.0 registered and connected at the same
 // time, through the edge.
 import { createHmac } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 const H = process.env.H_INT;
 const DEVICE_CLASS = process.env.DEVICE_CLASS;
@@ -242,6 +243,36 @@ async function main() {
     const del20 = await call('DELETE', `/tv3/remote-device/${reg20.json.handle}`);
     check('DELETE na 2.0 do proprio registro -> 200 {}', del20.status === 200 && JSON.stringify(del20.json) === '{}', `status=${del20.status} corpo=${JSON.stringify(del20.json)}`);
     dev20.close();
+    dev100.close();
+
+    await revocation(body, listPath);
+}
+
+// C.4.2.2 and C.4.4: the block of the client, published in place of the
+// Access Panel, removes the registrations it made in both versions and ends
+// its communication pair.
+async function revocation(body, listPath) {
+    const reg20 = await call('POST', '/tv3/remote-device', undefined, body);
+    const reg100 = await call('POST', '/tv3/remote-device', '100.0', body);
+    const dev100 = await connect(reg100.json.url);
+    const list100 = await call('GET', listPath, '100.0');
+    const client = await connect(list100.json.devices[0].url);
+    await waitMessage(dev100, (m) => m.includes('pairFormed'));
+    const clientClosed = new Promise((resolve) => client.addEventListener('close', (event) => resolve(event.code)));
+
+    execFileSync('docker', ['exec', 'mqtt-broker', 'mosquitto_pub', '-q', '1', '-t', 'aop/access-panel/client-blocked', '-m', process.env.CLIENT]);
+
+    const code = await Promise.race([clientClosed, new Promise((resolve) => setTimeout(() => resolve('timeout'), MESSAGE_TIMEOUT_MS))]);
+    check('bloqueio do cliente: o par termina com 4002 (deviceUnavailable)', code === 4002, `codigo=${code}`);
+    const after20 = await call('GET', listPath);
+    const after100 = await call('GET', listPath, '100.0');
+    check('bloqueio do cliente: os registros que ele fez saem das duas versoes',
+        !JSON.stringify(after20.json).includes(reg20.json.handle) && (after100.json?.devices ?? []).length === 0,
+        `2.0=${JSON.stringify(after20.json)} 100.0=${JSON.stringify(after100.json)}`);
+    const gone20 = await call('DELETE', `/tv3/remote-device/${reg20.json.handle}`);
+    const gone100 = await call('DELETE', `/tv3/remote-device/${reg100.json.handle}`, '100.0');
+    check('bloqueio do cliente: os handles dos registros removidos dao 305', gone20.json?.error === 305 && gone100.json?.error === 305,
+        `2.0=${JSON.stringify(gone20.json)} 100.0=${JSON.stringify(gone100.json)}`);
     dev100.close();
 }
 
