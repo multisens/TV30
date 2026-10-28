@@ -1,62 +1,69 @@
 #!/bin/bash
-# Teste do cenario de desenvolvimento: sobe o MINIMO de containers e roda
-# modulos REAIS (tv3ws, aop, bcast ou o componente de exemplo do template)
-# fora do Docker, com `npm ci && npm run dev`, verificando a comunicacao
-# host <-> rede do Docker em cinco combinacoes:
+# Test of the development scenario: starts the MINIMUM of containers and
+# runs REAL modules (tv3ws, aop, bcast or the example component of the
+# template) outside Docker, with `npm ci && npm run dev`, checking the
+# communication between the host and the Docker network in five
+# combinations:
 #
-#   1  tv3ws no host | containers: redis, mosquitto, edgegateway (variante
-#      windows: backends em host.docker.internal:44654/44655), aop, bcast
-#   2  aop no host   | containers: redis, mosquitto, edgegateway (variante
-#      linux), tv3ws, bcast (BCAST_HOSTNAME=localhost, BCAST_PUBLISH=8081:8081)
-#   3  bcast no host | containers: redis, mosquitto, edgegateway (variante
-#      linux), tv3ws, aop (alcanca o host por host.docker.internal)
-#   4  tv3ws, aop e bcast no host AO MESMO TEMPO | containers: redis,
-#      mosquitto, edgegateway (variante windows); bcast com
-#      BCAST_HOSTNAME=127.0.0.1 (o aop que o alcanca tambem esta no host)
-#   5  componente novo no host (exemplo de templates/componente) | containers:
-#      redis e mosquitto; a borda fica PARADA durante o cenario
+#   1  tv3ws on the host | containers: redis, mosquitto, edgegateway (windows
+#      variant: backends on host.docker.internal:44654/44655), aop, bcast
+#   2  aop on the host   | containers: redis, mosquitto, edgegateway (linux
+#      variant), tv3ws, bcast (BCAST_HOSTNAME=localhost,
+#      BCAST_PUBLISH=8081:8081)
+#   3  bcast on the host | containers: redis, mosquitto, edgegateway (linux
+#      variant), tv3ws, aop (reaches the host by host.docker.internal)
+#   4  tv3ws, aop and bcast on the host AT THE SAME TIME | containers: redis,
+#      mosquitto, edgegateway (windows variant); bcast with
+#      BCAST_HOSTNAME=127.0.0.1 (the aop that reaches it is also on the host)
+#   5  a new component on the host (the example of templates/componente) |
+#      containers: redis and mosquitto; the edge is STOPPED during the
+#      scenario
 #
-# Todo cenario verifica host->Redis e host->MQTT a partir do ambiente do
-# modulo, os logs de conexao dele e o caminho especifico do cenario, com prova
-# negativa depois de matar o processo do host. No fim, a stack padrao volta
-# (configuracao do .env) se estava de pe antes, ou cai (docker compose down).
-# A borda roda sempre na bridge; o anuncio SSDP (./tv30 up) nao entra aqui.
+# Every scenario checks host->Redis and host->MQTT from the environment of
+# the module, its connection logs and the specific path of the scenario, with
+# a negative proof after killing the host process. At the end, the default
+# stack comes back (the .env configuration) if it was up before, or goes
+# down (docker compose down). The edge always runs on the bridge; the SSDP
+# announcement (./tv30 up) is not part of this test.
 #
-# "Host" = processo na rede do host. Duas formas (DEVHOST_MODO):
-#   node    node/npm do PATH, numa copia temporaria do modulo (sem
-#           node_modules/.env; public/ entra como link)
-#   docker  docker run --network host <imagem node> com o modulo montado
-#           somente-leitura em /src e copiado para /app: rede identica a do
-#           host, para maquinas sem node (ex.: WSL sem node)
-#   auto    node se houver node Linux no PATH, senao docker (padrao)
+# "Host" = a process on the host network. Two ways (DEVHOST_MODO):
+#   node    node/npm of the PATH, on a temporary copy of the module (without
+#           node_modules/.env; public/ goes in as a link)
+#   docker  docker run --network host <node image> with the module mounted
+#           read-only on /src and copied to /app: a network identical to the
+#           host one, for machines without node (e.g. WSL without node)
+#   auto    node if there is a Linux node in the PATH, otherwise docker
+#           (default)
 #
-# Portas no host: 44654/44655 e 45000-45199 (tv3ws, cenarios 1 e 4), 8080
-# (aop, 2 e 4), 8081 (bcast, 3 e 4) e 8090 (componente, 5); 8080, 8081 e
-# 45000-45199 sao as do container do modulo, que o cenario para antes. O
-# script confere 44654, 8080, 8081 e 8090 livres antes de subir o processo.
+# Ports on the host: 44654/44655 and 45000-45199 (tv3ws, scenarios 1 and 4),
+# 8080 (aop, 2 and 4), 8081 (bcast, 3 and 4) and 8090 (component, 5); 8080,
+# 8081 and 45000-45199 are those of the container of the module, which the
+# scenario stops first. The script checks that 44654, 8080, 8081 and 8090 are
+# free before starting the process.
 #
-# Uso: ./scripts/test-dev-host.sh [--cenario N[,N...]] [--build] [-h]
-#   --cenario  1, 2, 3, 4 e/ou 5 (padrao: todos, em ordem)
-#   --build    repassa --build ao docker compose up (ex.: borda com plugin novo)
+# Usage: ./scripts/test-dev-host.sh [--cenario N[,N...]] [--build] [-h]
+#   --cenario  1, 2, 3, 4 and/or 5 (default: all, in order)
+#   --build    passes --build to docker compose up (e.g. an edge with a new
+#              plugin)
 #
-# Variaveis opcionais:
-#   DEVHOST_MODO     auto | node | docker            (padrao auto)
-#   DEVHOST_IMAGEM   imagem node do modo docker      (padrao node:23-alpine,
-#                    a mesma base de infra/dockerfiles/*.Dockerfile)
-#   DEVHOST_TIMEOUT  segundos para o modulo responder (padrao 300; inclui o
-#                    npm ci no modo docker)
-#   JWT_SECRET, JWT_ISSUER, SERVER_URL: shell > .env da raiz > padrao do
-#                    compose. O JWT_SECRET vale para a borda e para o tv3ws do
-#                    host (os dois precisam do mesmo segredo). A porta do MQTT
-#                    por WebSocket do aop do host sai do Docker (porta_ws_mqtt).
-#   Proxy/registro npm (HTTP_PROXY, HTTPS_PROXY, NO_PROXY,
-#   NPM_CONFIG_REGISTRY, NPM_CONFIG_STRICT_SSL) sao repassados ao container.
+# Optional variables:
+#   DEVHOST_MODO     auto | node | docker            (default auto)
+#   DEVHOST_IMAGEM   node image of the docker mode   (default node:23-alpine,
+#                    the same base as infra/dockerfiles/*.Dockerfile)
+#   DEVHOST_TIMEOUT  seconds for the module to answer (default 300; includes
+#                    npm ci in docker mode)
+#   JWT_SECRET, JWT_ISSUER, SERVER_URL: shell > root .env > compose default.
+#                    JWT_SECRET applies to the edge and to the tv3ws on the
+#                    host. The MQTT over WebSocket port of the aop on the
+#                    host comes from Docker (porta_ws_mqtt).
+#   npm proxy and registry (HTTP_PROXY, HTTPS_PROXY, NO_PROXY,
+#   NPM_CONFIG_REGISTRY, NPM_CONFIG_STRICT_SSL) are passed to the container.
 #
-# Linux nativo e WSL2 com Docker Engine no proprio WSL. Windows nativo (Git
-# Bash/PowerShell com Docker no WSL) NAO e coberto: host-gateway aponta para
-# a VM do WSL, nao para o Windows. Ver docs/dev-local.md.
+# Native Linux and WSL2 with Docker Engine in WSL itself. Native Windows (Git
+# Bash or PowerShell with Docker in WSL) is NOT covered: host-gateway points
+# to the WSL VM, not to Windows. See docs/dev-local.md.
 set -u
-# vetores associativos (declare -A) pedem bash 4; o /bin/bash do macOS e o 3.2
+# Associative arrays (declare -A) need bash 4; /bin/bash of macOS is 3.2.
 if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
   echo "test-dev-host.sh precisa do bash 4 ou mais novo (este e o $BASH_VERSION)." >&2
   echo "No macOS: brew install bash e rode /opt/homebrew/bin/bash scripts/test-dev-host.sh" >&2
@@ -97,15 +104,15 @@ precisa docker
 precisa curl
 docker compose version >/dev/null 2>&1 || { echo "falta o Docker Compose v2 (docker compose)"; exit 2; }
 
-# ---------------------------------------------------------------- config ---
+# ------------------------------------------------------------------ config ---
 
-# valor de uma variavel no .env da raiz (sem aspas); vazio se ausente
+# Value of a variable in the root .env (without quotes); empty if absent.
 dotenv_get() {
   [ -f .env ] || return 0
   sed -n "s/^[[:space:]]*$1=//p" .env | tail -n 1 | tr -d '\r' \
     | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
 }
-# precedencia: shell > .env da raiz > padrao (a mesma do docker compose)
+# Precedence: shell > root .env > default (the same as docker compose).
 cfg() {
   local v="${!1:-}"
   [ -n "$v" ] || v=$(dotenv_get "$1")
@@ -113,12 +120,12 @@ cfg() {
   printf '%s' "$v"
 }
 
-# Exportados: o compose (borda e tv3ws em container) e o tv3ws do host leem o
-# MESMO valor — a borda valida o accessToken que o tv3ws assina.
+# Exported, so that the compose (edge and tv3ws in a container) and the
+# tv3ws on the host read the same value.
 JWT_SECRET=$(cfg JWT_SECRET tv30-dev-secret-nao-usar-em-producao); export JWT_SECRET
 JWT_ISSUER=$(cfg JWT_ISSUER GenericIssuer); export JWT_ISSUER
-# porta do host em que o Docker publicou a 9001 do mosquitto; vazia se o
-# broker nao estiver de pe
+# Host port where Docker published the 9001 of mosquitto; empty if the
+# broker is not up.
 porta_ws_mqtt() { docker port mqtt-broker 9001/tcp 2>/dev/null | head -1 | sed 's/.*://'; }
 SERVER_URL_CFG=$(cfg SERVER_URL localhost)
 
@@ -126,8 +133,8 @@ TIMEOUT=${DEVHOST_TIMEOUT:-300}
 IMAGEM=${DEVHOST_IMAGEM:-node:23-alpine}
 MODO=${DEVHOST_MODO:-auto}
 if [ "$MODO" = auto ]; then
-  # node.exe/npm do Windows visiveis pelo PATH do WSL (/mnt/...) rodariam na
-  # rede do WINDOWS, nao na do Docker: nesse caso vai o modo docker.
+  # A Windows node.exe/npm visible in the WSL PATH (/mnt/...) would run on the
+  # Windows network, not the Docker one: in that case the docker mode is used.
   n=$(command -v node 2>/dev/null || true)
   m=$(command -v npm 2>/dev/null || true)
   if [ -n "$n" ] && [ -n "$m" ] && [ "${n#/mnt/}" = "$n" ] && [ "${m#/mnt/}" = "$m" ]; then
@@ -144,34 +151,36 @@ esac
 
 LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/tv30-devhost-logs.XXXXXX")
 
-# Toda chamada ao compose ativa os dois profiles: tv3ws/aop/bcast/sysctl-init
-# tem profile "linux" e o mosquitto "mqtt" (sem eles, clone sem .env nao os ve).
-# A borda do teste sobe em warn (DEVHOST_AUTH_ENFORCE muda): este script prova
-# o caminho de rede, nao a credencial (scripts/test-auth.sh); em enforce o
-# token de teste (sub fora de clients:authorized) daria 107 antes de chegar ao
-# modulo do host. A restauracao (compose_env) volta ao modo do .env.
+# Every compose call enables both profiles: tv3ws, aop, bcast and
+# sysctl-init have the "linux" profile and mosquitto "mqtt". The edge of the
+# test starts in warn mode (DEVHOST_AUTH_ENFORCE changes it): in enforce, the
+# test token (a sub not in clients:authorized) would get 107 before reaching
+# the module on the host. The restore (compose_env) goes back to the mode of
+# the .env.
 compose() { COMPOSE_FILE=docker-compose.yml AUTH_ENFORCE=${DEVHOST_AUTH_ENFORCE:-warn} docker compose --profile mqtt --profile linux "$@"; }
-# restauracao: a configuracao do .env (COMPOSE_FILE incluido)
+# Restore: the configuration of the .env (COMPOSE_FILE included).
 compose_env() { docker compose --profile mqtt --profile linux "$@"; }
 
-# Infra basica + one-shots que ela precisa (o preflight vem como dependencia
-# do edgegateway; userfiles-seed cria ./user-files para o modulo do host).
+# Basic infrastructure and the one-shots it needs (the preflight comes as a
+# dependency of the edgegateway; userfiles-seed creates ./user-files for the
+# module on the host).
 INFRA="redis mosquitto edgegateway userfiles-seed"
 
-# Restos de uma execucao interrompida: o container tv30-devhost-<modulo> (rede
-# do host) seguraria a porta do modulo, e os cenarios falhariam com "porta ja
-# ocupada". O nome e so deste script; sai antes de comecar.
+# Leftovers of an interrupted run: the tv30-devhost-<module> container (host
+# network) would hold the port of the module, and the scenarios would fail
+# with "port in use". The name belongs to this script only; removed before
+# starting.
 RESTOS=$(docker ps -aq --filter name='^tv30-devhost-' 2>/dev/null | tr '\n' ' ')
 if [ -n "${RESTOS// /}" ]; then
   echo "removendo restos de uma execucao interrompida: $(docker ps -a --filter name='^tv30-devhost-' --format '{{.Names}}' | tr '\n' ' ')"
   docker rm -f $RESTOS >/dev/null 2>&1
 fi
 
-# Servicos da stack que estavam rodando antes do teste (define a restauracao).
+# Services of the stack running before the test (they define the restore).
 ANTES=$(docker ps --filter label=com.docker.compose.project=tv30 \
           --format '{{.Label "com.docker.compose.service"}}' 2>/dev/null | sort -u | tr '\n' ' ')
 
-# ------------------------------------------------------------- relatorio ---
+# ------------------------------------------------------------------ report ---
 
 CEN="-"
 PASS=0
@@ -182,11 +191,12 @@ falha()  { FAIL=$((FAIL + 1)); RESUMO+=("FAIL  [cenario $CEN] $1"); echo "  FAIL
 info()   { echo "  info  $1"; }
 titulo() { echo; echo "=================================================================="; echo "$1"; echo "=================================================================="; }
 
-# corpo da resposta + linha final HTTP_STATUS=<codigo> (padroes podem casar com os dois)
+# Response body plus a final HTTP_STATUS=<code> line (patterns may match
+# either).
 resposta() { curl -s -m 5 -w '\nHTTP_STATUS=%{http_code}' "$@" 2>/dev/null; }
 recorte()  { printf '%s' "$1" | tr '\n' ' ' | cut -c1-200; }
 
-# checar_http <descricao> <url> <padrao> <tentativas> [args do curl...]
+# checar_http <description> <url> <pattern> <attempts> [curl args...]
 checar_http() {
   local desc=$1 url=$2 pad=$3 n=$4 i=0 r=""; shift 4
   while [ "$i" -lt "$n" ]; do
@@ -197,9 +207,9 @@ checar_http() {
   falha "$desc — resposta: $(recorte "$r")"; return 1
 }
 
-# checar_http_nao <descricao> <url> <padrao> <tentativas> [args do curl...]:
-# passa quando o padrao DEIXA de aparecer (prova de que a resposta vinha do
-# processo do host)
+# checar_http_nao <description> <url> <pattern> <attempts> [curl args...]:
+# passes when the pattern STOPS appearing (proof that the response came from
+# the host process).
 checar_http_nao() {
   local desc=$1 url=$2 pad=$3 n=$4 i=0 r=""; shift 4
   while [ "$i" -lt "$n" ]; do
@@ -214,14 +224,16 @@ porta_livre() { ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
 container_rodando() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
 
-# estado e fim do log de um container, quando uma verificacao que depende
-# dele falha (o container pode ser recriado depois e levar o log junto)
+# State and log tail of a container, when a check that depends on it fails
+# (the container may be recreated later and take its log along).
 diag_container() {
   info "$1: $(docker inspect -f 'status={{.State.Status}} reinicios={{.RestartCount}} inicio={{.State.StartedAt}}' "$1" 2>&1)"
   docker logs --tail 15 "$1" 2>&1 | sed 's/^/    | /'
 }
 
-subir() { # subir <EDGE_VARIANT> <servicos...> (variaveis extras: prefixo VAR=valor na chamada)
+# subir <EDGE_VARIANT> <services...> (extra variables: a VAR=value prefix on
+# the call)
+subir() {
   local variante=$1; shift
   echo "  ...   docker compose up -d $* (EDGE_VARIANT=$variante)"
   if ! EDGE_VARIANT=$variante compose up -d $BUILD "$@" >>"$LOGDIR/compose.log" 2>&1; then
@@ -231,42 +243,48 @@ subir() { # subir <EDGE_VARIANT> <servicos...> (variaveis extras: prefixo VAR=va
   fi
 }
 
-parar() { # parar <servico> [motivo]: o modulo do host nao pode coexistir com o
-  # container (mesma porta e mesmo clientId MQTT fixo: tv3ws-client, aop-core,
-  # bcast_svc); o motivo muda so a mensagem (ex.: a borda no cenario 5)
+# parar <service> [reason]: the module on the host cannot coexist with the
+# container (same port and same fixed MQTT clientId: tv3ws-client, aop-core,
+# bcast_svc); the reason changes only the message (e.g. the edge in
+# scenario 5).
+parar() {
   compose stop "$1" >>"$LOGDIR/compose.log" 2>&1 || true
   if container_rodando "$1"; then falha "container $1 continua rodando"; return 1; fi
   ok "container $1 parado (${2:-o modulo roda so no host})"
 }
 
-# ------------------------------------------------------ processo do host ---
+# ------------------------------------------------------------ host process ---
 
-# HOST_* descrevem o modulo CORRENTE, aquele sobre o qual host_vivo,
-# host_logs, host_node e host_stop agem. Mais de um modulo pode estar no host
-# ao mesmo tempo (cenario 4): o registro REG_* guarda o estado de cada um,
-# host_usar torna outro corrente e host_stop_todos encerra todos.
+# HOST_* describe the CURRENT module, the one host_vivo, host_logs, host_node
+# and host_stop act on. More than one module may be on the host at the same
+# time (scenario 4): the REG_* registry keeps the state of each, host_usar
+# makes another one current and host_stop_todos stops all of them.
 HOST_MOD=""; HOST_PID=""; HOST_DIR=""; HOST_CTR=""; HOST_LOG=""
 declare -A REG_PID=() REG_DIR=() REG_CTR=() REG_LOG=()
-HOST_LISTA=""   # modulos de pe no host, na ordem em que subiram
+# Modules up on the host, in the order they started.
+HOST_LISTA=""
 
-# pasta do modulo, relativa a raiz (o componente do cenario 5 e o exemplo do
-# template; os outros modulos tem pasta com o proprio nome)
+# Folder of the module, relative to the root (the component of scenario 5 is
+# the example of the template; the other modules have a folder of their own
+# name).
 pasta_modulo() { case "$1" in componente) printf 'templates/componente' ;; *) printf '%s' "$1" ;; esac; }
 
-# guarda o estado do modulo corrente no registro
+# Saves the state of the current module in the registry.
 host_registrar() {
   REG_PID[$HOST_MOD]=$HOST_PID; REG_DIR[$HOST_MOD]=$HOST_DIR
   REG_CTR[$HOST_MOD]=$HOST_CTR; REG_LOG[$HOST_MOD]=$HOST_LOG
   case " $HOST_LISTA " in *" $HOST_MOD "*) ;; *) HOST_LISTA="${HOST_LISTA:+$HOST_LISTA }$HOST_MOD" ;; esac
 }
 
-host_usar() { # host_usar <modulo>: torna corrente um modulo que esta no host
+# host_usar <module>: makes current a module that is on the host.
+host_usar() {
   case " $HOST_LISTA " in *" $1 "*) ;; *) falha "$1 nao esta rodando no host"; return 1 ;; esac
   HOST_MOD=$1; HOST_PID=${REG_PID[$1]}; HOST_DIR=${REG_DIR[$1]}
   HOST_CTR=${REG_CTR[$1]}; HOST_LOG=${REG_LOG[$1]}
 }
 
-copiar_modulo() { # copiar_modulo <origem> <destino>
+# copiar_modulo <source> <target>
+copiar_modulo() {
   local f nome
   for f in "$1"/* "$1"/.[!.]* "$1"/..?*; do
     [ -e "$f" ] || continue
@@ -278,13 +296,14 @@ copiar_modulo() { # copiar_modulo <origem> <destino>
   return 0
 }
 
-# mesma copia, dentro do container do modo docker (sh do alpine)
+# The same copy, inside the container of the docker mode (alpine sh).
 COPIA_SH='mkdir -p /app && cd /src && for f in * .[!.]* ..?*; do [ -e "$f" ] || continue; case "$f" in node_modules|.env|.git|public) ;; *) cp -R "$f" /app/ ;; esac; done; if [ -d /src/public ]; then ln -s /src/public /app/public; fi'
 
-# Diretorio de user-files visto pelo modulo do host
+# user-files directory as seen by the module on the host.
 dir_userfiles() { if [ "$MODO" = node ]; then printf '%s' "$ROOT/user-files"; else printf '/user-files'; fi; }
 
-host_start() { # host_start <modulo> VAR=valor...: o novo modulo vira o corrente
+# host_start <module> VAR=value...: the new module becomes the current one.
+host_start() {
   local mod=$1 kv src; shift
   src=$(pasta_modulo "$mod")
   case " $HOST_LISTA " in *" $mod "*) falha "$mod ja esta rodando no host"; return 1 ;; esac
@@ -293,7 +312,8 @@ host_start() { # host_start <modulo> VAR=valor...: o novo modulo vira o corrente
   echo "  ...   $mod ($src) no host (modo $MODO): $(printf '%s ' "$@" | sed -E 's/(JWT_SECRET=)[^ ]*/\1***/')npm run dev"
   if [ "$MODO" = node ]; then
     HOST_DIR=$(mktemp -d "${TMPDIR:-/tmp}/tv30-devhost-$mod.XXXXXX")
-    host_registrar   # registrado ja aqui: host_stop_todos limpa a copia se o npm ci falhar
+    # Registered already here: host_stop_todos removes the copy if npm ci fails.
+    host_registrar
     copiar_modulo "$ROOT/$src" "$HOST_DIR"
     echo "  ...   npm ci em $HOST_DIR"
     if ! ( cd "$HOST_DIR" && npm ci --include=dev --no-audit --no-fund ) >"$HOST_LOG" 2>&1; then
@@ -335,8 +355,10 @@ host_logs() {
   else docker logs "$HOST_CTR" 2>&1; fi
 }
 
-# executa node -e <js> no MESMO ambiente de rede/arquivos do modulo do host
-host_node() { # host_node <js> VAR=valor...
+# Runs node -e <js> in the SAME network and file environment as the module
+# on the host.
+# host_node <js> VAR=value...
+host_node() {
   local js=$1 kv; shift
   if [ "$MODO" = node ]; then
     ( cd "$HOST_DIR" && env "$@" node -e "$js" )
@@ -367,7 +389,7 @@ host_stop() {
     docker rm -f "$HOST_CTR" >/dev/null 2>&1
   fi
   echo "  ...   $HOST_MOD do host encerrado (log: $HOST_LOG)"
-  # sai do registro
+  # Leaves the registry.
   local m resto=""
   for m in $HOST_LISTA; do [ "$m" = "$HOST_MOD" ] || resto="${resto:+$resto }$m"; done
   HOST_LISTA=$resto
@@ -375,16 +397,20 @@ host_stop() {
   HOST_MOD=""; HOST_PID=""; HOST_DIR=""; HOST_CTR=""
 }
 
-# encerra todos os modulos do host, do ultimo que subiu ao primeiro
+# Stops every module on the host, from the last one started to the first.
 host_stop_todos() {
   local m lista=""
   for m in $HOST_LISTA; do lista="$m${lista:+ $lista}"; done
   for m in $lista; do host_usar "$m" && host_stop; done
-  host_stop   # corrente fora do registro (nao deveria haver); no-op se vazio
+  # A current module outside the registry (there should be none); no-op if
+  # empty.
+  host_stop
 }
 
-# espera o modulo do host responder; falha cedo se o processo morrer
-esperar_modulo() { # esperar_modulo <descricao> <url> <padrao>
+# Waits for the module on the host to answer; fails early if the process
+# dies.
+# esperar_modulo <description> <url> <pattern>
+esperar_modulo() {
   local desc=$1 url=$2 pad=$3 t0=$SECONDS r=""
   while [ $((SECONDS - t0)) -lt "$TIMEOUT" ]; do
     r=$(resposta "$url")
@@ -399,7 +425,8 @@ esperar_modulo() { # esperar_modulo <descricao> <url> <padrao>
   return 1
 }
 
-checar_log() { # checar_log <descricao> <regex>: evidencia vinda do proprio modulo
+# checar_log <description> <regex>: evidence from the module itself.
+checar_log() {
   local i=0
   while [ "$i" -lt 10 ]; do
     if host_logs | grep -qE -e "$2"; then ok "$1"; return 0; fi
@@ -408,14 +435,16 @@ checar_log() { # checar_log <descricao> <regex>: evidencia vinda do proprio modu
   falha "$1 — log sem /$2/"; return 1
 }
 
-# host -> Redis: PING por socket cru, do ambiente do modulo (sem dependencia)
+# host -> Redis: PING over a raw socket, from the environment of the module
+# (no dependency).
 JS_REDIS='const s=require("net").connect(6379,"127.0.0.1");
 const t=setTimeout(()=>{console.log("timeout");process.exit(1)},4000);
 s.on("connect",()=>s.write("PING\r\n"));
 s.on("data",d=>{const r=d.toString().trim();console.log(r);clearTimeout(t);s.destroy();process.exit(r==="+PONG"?0:1)});
 s.on("error",e=>{console.log(e.message);process.exit(1)});'
 
-# host -> MQTT: assina e publica num topico proprio com a lib mqtt do modulo
+# host -> MQTT: subscribes and publishes on its own topic with the mqtt
+# library of the module.
 JS_MQTT='const mqtt=require("mqtt");const tp="tv30/devhost/probe/"+process.pid+"-"+Date.now();
 const c=mqtt.connect("mqtt://127.0.0.1:1883",{connectTimeout:4000,reconnectPeriod:0});
 const t=setTimeout(()=>{console.log("timeout");process.exit(1)},8000);
@@ -423,20 +452,21 @@ c.on("connect",()=>c.subscribe(tp,e=>{if(e){console.log(e.message);process.exit(
 c.on("message",(x,m)=>{if(m.toString()==="ping"){console.log("pub/sub ok em "+tp);clearTimeout(t);c.end(true,()=>process.exit(0))}});
 c.on("error",e=>{console.log(e.message);process.exit(1)});'
 
-# accessToken HS256 com as mesmas claims que o tv3ws emite (manager.ts)
+# HS256 accessToken with the same claims tv3ws issues (manager.ts).
 JS_TOKEN='const c=require("crypto");const b=o=>Buffer.from(JSON.stringify(o)).toString("base64url");
 const n=Math.floor(Date.now()/1000);
-const h=b({alg:"HS256",typ:"JWT"}),p=b({iat:n,nbf:n,exp:n+600,iss:process.env.ISS,sub:"tv30-devhost-teste",class:"local-autonomous"});
+const h=b({alg:"HS256",typ:"JWT"}),p=b({iat:n,nbf:n,exp:n+600,iss:process.env.ISS,sub:"tv30-devhost-teste",class:"standAlone"});
 process.stdout.write(h+"."+p+"."+c.createHmac("sha256",process.env.SEC).update(h+"."+p).digest("base64url"));'
 
-# as duas verificacoes rodam no ambiente do modulo CORRENTE; o rotulo diz de
-# qual (util quando ha mais de um no host, cenario 4)
+# Both checks run in the environment of the CURRENT module; the label says
+# which one (useful when there is more than one on the host, scenario 4).
 checar_redis_host() {
   local r
   if r=$(host_node "$JS_REDIS" 2>&1); then ok "host ($HOST_MOD) -> Redis 127.0.0.1:6379 (PING: $r)"
   else falha "host ($HOST_MOD) -> Redis 127.0.0.1:6379 (PING: $(recorte "$r"))"; fi
 }
-# exige a lib mqtt do modulo (tv3ws, aop e bcast tem; o componente nao)
+# Requires the mqtt library of the module (tv3ws, aop and bcast have it; the
+# component does not).
 checar_mqtt_host() {
   local r
   if r=$(host_node "$JS_MQTT" 2>&1); then ok "host ($HOST_MOD) -> MQTT 127.0.0.1:1883 ($r)"
@@ -444,14 +474,15 @@ checar_mqtt_host() {
 }
 checar_redis_mqtt() { checar_redis_host; checar_mqtt_host; }
 
-# GET /tv3/current-service pela borda, com o accessToken: a resposta tem de
-# vir do Express do tv3ws (X-Powered-By). Com servico em uso, 200 com
-# serviceContextId; sem (o caso do cenario 1), 404 {"error":300} (C.6.3.1,
-# Tabela C.8); valem os dois. Prova o caminho borda -> tv3ws do host, NAO o
-# JWT_SECRET compartilhado: em warn a borda repassa mesmo com token invalido.
-# Nao se publica aop/currentService para forcar o 200: o topico e da
-# plataforma, e o valor retido ficaria no broker depois do teste.
-checar_current_service_host() { # checar_current_service_host <token>
+# GET /tv3/current-service through the edge, with the accessToken: the
+# response must come from the Express of tv3ws (X-Powered-By). With a service
+# in use, 200 with serviceContextId; without one (the case of scenario 1),
+# 404 {"error":300} (C.6.3.1, Table C.8); either passes. It proves the path
+# edge -> tv3ws on the host, NOT the shared JWT_SECRET: in warn the edge
+# passes on even an invalid token. aop/currentService is not published to
+# force the 200: the retained value would stay in the broker after the test.
+# checar_current_service_host <token>
+checar_current_service_host() {
   local desc="borda 44642 GET /tv3/current-service (Bearer assinado com o JWT_SECRET da borda) -> tv3ws no host"
   local i=0 h="" r=""
   while [ "$i" -lt 5 ]; do
@@ -472,9 +503,10 @@ checar_current_service_host() { # checar_current_service_host <token>
   falha "$desc — resposta: $(recorte "$r")"; return 1
 }
 
-# borda (44642) -> tv3ws no host: /health e GET /tv3/current-service com um
-# accessToken HS256 assinado, no ambiente do tv3ws do host, com o mesmo
-# JWT_SECRET da borda. O tv3ws do host tem de ser o modulo corrente.
+# Edge (44642) -> tv3ws on the host: /health and GET /tv3/current-service
+# with an HS256 accessToken signed in the environment of the tv3ws on the
+# host, with the same JWT_SECRET as the edge. The tv3ws on the host must be
+# the current module.
 checar_borda_tv3ws_host() {
   checar_http "borda 44642 /health -> tv3ws no host" \
     http://127.0.0.1:44642/health '"status":"ok"' 15
@@ -484,7 +516,8 @@ checar_borda_tv3ws_host() {
     checar_current_service_host "$tk"
     h=$(curl -s -m 5 -o /dev/null -D - -H "Authorization: Bearer $tk" \
           http://127.0.0.1:44642/tv3/current-service 2>/dev/null | tr -d '\r' | grep -i '^X-TV30-Auth-Warn:' || true)
-    # o sub do token de teste nao esta em clients:authorized: 107 mesmo com o JWT_SECRET certo
+    # The sub of the test token is not in clients:authorized: 107 even with
+    # the right JWT_SECRET.
     info "X-TV30-Auth-Warn com token valido de cliente fora de clients:authorized (esperado 107): ${h:-ausente}"
   else
     falha "nao consegui gerar o accessToken de teste no ambiente do modulo"
@@ -494,9 +527,10 @@ checar_borda_tv3ws_host() {
   info "X-TV30-Auth-Warn sem token: ${h:-ausente} (em AUTH_ENFORCE=warn a borda deixa passar)"
 }
 
-# BALD do users-test retida no broker, publicada pelo bcast do host:
-# bcastEntryPackageUrl tem de trazer o host:porta esperado
-checar_bald() { # checar_bald <host:porta>
+# BALD of users-test retained in the broker, published by the bcast on the
+# host: bcastEntryPackageUrl must carry the expected host:port.
+# checar_bald <host:port>
+checar_bald() {
   local r
   r=$(docker exec mqtt-broker mosquitto_sub -h localhost -t "tlm/sls/$SID_USERS_TEST/bald" -C 1 -W 5 2>/dev/null)
   if printf '%s' "$r" | grep -q -F -e "$1"; then
@@ -506,13 +540,14 @@ checar_bald() { # checar_bald <host:porta>
   fi
 }
 
-# Abre o app users-test do bcast pelo fluxo real do aop: selecao no catalogo
-# (assina a sinalizacao do servico) e tela cheia (startApp -> alvo do proxy =
-# bcastEntryPackageUrl da BALD). A camada grafica abre a app no host proprio
-# dela, <rotulo>.apps.localhost:8080/graphicsAppProxy/<caminho>
-# (aop/src/app-hosts.js), e o aop grava essa origem em origins:associated.
-# Fechar = ESC (/keydown/27: encerra a camada grafica e remove a origem) e
-# volta ao catalogo; so o catalogo deixaria a origem no Redis.
+# Opens the users-test application of bcast through the real flow of aop:
+# selection in the catalog (subscribes to the signaling of the service) and
+# full screen (startApp -> proxy target = bcastEntryPackageUrl of the BALD).
+# The graphics layer opens the application on its own host,
+# <label>.apps.localhost:8080/graphicsAppProxy/<path> (aop/src/app-hosts.js),
+# and aop writes that origin to origins:associated. Closing = ESC
+# (/keydown/27: closes the graphics layer and removes the origin) and back to
+# the catalog; the catalog alone would leave the origin in Redis.
 SID_USERS_TEST="urn:tv30:service:users-test"
 abrir_users_test() {
   resposta "http://127.0.0.1:8080/appcat/select?id=$SID_USERS_TEST" >/dev/null
@@ -524,10 +559,10 @@ fechar_users_test() {
   resposta "http://127.0.0.1:8080/btpapp/appcat" >/dev/null
 }
 
-# HOST_APP = host:porta da app aberta, lido da origem que o aop gravou em
-# origins:associated; vazio se nenhuma apareceu em 10 s. A requisicao
-# vai a 127.0.0.1:8080 com esse Host, sem depender de o resolvedor do
-# ambiente do teste conhecer *.localhost.
+# HOST_APP = host:port of the open application, read from the origin aop
+# wrote to origins:associated; empty if none appeared in 10 s. The request
+# goes to 127.0.0.1:8080 with that Host, without depending on the resolver
+# of the test environment knowing *.localhost.
 HOST_APP=""
 checar_origem_app() {
   local o="" i=0
@@ -546,10 +581,10 @@ checar_origem_app() {
   ok "aop gravou a origem propria da app em origins:associated: $o"
 }
 
-# checar_mqtt_ws_aop <descricao>: o aop do host atende o MQTT da pagina da TV
-# por WebSocket em /mqtt e repassa ao mosquitto
-# na porta que o Docker publicou (porta_ws_mqtt). 101 = o handshake foi ate o
-# broker; porta vazia ou errada daria 502.
+# checar_mqtt_ws_aop <description>: the aop on the host serves the MQTT of
+# the TV page over WebSocket on /mqtt and passes it on to mosquitto on the
+# port Docker published (porta_ws_mqtt). 101 = the handshake reached the
+# broker; an empty or wrong port would give 502.
 checar_mqtt_ws_aop() {
   local r
   r=$(curl -s -i -N --max-time 3 -H "Connection: Upgrade" -H "Upgrade: websocket" \
@@ -559,9 +594,10 @@ checar_mqtt_ws_aop() {
   else falha "$1 — resposta: ${r:-nenhuma} (porta publicada da 9001: '$(porta_ws_mqtt)')"; fi
 }
 
-# checar_app_aberta <descricao>: a app responde no host proprio, com o prefixo
-# /graphicsAppProxy (a URL que a camada grafica abre), e o mesmo caminho no
-# host do aop redireciona (302) para essa URL. Depende de HOST_APP.
+# checar_app_aberta <description>: the application answers on its own host,
+# with the /graphicsAppProxy prefix (the URL the graphics layer opens), and
+# the same path on the host of aop redirects (302) to that URL. Depends on
+# HOST_APP.
 checar_app_aberta() {
   [ -n "$HOST_APP" ] || return 1
   checar_http "$1 (host proprio da app)" \
@@ -570,21 +606,21 @@ checar_app_aberta() {
     http://127.0.0.1:8080/graphicsAppProxy/users-test "ocation: http://$HOST_APP/graphicsAppProxy/users-test" 5 -D -
 }
 
-# Componente do cenario 5 (exemplo de templates/componente/index.js): nome
-# proprio deste teste, para que um container do template de pe (meu-componente)
-# nao responda no lugar do processo do host. Topico e chave saem do nome,
-# como no index.js.
+# Component of scenario 5 (the example of templates/componente/index.js): a
+# name of this test's own, so that a template container that is up
+# (meu-componente) does not answer in place of the host process. Topic and
+# key come from the name, as in index.js.
 COMP_NOME="devhost-componente-$$"
 COMP_TOPICO="tv30/$COMP_NOME/exemplo"
 COMP_CHAVE="tv30:$COMP_NOME:exemplo"
 COMP_PORTA=8090
-COMP_SUJO=""   # 1 quando a chave de teste pode ter ficado no Redis
+# 1 when the test key may have been left in Redis.
+COMP_SUJO=""
 
-# ping_componente <valor> <mensagem> <espera_s>: grava <valor> na chave do
-# exemplo, publica <mensagem> em <topico>/ping e ecoa o pong recebido (vazio
-# se nenhum em <espera_s>). Cliente de teste no container do broker, como no
-# cenario 3 e em scripts/test-template.sh; o componente e que esta no host.
-# Chamado em $(...): quem chama marca COMP_SUJO (subshell nao altera o pai).
+# ping_componente <value> <message> <wait_s>: writes <value> to the key of
+# the example, publishes <message> on <topic>/ping and echoes the pong
+# received (empty if none in <wait_s>). A test client in the broker
+# container; the component is on the host.
 ping_componente() {
   local val=$1 msg=$2 w=$3 out="$LOGDIR/pong-cenario$CEN" bg
   docker exec redis redis-cli SET "$COMP_CHAVE" "$val" >/dev/null 2>&1
@@ -603,7 +639,7 @@ limpar_componente() {
   return 0
 }
 
-# ------------------------------------------------------------- cenarios ---
+# --------------------------------------------------------------- scenarios ---
 
 cenario_1() {
   CEN=1
@@ -615,7 +651,8 @@ cenario_1() {
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
     USER_THUMBS="$ud/thumbs" \
-    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 LOG_LEVEL=INFO || return
+    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 \
+    LISTEN_ATTEMPTS=10 MAX_REGISTRATIONS=32 PING_INTERVAL_MS=15000 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || { host_stop; return; }
   checar_redis_mqtt
@@ -633,10 +670,10 @@ cenario_2() {
   CEN=2
   titulo "CENARIO 2 — aop no host | containers: infra (borda linux) + tv3ws + bcast"
   parar aop || return
-  # O bcast anuncia bcastEntryPackageUrl = http://BCAST_HOSTNAME:8081 (porta
-  # INTERNA). Para o aop do host, isso e localhost:8081 publicado pelo
-  # container — por isso a 8081 publicada FIXA aqui (BCAST_PUBLISH; no padrao,
-  # ela sai numa porta livre qualquer).
+  # bcast announces bcastEntryPackageUrl = http://BCAST_HOSTNAME:8081 (the
+  # INTERNAL port). For the aop on the host, that is localhost:8081 published
+  # by the container, so 8081 is published FIXED here (BCAST_PUBLISH; by
+  # default it gets any free port).
   BCAST_HOSTNAME=localhost BCAST_PUBLISH=8081:8081 subir linux $INFRA tv3ws bcast || return
   porta_livre 8080 || { falha "porta 8080 ja ocupada no host"; return; }
   host_start aop PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$(porta_ws_mqtt)" \
@@ -697,18 +734,20 @@ cenario_4() {
   done
   ud=$(dir_userfiles)
 
-  # tv3ws: as mesmas variaveis do cenario 1 (a borda windows procura a 44654)
+  # tv3ws: the same variables as scenario 1 (the windows edge looks for
+  # 44654).
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
     USER_THUMBS="$ud/thumbs" \
-    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 LOG_LEVEL=INFO || return
+    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 \
+    LISTEN_ATTEMPTS=10 MAX_REGISTRATIONS=32 PING_INTERVAL_MS=15000 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || return
 
-  # bcast antes do aop: a BALD retida no broker ja sai com o endereco do host.
-  # Quem segue o bcastEntryPackageUrl e o aop, tambem no host: 127.0.0.1:8081
-  # (a porta do proprio processo; 127.0.0.1 e nao localhost para nao depender
-  # da resolucao IPv6)
+  # bcast before aop: the BALD retained in the broker already carries the
+  # address of the host. The one that follows bcastEntryPackageUrl is aop,
+  # also on the host: 127.0.0.1:8081 (the port of the process itself;
+  # 127.0.0.1 and not localhost so as not to depend on IPv6 resolution).
   host_start bcast PORT=8081 MQTT_HOST=127.0.0.1 BCAST_HOSTNAME=127.0.0.1 \
     BSID=tv30-default WEBMEDIA_SID=urn:tv30:service:webmedia \
     UFF_SID=urn:tv30:service:uff EDUPLAY_SID=urn:tv30:service:eduplay || return
@@ -721,7 +760,8 @@ cenario_4() {
     http://127.0.0.1:8080/appcat 'HTTP_STATUS=200' || return
   info "no host ao mesmo tempo: $HOST_LISTA"
 
-  # host -> Redis/MQTT do ambiente de CADA modulo, e os logs de conexao
+  # host -> Redis/MQTT from the environment of EACH module, and the
+  # connection logs.
   host_usar tv3ws || return
   checar_redis_mqtt
   checar_log "tv3ws do host conectou no Redis do container" '\[redis\] pronto em 127\.0\.0\.1:6379'
@@ -734,11 +774,12 @@ cenario_4() {
   checar_log "aop do host leu os perfis no Redis do container" 'Loaded [0-9]+ users from Redis'
   checar_log "aop do host conectou no broker do container" 'Connected to MQTT broker'
 
-  # borda (container) -> tv3ws do host
+  # Edge (container) -> tv3ws on the host.
   host_usar tv3ws || return
   checar_borda_tv3ws_host
 
-  # bcast do host -> broker -> aop do host, e aop do host -> bcast do host
+  # bcast on the host -> broker -> aop on the host, and aop on the host ->
+  # bcast on the host.
   checar_bald 127.0.0.1:8081
   checar_http "aop do host recebeu o BAMT do bcast do host (MQTT)" \
     http://127.0.0.1:8080/appcat 'Trocar Usu' 15
@@ -746,7 +787,7 @@ cenario_4() {
   checar_origem_app && checar_app_aberta "aop do host -> bcast do host"
   checar_mqtt_ws_aop "aop do host -> mosquitto em container pelo WebSocket /mqtt"
 
-  # provas negativas: cada resposta vinha do processo do host
+  # Negative proofs: each response came from the host process.
   host_usar bcast && host_stop
   [ -n "$HOST_APP" ] && checar_http_nao "sem o bcast do host o proxy do aop do host falha (resposta vinha do bcast do host)" \
     http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 5 -H "Host: $HOST_APP"
@@ -761,8 +802,8 @@ cenario_5() {
   CEN=5
   titulo "CENARIO 5 — componente novo no host (templates/componente) | containers: redis, mosquitto (borda parada)"
   subir linux redis mosquitto || return
-  # Prova de que o caminho nao passa pela borda: ela fica parada durante o
-  # cenario (outro cenario ou a restauracao a traz de volta)
+  # Proof that the path does not go through the edge: it stays stopped during
+  # the scenario (another scenario or the restore brings it back).
   parar edgegateway "a borda fica fora do caminho: o componente fala direto com Redis e broker" || return
   porta_livre "$COMP_PORTA" || {
     falha "porta $COMP_PORTA ja ocupada no host (container meu-componente do template de pe?)"; return; }
@@ -776,7 +817,8 @@ cenario_5() {
   checar_log "componente do host conectou no broker do container por 127.0.0.1" \
     '\['"$COMP_NOME"'\] mqtt 127\.0\.0\.1:1883 conectado'
 
-  # ping pelo broker; o componente le a chave no Redis e responde em /pong
+  # Ping through the broker; the component reads the key in Redis and answers
+  # on /pong.
   local i=0 val="" msg="" r=""
   COMP_SUJO=1
   while [ "$i" -lt 3 ]; do
@@ -800,14 +842,15 @@ cenario_5() {
   limpar_componente
 }
 
-# ----------------------------------------------------------- restauracao ---
+# ------------------------------------------------------------------ restore ---
 
 RESTAURADO=""
 restaurar() {
   [ -z "$RESTAURADO" ] || return 0
   RESTAURADO=1
   host_stop_todos
-  limpar_componente   # chave de teste do cenario 5, se ele foi interrompido
+  # Test key of scenario 5, if it was interrupted.
+  limpar_componente
   CEN="-"
   if [ -n "${ANTES// /}" ]; then
     titulo "restaurando a stack padrao (EDGE_VARIANT=linux; COMPOSE_FILE do .env)"
@@ -822,11 +865,11 @@ restaurar() {
   fi
 }
 trap 'restaurar' EXIT
-# HUP tambem: fechar a sessao (ex.: o wsl.exe encerrado do lado do Windows)
-# manda SIGHUP, que sem trap mataria o script sem restaurar
+# HUP too: closing the session (e.g. wsl.exe ended on the Windows side)
+# sends SIGHUP, which without a trap would kill the script without restoring.
 trap 'echo; echo "interrompido"; exit 130' INT TERM HUP
 
-# ------------------------------------------------------------------ main ---
+# --------------------------------------------------------------------- main ---
 
 echo "TV30 — teste dev-host: cenarios [$CENARIOS], modo $MODO$( [ "$MODO" = docker ] && echo " ($IMAGEM)")"
 echo "stack antes do teste: ${ANTES:-nada rodando}"

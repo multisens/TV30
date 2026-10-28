@@ -12,8 +12,8 @@ O diagrama descreve o estado atual do código. Cada seta é um canal que o códi
 
 ```
  Clientes das APIs: app de emissora (no navegador da TV), app local autônomo, cliente não local
-       │ HTTP  :44642  interna (porta fixa da C.3.4): as 26 rotas; o não local só usa authorize e token
-       │ HTTPS :44643  externa (TLS na borda): as 26 rotas; exclusivas do local e authorize dão 106
+       │ HTTP  :44642  interna (porta fixa da C.3.4): as 27 rotas; o não local só usa authorize e token
+       │ HTTPS :44643  externa (TLS na borda): as 27 rotas; exclusivas do local e authorize dão 106
        ▼
  ┌─────────────┐  HTTP(S), ginga_net   ┌─────────┐   WebSocket 45000–45199,
  │ edgegateway │ ────────────────────▶ │  tv3ws  │ ◀── direto, sem a borda ── aparelho remoto
@@ -82,10 +82,23 @@ Seis containers contínuos (`redis` a `bcast`) e quatro tarefas únicas de subid
 | `redis` | 6379, só em `127.0.0.1` (sem senha); commander em porta dinâmica (`docker port redis 18081`), com login | Redis, com carga inicial e o redis-commander embutido para debug. Morre-inteiro: se o `redis-server` ou o commander cair, o container cai, e o `restart` o traz de volta |
 | `mqtt-broker` (serviço `mosquitto`) | 1883; WebSocket (9001 do container) em porta dinâmica (`docker compose port mosquitto 9001`; `MQTT_WS_PUBLISH` fixa) | Mosquitto + plugin C de validação de esquema, sem controle de acesso a tópicos. A página da TV não usa a porta do WebSocket: fala MQTT pelo `/mqtt` do AoP |
 | `edgegateway` | 44642 (HTTP) e 44643 (HTTPS; fixa por padrão, `EDGE_EXT_PUBLISH`); docs em porta dinâmica (`docker port edgegateway 8085`) | Borda única. Contém os dois processos KrakenD (superfícies interna e externa; a externa termina o TLS com o certificado de `.tv30/tls`), com o plugin `tv30-auth`, que valida as credenciais, negocia a versão e responde a C.6.8 e a C.6.7.8/C.6.7.9, e a documentação Swagger. A externa repassa ao HTTPS do tv3ws (`https://tv3ws:44653`), com o mesmo certificado. Morre-inteiro: se um processo cai, o container cai, e o `restart` o traz de volta |
-| `tv3ws` | 45000–45199 (WebSockets de remote-device: o do dispositivo remoto em `wss://` com o certificado do receptor, o local em `ws://`) | TV 3.0 WebServices. As portas 44652 (HTTP) e 44653 (HTTPS, com o certificado de `.tv30/tls`) ficam só na `ginga_net` |
+| `tv3ws` | 45000–45199 (WebSockets de remote-device: o do dispositivo remoto em `wss://` com o certificado do receptor, o local em `ws://`, e não no `wss://` da Tabela C.80; ver [Não implementado]({{ site.baseurl }}/nao-implementado)) | TV 3.0 WebServices. As portas 44652 (HTTP) e 44653 (HTTPS, com o certificado de `.tv30/tls`) ficam só na `ginga_net` |
 | `aop` | `${AOP_PUBLIC_PORT:-8080}` | Interface do receptor; na mesma porta, os hosts próprios das apps de emissora (`<app>.<APPS_DOMAIN>`, padrão `apps.localhost`) e o MQTT por WebSocket da página da TV (`/mqtt`) |
 | `bcast` | 8081 do container em porta dinâmica (`docker compose port bcast 8081`; `BCAST_PUBLISH` fixa) | Broadcaster + módulos de apps de serviço. O AoP o alcança pela `ginga_net` (`bcast:8081`) |
 | `tv30-preflight`, `tv30-userfiles-seed`, `tv30-tls-init`, `tv30-sysctl-init` | — | Tarefas únicas de subida: diagnóstico de DNS e portas, carga de `./user-files`, certificado do receptor em `.tv30/tls` (gerado só na primeira subida) e ajuste de sysctl (Linux). O preflight só avisa, menos num caso: com a 44642 ocupada por processo nativo, ele sai com erro (`scripts/preflight.sh`), e a borda, que depende dele com `service_completed_successfully`, não sobe. A borda e o tv3ws também esperam o `tls-init` terminar |
+
+---
+
+### Ordem de subida
+
+| Serviço | Espera |
+|---|---|
+| `edgegateway` | `tv30-preflight` e `tv30-tls-init` terminarem com 0; `redis` saudável |
+| `tv3ws` | `redis` saudável; `mosquitto` iniciado; `tv30-userfiles-seed` e `tv30-tls-init` terminarem com 0 |
+| `aop` | `mosquitto`, `redis` e `tv30-userfiles-seed` iniciados (o AoP tenta de novo a leitura dos perfis no Redis, `loadUserData`) |
+| `bcast` | `mosquitto` iniciado |
+
+O `redis` fica saudável depois de carregar a biblioteca de funções nesta partida e aplicar a carga inicial ([Modelo de dados Redis]({{ site.baseurl }}/modelo-redis)). Nenhum serviço espera o `tv30-sysctl-init`. O compose da raiz tem nome fixo de projeto (`name: tv30`) e inclui o `infra/docker-compose.yml`, que inclui o `infra/redis/docker-compose.yml`; o compose da `infra/` sozinho não é projeto válido, porque a borda depende do `preflight`, que só existe na raiz.
 
 ---
 
@@ -112,22 +125,7 @@ Os módulos recebem o cliente MQTT do bcast (`sendSLS(client)` e `dispose(client
 
 ## Decisões arquiteturais
 
-Decisões do projeto, fora da norma, salvo onde a linha cita uma seção dela.
-
-| Decisão | Motivo |
-|---------|--------|
-| Docker | Um único caminho de deploy. Para desenvolvimento, a infra roda em containers e o módulo no host ([dev-local]({{ site.baseurl }}/dev-local)) |
-| Monorepo com submódulos | Cada componente tem repositório e CI próprios. O build da imagem de aop, tv3ws e bcast depende do repositório Infra, de onde o CI tira o Dockerfile (`infra/dockerfiles/`) |
-| MQTT para sinalização e eventos entre serviços | Desacoplamento. Não é o único canal interno (ver *Canais internos*) |
-| Estado de usuários em Redis | `userData.json` serve só de carga inicial: o `infra/user-files-template/userData.json`, embutido na imagem do Redis no build, aplicado quando a chave `seed:done` não existe (um volume novo). Um dono por família de chave: os perfis são da plataforma (AoP), e o tv3ws só os lê |
-| Apps de serviço como módulos do bcast | Um único container serve todas, sem duplicar MQTT e CORS |
-| Borda única com duas superfícies | A interna fica na 44642 (HTTP, `Server-BaseURL`, fixa pela C.3.4), e a externa na 44643 (`Server-SecureBaseURL`), com TLS terminado na borda e certificado autoassinado gerado na primeira subida (a C.4.1.1 admite o certificado autoassinado pela plataforma). Credenciais validadas na borda (plugin `tv30-auth`); o tv3ws fica "anônimo", e a borda responde a C.6.8 e a C.6.7.8/C.6.7.9. As duas superfícies têm as 26 rotas e listam as 20 APIs; o que muda é o 106: na externa, as rotas de uso exclusivo do cliente local e o `/tv3/authorize` respondem 106 a qualquer requisição (C.4.1.8); na interna, o não local só usa `/tv3/authorize` e `/tv3/token` (C.4.1.6). A regra sai das `classes` de cada rota no `routes.json` (`SURFACE_RULES`, `generate.js`). A norma (C.3.4) só define as duas URLs base; as duas superfícies na mesma borda são decisão do projeto |
-| Um nome de host por app de emissora | O associado é reconhecido pelo `Origin` em `origins:associated` (o `Origin` é forjável fora do navegador). Servidas na origem do AoP, as apps chegariam à borda com o `Origin` do AoP e não seriam reconhecidas. Com um host por app, na porta do AoP, o `Origin` é o da app, e o AoP grava essa origem ao lançá-la. Limite: `*.localhost` resolve para a máquina de quem abre a página, então a tela do AoP aberta de outra máquina não carrega as apps; `APPS_DOMAIN` aceita um domínio resolvível na rede. A C.4.1.7 deixa o mecanismo de diferenciação à implementação; host por app e proxy são decisão do projeto |
-| Anunciante SSDP nativo do host | Dentro do Docker, o multicast do anúncio só sai em Linux nativo, então o anunciante roda no host, fora do Docker, nos três sistemas, subido pelo `./tv30 up`. O host do anúncio é detectado, e o `SSDP_ADVERTISE_HOST` é sobreposição. Ele só divulga onde está o `/manifest`, e por isso ficar fora da borda não abre caminho em volta dela. A C.3.4 não diz onde o anunciante roda; é decisão do projeto |
-| Avatar como nome de arquivo do diretório de miniaturas | A Tabela 7 pede *file path* no `avatar`. O campo guarda o nome de um arquivo de `user-files/thumbs` (`<USER_DATA_PATH>/thumbs` no AoP, `USER_THUMBS` no tv3ws), sem diretório, com extensão `.svg`, `.png`, `.jpg`, `.jpeg` ou `.webp`, e o esquema do Redis confere o formato. O AoP grava `<id do perfil>.svg` ao criar o perfil e o apaga ao removê-lo; o tv3ws o entrega pela C.6.14.6, com o `Content-Type` da extensão e só para o serviço em que o perfil é visível (Tabela C.75). As telas do AoP leem o arquivo e o embutem como `<img src="data:...">`, sem rota própria: uma rota do AoP entregaria o avatar sem a restrição da Tabela C.75, e um SVG aberto como documento na origem do AoP rodaria o script dele. O users-test do bcast pede o avatar pela C.6.14.6, na borda. Restringir o caminho a um nome dentro de um diretório é decisão do projeto |
-| Id do perfil em UUID | A Tabela 7 pede "UUID string" no `id`. O AoP gera `crypto.randomUUID()`, a carga inicial traz `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`, e o esquema do Redis exige o formato da IETF RFC 9562, em minúsculas, estrito: versão de 1 a 8 e variante da RFC 9562 (`8`, `9`, `a` ou `b`), sem o UUID nulo nem o máximo (`infra/redis/funcoes.lua`, `motivoUuid`). Detalhes em [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis) |
-| Portas fixas só as necessárias | A norma só fixa a 44642. Ficam fixas também a do AoP (o endereço que se digita e a origem das apps), a 1883, a 6379, a faixa do remote-device e a 44643, que o `/manifest` anuncia; o resto sai numa porta livre. A 6379 escuta só em `127.0.0.1`: aberta à rede, um aparelho gravaria nas chaves de origem associada ou de bind-context e contornaria a borda. Para a 9001 do Mosquitto não precisar sair fixa no host sem quebrar a página da TV, o AoP atende o MQTT por WebSocket na própria porta (`/mqtt`) |
-| Morre-inteiro sem exceção | Em todo container com mais de um processo, a morte de um derruba o container, e o `restart` o traz de volta. Vale também para o redis-commander, ferramenta de inspeção, no container do Redis |
+As decisões do projeto e o motivo de cada uma estão em [Decisões]({{ site.baseurl }}/decisoes).
 
 ---
 

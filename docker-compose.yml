@@ -1,14 +1,14 @@
-# TV30 — Compose unificado (raiz da solucao)
+# TV30: the unified Compose file of the solution root.
 #
-# LINUX (full-container):  docker compose up -d
-#   Defaults vem de .env (COMPOSE_PROFILES=mqtt,linux + DOCKERHUB_NS, IMAGE_TAG, EDGE_VARIANT)
+# Linux (full container): docker compose up -d
+#   Defaults come from .env (COMPOSE_PROFILES=mqtt,linux, DOCKERHUB_NS,
+#   IMAGE_TAG, EDGE_VARIANT).
 #
-# DESENVOLVIMENTO (infra em containers + um modulo rodando no host com
-# npm run dev): ver docs/dev-local.md e scripts/test-dev-host.sh. Windows
-# nativo (modulo no PowerShell com Docker no WSL) nao e coberto.
+# Development, with the infrastructure in containers and one module on the
+# host (npm run dev): docs/dev-local.md and scripts/test-dev-host.sh.
 
-# Nome fixo: independe da pasta do clone, e down/up de clones diferentes
-# alcancam os mesmos containers.
+# Fixed name: independent of the folder of the clone, so down and up from
+# different clones reach the same containers.
 name: tv30
 
 include:
@@ -16,27 +16,26 @@ include:
 
 services:
 
-  # Diagnostico pre-subida de DNS e portas. So bloqueia (exit 1, e a borda nao
-  # sobe) com a 44642 (fixa da norma, C.3.4) ocupada por outro processo. Rede e
-  # pid do host para ver quem segura cada porta.
+  # DNS and port diagnosis before startup. It blocks (exit 1, and the edge
+  # does not start) only when 44642 (C.3.4) is held by another process. Host
+  # network and pid, to see who holds each port.
   preflight:
     image: alpine:3
     container_name: tv30-preflight
     network_mode: host
     pid: host
     environment:
-      # Perfis ativos (vem do .env da raiz ou do shell; perfil ligado so por
-      # --profile na linha de comando nao aparece aqui).
+      # Active profiles, from the root .env or the shell; a profile enabled only
+      # by --profile on the command line does not appear here.
       COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
-      # porta publicada do AoP: a mesma do servico aop abaixo
       AOP_PUBLIC_PORT: ${AOP_PUBLIC_PORT:-8080}
     volumes:
       - ./scripts/preflight.sh:/preflight.sh:ro
     command: sh /preflight.sh
     restart: "no"
 
-  # Semeia ./user-files do template: a cada up, copia os arquivos que faltam,
-  # sem sobrescrever nada.
+  # Seeds ./user-files from the template: on every up, copies the missing
+  # files, without overwriting anything.
   userfiles-seed:
     image: alpine:3
     container_name: tv30-userfiles-seed
@@ -47,10 +46,8 @@ services:
     command: sh /seed.sh
     restart: "no"
 
-  # Certificado X.509 autoassinado do receptor, gerado na primeira subida em
-  # .tv30/tls (infra/edgegateway/tls-init.sh, na imagem da borda). A borda
-  # termina com ele o TLS da 44643; o tv3ws o usa no HTTPS da 44653, no
-  # serverCert do pareamento e nos wss://.
+  # Self-signed X.509 certificate of the receiver, generated on the first
+  # startup in .tv30/tls (infra/edgegateway/tls-init.sh, in the edge image).
   tls-init:
     image: ${DOCKERHUB_NS:-tv30}/tv30-edgegateway:${IMAGE_TAG:-latest}
     container_name: tv30-tls-init
@@ -61,10 +58,8 @@ services:
       - ./.tv30/tls:/tls
     restart: "no"
 
-  # Em alguns kernels Linux com br_netfilter, o trafego entre containers na
-  # bridge passa pelo iptables do HOST e cai (MQTT/Redis intermitentes);
-  # bridge-nf-call-iptables=0 evita (infra/README.md; nao reproduzido em
-  # bancada). Com sysctl read-only (ex.: Docker Desktop) falha calado e sai 0.
+  # Sets net.bridge.bridge-nf-call-iptables=0. With a read-only sysctl (e.g.
+  # Docker Desktop), it fails silently and exits 0.
   sysctl-init:
     profiles: ["linux"]
     image: alpine:3
@@ -87,57 +82,54 @@ services:
     container_name: tv3ws
     networks: [ginga_net]
     ports:
-      # 44652/44653 NAO sao publicadas: todo cliente passa pela borda
-      # (44642/44643), que valida a credencial.
-      #
-      # Faixa dos WebSockets de remote-device, publicada para apps externas
-      # alcancarem a URL do registro (wss://SERVER_URL:<porta>; ws:// com
-      # TV3WS_WS_TLS=false).
+      # 44652 and 44653 are not published. The range of the remote-device
+      # WebSockets is published.
       - "45000-45199:45000-45199"
     environment:
       MQTT_HOST: mosquitto
       HTTP_PORT: 44652
       HTTPS_PORT: 44653
-      # Todas as interfaces no container (a borda chega pela ginga_net); fora
-      # dele, o padrao e so a propria maquina (tv3ws/src/listen-hosts.ts).
+      # Every interface inside the container.
       TV3WS_LISTEN_HOST: "0.0.0.0"
-      # certificado do receptor: HTTPS da 44653, serverCert e wss://
+      # Receiver certificate.
       TV30_TLS_DIR: /tls
-      # Host do websocket devolvido em /tv3/remote-device: tem de ser alcancavel
-      # de fora do container. localhost so atende demo em maquina unica.
+      # Host of the WebSocket returned by /tv3/remote-device.
       SERVER_URL: ${SERVER_URL:-localhost}
-      # Range de portas pros websockets de remote-device. Tem que coincidir
-      # com o range publicado em `ports` acima.
+      # Port range of the remote-device WebSockets.
       WS_PORT_MIN: 45000
       WS_PORT_MAX: 45199
+      # Port draws before giving up on opening a WebSocket server (version
+      # 100.0).
+      LISTEN_ATTEMPTS: 10
+      # Receiver limit on registered remote devices (version 100.0).
+      MAX_REGISTRATIONS: 32
+      # Interval of the keep-alive ping on the WebSockets, in ms (version
+      # 100.0).
+      PING_INTERVAL_MS: 15000
       REDIS_HOST: redis
       REDIS_PORT: 6379
       USER_THUMBS:    /user-files/thumbs
-      # Default de dev. Override no .env da RAIZ (ou no shell): `environment`
-      # prevalece sobre env_file, entao JWT_SECRET em tv3ws/.env NAO tem efeito.
+      # Development default; set it in the root .env or the shell. `environment`
+      # prevails over env_file, so a JWT_SECRET in tv3ws/.env has no effect.
       JWT_SECRET: ${JWT_SECRET:-tv30-dev-secret-nao-usar-em-producao}
-      # Mesma fonte e mesmo padrao que a borda usa para validar o token
-      # (infra/docker-compose.yml).
       JWT_ISSUER: ${JWT_ISSUER:-GenericIssuer}
     env_file:
-      # Opcional. HTTPS_KEY/HTTPS_CERT so valem sem o certificado de
-      # TV30_TLS_DIR (tv3ws/src/tls.ts): no compose, servem ao tv3ws rodando
-      # no host (dev-host).
+      # Optional. HTTPS_KEY/HTTPS_CERT apply only without the certificate of
+      # TV30_TLS_DIR (tv3ws/src/tls.ts).
       - path: ./tv3ws/.env
         required: false
-      # .env da raiz (prevalece sobre o tv3ws/.env): leva ao /manifest
-      # SSDP_ADVERTISE_HOST, EDGE_HTTP_PORT e EDGE_HTTPS_PORT, os mesmos que o
-      # anunciante do ./tv30 le. Fora de environment de proposito: la, mesmo
-      # vazio, o valor sobrescreveria o do tv3ws/.env; valor so exportado no
-      # shell nao chega por aqui. As demais chaves do .env da raiz tambem entram
-      # (SERVER_URL, JWT_SECRET e JWT_ISSUER estao em environment, que prevalece).
+      # Root .env, which prevails over tv3ws/.env: it carries
+      # SSDP_ADVERTISE_HOST, EDGE_HTTP_PORT, EDGE_HTTPS_PORT and the other keys
+      # of the root .env. Not in environment on purpose: there, even an empty
+      # value would override the one of tv3ws/.env. A value only exported in the
+      # shell does not arrive through here.
       - path: ./.env
         required: false
     volumes:
       - ./user-files:/user-files
       - ./.tv30/tls:/tls:ro
     depends_on:
-      # redis so fica healthy apos a carga inicial (chave seed:done).
+      # redis is healthy only after the initial load (key seed:done).
       redis:
         condition: service_healthy
       mosquitto:
@@ -160,35 +152,24 @@ services:
     container_name: aop
     networks: [ginga_net]
     extra_hosts:
-      # O aop faz proxy HTTP direto ao bcast (bcastEntryPackageUrl da BALD,
-      # initialMediaURLs da BAMT). Com o bcast no HOST (desenvolvimento,
-      # BCAST_HOSTNAME=host.docker.internal) o nome precisa resolver em Linux;
-      # inocuo no deploy padrao.
+      # host.docker.internal on Linux, for a bcast on the host.
       - "host.docker.internal:host-gateway"
     ports:
-      # Porta publica do AoP, fixa (padrao 8080). Vai tambem para o container
-      # (environment), porque o AoP monta com ela a origem de cada aplicacao;
-      # dentro do container a porta e 8080. Por ela passa tambem o MQTT por
-      # WebSocket da pagina da TV (/mqtt).
+      # Public port of the AoP, fixed (default 8080); inside the container the
+      # port is 8080. The MQTT over WebSocket of the TV page (/mqtt) goes
+      # through it too.
       - "${AOP_PUBLIC_PORT:-8080}:8080"
     environment:
       PORT: 8080
-      # Cada aplicacao abre na propria origem, http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT>;
-      # o AoP roteia pelo Host e registra a origem em origins:associated
-      # (aop/src/app-hosts.js). *.localhost resolve para a maquina de quem abre
-      # a pagina: com o AoP aberto de OUTRA maquina, use um dominio da rede com
-      # *.<dominio> apontando para esta (DNS curinga).
+      # Each application opens on its own origin,
+      # http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT>. *.localhost resolves to
+      # the machine of whoever opens the page.
       APPS_DOMAIN: ${APPS_DOMAIN:-apps.localhost}
       AOP_PUBLIC_PORT: ${AOP_PUBLIC_PORT:-8080}
       MQTT_HOST: mosquitto
-      # A pagina da TV conecta em ws://<host da pagina>/mqtt, na porta do AoP,
-      # que repassa o upgrade a ws://${MQTT_HOST}:${MQTT_WS_PORT}
-      # (aop/src/mqtt-ws.js). 9001 e a porta INTERNA do mosquitto na ginga_net;
-      # a de host (MQTT_WS_PUBLISH) e aleatoria e o navegador nao a usa. Com o
-      # AoP no host, use a publicada: docker compose port mosquitto 9001.
+      # Internal port of mosquitto on ginga_net, the target of /mqtt.
       MQTT_WS_PORT: "9001"
       USER_DATA_PATH: /user-files
-      # O AoP le perfis e escreve origins:associated direto no Redis.
       REDIS_HOST: redis
     volumes:
       - ./user-files:/user-files
@@ -207,29 +188,25 @@ services:
     container_name: bcast
     networks: [ginga_net]
     ports:
-      # Porta de host aleatoria por padrao (docker compose port bcast 8081).
-      # BCAST_PUBLISH=8081:8081 fixa, o que o desenvolvimento com o aop no HOST
-      # precisa. O AoP usa o DNS interno bcast:8081, que nao depende disso.
+      # A host port chosen by Docker by default (docker compose port bcast
+      # 8081); BCAST_PUBLISH=8081:8081 fixes it.
       - "${BCAST_PUBLISH:-8081}"
     environment:
       PORT: 8081
       MQTT_HOST: mosquitto
-      # Host de bcastEntryPackageUrl na BALD: o AoP faz proxy pra ele, e em
-      # Docker tem de ser o service-name. Override so com o aop no HOST
-      # (BCAST_HOSTNAME=localhost e BCAST_PUBLISH=8081:8081; docs/dev-local.md).
+      # Host of bcastEntryPackageUrl in the BALD.
       BCAST_HOSTNAME: ${BCAST_HOSTNAME:-bcast}
-      # IDs fixos: cada restart re-publica no MESMO topico, sobrescrevendo o
-      # anterior em vez de criar tópicos orfaos retidos no broker.
+      # Fixed ids: every restart publishes again on the same topic.
       BSID:           tv30-default
       WEBMEDIA_SID:   urn:tv30:service:webmedia
       UFF_SID:        urn:tv30:service:uff
       EDUPLAY_SID:    urn:tv30:service:eduplay
-      # Caminhos no dispositivo remoto do demo webmedia (ver .env.example).
+      # Paths on the remote device of the webmedia demo (.env.example).
       WEBMEDIA_REMOTE_MEDIA_PATH:     ${WEBMEDIA_REMOTE_MEDIA_PATH:-}
       WEBMEDIA_REMOTE_USERFILES_PATH: ${WEBMEDIA_REMOTE_USERFILES_PATH:-}
     volumes:
-      # public/ (~2.3GB de midia) fica fora da imagem (.dockerignore) e e
-      # servido daqui: editar bcast/public reflete sem rebuild.
+      # public/ (media) is outside the image (.dockerignore) and is served from
+      # here.
       - ./bcast/public:/app/public:ro
     depends_on:
       - mosquitto

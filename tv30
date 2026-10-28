@@ -1,28 +1,27 @@
 #!/usr/bin/env bash
-# tv30 — sobe e desce o testbed com a descoberta SSDP (C.3.4).
+# tv30: starts and stops the testbed with the SSDP discovery (C.3.4).
 #
-#   ./tv30 up   [args do docker compose up]    compose up -d + anunciante
-#   ./tv30 down [args do docker compose down]  anunciante (ssdp:byebye) + compose down
-#   ./tv30 status                              containers e anunciante
-#   ./tv30 logs                                log do anunciante (tail -f)
+#   ./tv30 up   [docker compose up args]    compose up -d, then the announcer
+#   ./tv30 down [docker compose down args]  announcer (ssdp:byebye), then down
+#   ./tv30 status                           containers and announcer
+#   ./tv30 logs                             announcer log (tail -f)
 #
-# Dentro do Docker o multicast do SSDP so sai em Linux nativo (no Mac e no
-# Windows o container fica na VM do Docker), entao o anunciante roda NO HOST:
-# o programa em Go de infra/edgegateway/ssdp, que so divulga onde esta o
-# /manifest e responde a buscas (sem estado nem credencial, nao abre caminho
-# em volta da borda). Este comando o compila, o sobe depois do compose e o
-# encerra ANTES do compose down, para que mande o ssdp:byebye.
+# The announcer runs on the host: the Go program of infra/edgegateway/ssdp,
+# which only announces where the /manifest is and answers searches. This
+# command builds it, starts it after the compose and stops it before compose
+# down, so that it sends ssdp:byebye.
 #
-# O binario e recompilado quando o codigo muda (Go do host ou, sem ele, um
-# container golang) e fica em .tv30/bin, com o pid, o log e o arquivo de parada.
+# The binary is rebuilt when the code changes (with the Go of the host or,
+# without it, a golang container) and stays in .tv30/bin, with the pid, the
+# log and the stop file.
 #
-# Configuracao (no .env da raiz; o ambiente do shell prevalece):
-#   SSDP_ENABLED=false    nao sobe o anunciante
-#   SSDP_ADVERTISE_HOST   fixa o host do LOCATION (sem ele: o IPv4 da
-#                         interface da rota padrao, detectado)
-#   SSDP_INTERFACE        forca a interface (ex.: eth0, en0)
+# Configuration (in the root .env; the shell environment prevails):
+#   SSDP_ENABLED=false    does not start the announcer
+#   SSDP_ADVERTISE_HOST   fixes the host of LOCATION (without it, the IPv4 of
+#                         the interface of the default route, detected)
+#   SSDP_INTERFACE        forces the interface (e.g. eth0, en0)
 #   EDGE_HTTP_PORT, EDGE_HTTPS_PORT, UDN
-# O Windows tem o equivalente em tv30.ps1.
+# Windows has the equivalent in tv30.ps1.
 set -u
 ROOT=$(cd "$(dirname "$0")" && pwd)
 STATE="$ROOT/.tv30"
@@ -31,14 +30,15 @@ BIN="$STATE/bin/ssdp-announcer"
 PIDF="$STATE/ssdp.pid"
 LOG="$STATE/ssdp.log"
 STOPF="$STATE/ssdp.stop"
-GO_IMG=${GO_IMG:-golang:1.22.7-alpine3.19}   # o mesmo Go da borda (Dockerfile)
+# The same Go as the edge (Dockerfile).
+GO_IMG=${GO_IMG:-golang:1.22.7-alpine3.19}
 SSDP_KEYS="SSDP_ENABLED SSDP_ADVERTISE_HOST SSDP_INTERFACE EDGE_HTTP_PORT EDGE_HTTPS_PORT UDN"
 
 info() { echo "[tv30] $*"; }
 die()  { echo "[tv30] ERRO: $*" >&2; exit 1; }
 
-# valor de KEY nos arquivos de ambiente (tv3ws/.env, depois o .env da raiz,
-# como no compose); o shell prevalece
+# Value of KEY in the environment files (tv3ws/.env, then the root .env, as
+# in the compose); the shell prevails.
 env_value() {
   local key=$1 f line val=""
   for f in "$ROOT/tv3ws/.env" "$ROOT/.env"; do
@@ -68,8 +68,8 @@ host_target() {
   echo "$os $arch"
 }
 
-# compila o anunciante se faltar o binario ou se o codigo mudou depois dele;
-# vet e testes antes
+# Builds the announcer if the binary is missing or the code changed after
+# it; vet and tests first.
 build() {
   local force=${1:-} newer
   if [ -z "$force" ] && [ -x "$BIN" ]; then
@@ -96,7 +96,8 @@ ssdp_stop() {
   running || { rm -f "$PIDF" "$STOPF"; return 0; }
   local pid i
   pid=$(cat "$PIDF")
-  : >"$STOPF"   # o anunciante manda o ssdp:byebye e sai (SSDP_STOP_FILE)
+  # The announcer sends ssdp:byebye and exits (SSDP_STOP_FILE).
+  : >"$STOPF"
   for i in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
   if kill -0 "$pid" 2>/dev/null; then
     kill -TERM "$pid" 2>/dev/null; sleep 1
@@ -140,8 +141,8 @@ cmd=${1:-}
 cd "$ROOT" || exit 1
 case "$cmd" in
   up)
-    # o certificado do receptor e gerado em .tv30/tls pelo tls-init; o
-    # diretorio criado aqui fica com o usuario, e nao com o root do Docker
+    # The receiver certificate is generated in .tv30/tls by tls-init; the
+    # directory created here belongs to the user, not to the root of Docker.
     mkdir -p "$STATE/tls"
     docker compose up -d "$@" || die "docker compose up falhou"
     ssdp_start ;;

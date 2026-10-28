@@ -1,12 +1,12 @@
 #!/bin/sh
-# Preflight do TV30: one-shot ANTES dos servicos (rede e pid do host). Deixa no
-# log a causa de uma falha de subida (ex.: bind de porta); so bloqueia (exit 1,
-# e a borda nao sobe) com a 44642 ocupada por outro processo.
+# TV30 preflight: a one-shot before the services (host network and pid). It
+# logs the cause of a startup failure (e.g. a port bind); it blocks (exit 1,
+# and the edge does not start) only when 44642 is held by another process.
 set -u
 
-# Portas: 44642 (fixa da norma, C.3.4) ocupada = erro bloqueante; 1883, 6379,
-# 44643 e a do AoP (AOP_PUBLIC_PORT) so avisam. Ficam de fora as que o Docker
-# escolhe (9001, 8081, 8085, 18081) e a faixa 45000-45199, onde o tv3ws escolhe.
+# Ports: 44642 (C.3.4) held is a blocking error; 1883, 6379, 44643 and the
+# AoP port (AOP_PUBLIC_PORT) only warn. Left out: the ports Docker chooses
+# (9001, 8081, 8085, 18081) and the range 45000-45199, where tv3ws chooses.
 PORTS_WARN="1883 6379 44643 ${AOP_PUBLIC_PORT:-8080}"
 PORT_BLOCK="44642"
 WARN=0
@@ -21,9 +21,9 @@ fi
 echo "[preflight] verificando portas usadas pelo stack..."
 LISTEN=$(netstat -ltn 2>/dev/null | awk '{print $4}')
 
-# Dono de uma porta em LISTEN. Sem CAP_SYS_PTRACE, o netstat nao le o /proc do
-# docker-proxy e o dono sai "-"; a linha de comando dele (legivel com pid: host)
-# identifica a porta.
+# Owner of a port in LISTEN. Without CAP_SYS_PTRACE, netstat does not read
+# the /proc of docker-proxy and the owner is "-"; its command line (readable
+# with pid: host) identifies the port.
 owner_of() {
   o=$(netstat -ltnp 2>/dev/null | grep -E "[:.]$1 " | awk '{print $7}' | head -1)
   case "$o" in
@@ -35,10 +35,10 @@ owner_of() {
   printf '%s' "$o"
 }
 
-# 44642: unica porta INEGOCIAVEL (fixa pela norma C.3.4).
-#   - ocupada por processo NATIVO  -> ERRO bloqueante (conflito real)
-#   - ocupada por docker-proxy     -> aviso (ou e o proprio stack num re-up,
-#     e o compose reusa o bind, ou e daemon Docker duplo — ver troubleshooting)
+# 44642 (C.3.4):
+#   - held by a native process: blocking error;
+#   - held by docker-proxy: warning (the stack itself on a re-up, where
+#     compose reuses the bind, or a second Docker daemon).
 if echo "$LISTEN" | grep -qE "[:.]${PORT_BLOCK}$"; then
   OWNER=$(owner_of "$PORT_BLOCK")
   case "$OWNER" in
@@ -62,9 +62,9 @@ for p in $PORTS_WARN; do
   fi
 done
 
-# A UDP 1900 nao e checada aqui: o anunciante SSDP nativo (./tv30 up) avisa
-# se ela estiver presa. Um container tv3ws-ssdp remanescente seria um segundo
-# anunciante; fora do compose, so sai com docker rm (ou up -d --remove-orphans).
+# UDP 1900 is not checked here. A leftover tv3ws-ssdp container would be a
+# second announcer; outside the compose, only docker rm (or up -d
+# --remove-orphans) removes it.
 if ps -o args 2>/dev/null | grep -qE '[n]ode dist/ssdp-announcer\.js'; then
   echo "[preflight] AVISO: o container tv3ws-ssdp esta de pe (seria um segundo anunciante SSDP)."
   echo "[preflight]        Quem anuncia e o anunciante nativo do host (./tv30 up). Para remover: docker rm -f tv3ws-ssdp"

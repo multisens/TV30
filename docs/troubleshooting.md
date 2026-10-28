@@ -93,43 +93,43 @@ Se o `preflight` avisar que o container `tv3ws-ssdp` está de pé, ele é um seg
 
 A carga inicial vem na própria imagem `tv30-redis`: o seed é gerado no build (estágio `seedgen` do `infra/redis/Dockerfile`, em Python só com a biblioteca padrão) e aplicado pelo `infra/redis/entrypoint.sh` com `redis-cli --pipe`. A partida não instala nada nem precisa de rede.
 
-O healthcheck do `redis` só passa depois da carga (chave `seed:done`, testada a cada 2 s, até 30 vezes; `infra/redis/docker-compose.yml`). O `tv3ws` e o `edgegateway` dependem dele com `condition: service_healthy`; o broker não depende do Redis. Para ver em que ponto a carga está: `docker logs redis`, que registra `[redis] aplicando carga inicial pelas funcoes (redis-cli --pipe)...` e `[redis] carga concluida (<n> perfil(is))`, ou `[redis] carga ja aplicada (seed:done presente) — mantida`.
+O healthcheck do `redis` só passa depois da carga (chave `seed:done`, testada a cada 2 s, até 30 vezes; `infra/redis/docker-compose.yml`). O `tv3ws` e o `edgegateway` dependem dele com `condition: service_healthy`; o broker não depende do Redis. Para ver em que ponto a carga está: `docker logs redis`, que registra `[redis] applying the initial load through the functions (redis-cli --pipe)...` e `[redis] load done (<n> profile(s))`, ou `[redis] load already applied (seed:done present) — kept`.
 
 O seed sai do template `infra/user-files-template/userData.json` no build. Uma mudança no template só entra com a imagem reconstruída e, mesmo assim, só num volume `redis_data` que ainda não tenha `seed:done`: o entrypoint não reaplica a carga num volume já semeado.
 
-O healthcheck também exige que a biblioteca de funções `tv30` tenha carregado **nesta** partida (marca `/tmp/tv30-redis-pronto`, criada pelo entrypoint). No log aparece `[redis] biblioteca de funcoes tv30 carregada (esquema versao N)`. Se o log mostrar `ERRO: a biblioteca de funcoes tv30 NAO carregou`, o container encerra, porque sem as funções toda escrita dos serviços falharia. A causa é um `esquema.json` ou `funcoes.lua` quebrado numa imagem montada à mão: reconstrua a partir do repositório (`docker compose build redis`), já que o build confere a biblioteca. Se o log mostrar `ERRO: a carga inicial foi recusada pelo esquema`, um perfil do `userData.json` está fora do esquema: o log diz qual campo, `seed:done` não é gravado e o container fica *unhealthy*. Corrija o template e reconstrua a imagem.
+O healthcheck também exige que a biblioteca de funções `tv30` tenha carregado **nesta** partida (marca `/tmp/tv30-redis-ready`, criada pelo entrypoint). No log aparece `[redis] tv30 function library loaded (schema version N)`. Se o log mostrar `ERRO: a biblioteca de funcoes tv30 NAO carregou`, o container encerra, porque sem as funções toda escrita dos serviços falharia. A causa é um `schema.json` ou `functions.lua` quebrado numa imagem montada à mão: reconstrua a partir do repositório (`docker compose build redis`), já que o build confere a biblioteca. Se o log mostrar `ERRO: a carga inicial foi recusada pelo esquema`, um perfil do `userData.json` está fora do esquema: o log diz qual campo, `seed:done` não é gravado e o container fica *unhealthy*. Corrija o template e reconstrua a imagem.
 
-## Erro `TV30ESQUEMA` numa resposta ou no log
+## Erro `TV30SCHEMA` numa resposta ou no log
 
 ```
-TV30ESQUEMA tv30_perfil_grava: user:0b6e3c1a-7f2d-4e8b-9a5c-3d1f2e4a6b8c campo parentalControl: deve ser "true" ou "false" (veio "False")
+TV30SCHEMA tv30_profile_write: user:0b6e3c1a-7f2d-4e8b-9a5c-3d1f2e4a6b8c campo parentalControl: deve ser "true" ou "false" (veio "False")
 ```
 
-É uma função do Redis recusando uma escrita fora do esquema. A mensagem diz a função, a chave, o campo e o motivo, e nada foi gravado. Para o serviço, é defeito de quem grava. O tv3ws e o AoP respondem 404 `{"error":200}` com a mensagem no `description` e no log (`[error] <método> <url>: TV30ESQUEMA ...`). A borda responde com `escrita recusada pelo esquema do Redis (...)`. Um handler MQTT só loga (no tv3ws, `[mqtt] FALHA no handler de <tópico>`).
+É uma função do Redis recusando uma escrita fora do esquema. A mensagem diz a função, a chave, o campo e o motivo, e nada foi gravado. Para o serviço, é defeito de quem grava. O tv3ws e o AoP respondem 404 `{"error":200}` com a mensagem no `description` e no log (`[error] <método> <url>: TV30SCHEMA ...`). A borda responde com `escrita recusada pelo esquema do Redis (...)`. Um handler MQTT só loga (no tv3ws, `[mqtt] FALHA no handler de <tópico>`).
 
-- **Veio de uma escrita do código:** o serviço montou um dado que o esquema não aceita. Compare a mensagem com a regra no `infra/redis/esquema.json` (o campo `fonte` diz de onde ela veio) e corrija quem grava, não a regra. Mudar a regra é decisão do projeto.
-- **Veio de um script ou de uma chamada à mão (`FCALL`):** os argumentos estão fora do esquema. Os formatos de cada função estão em `infra/redis/README.md`.
+- **Veio de uma escrita do código:** o serviço montou um dado que o esquema não aceita. Compare a mensagem com a regra no `infra/redis/schema.json` (o campo `fonte` diz de onde ela veio) e corrija quem grava, não a regra. Mudar a regra é decisão do projeto.
+- **Veio de um script ou de uma chamada à mão (`FCALL`):** os argumentos estão fora do esquema. Os formatos de cada função estão em [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis#as-funções).
 - **`ERR Function not found`:** o Redis está sem a biblioteca. Pode ser uma imagem desatualizada ou um Redis que não é o da stack. Reconstrua com `docker compose build redis && docker compose up -d redis`.
-- **`deve ser UUID no formato da RFC 9562` na criação de perfil:** o esquema exige o id do perfil em UUID estrito, em minúsculas, e a mensagem diz qual parte falhou: `versao do UUID deve ser de 1 a 8`, `variante do UUID deve ser a da RFC 9562` (primeiro dígito do quarto grupo em `8`, `9`, `a` ou `b`), `UUID nulo` ou `UUID maximo` (`motivoUuid`, em `infra/redis/funcoes.lua`). O AoP gera `crypto.randomUUID()` (versão 4, válido); com uma imagem desatualizada do AoP, que gere outro formato, a criação responde 404 `{"error":200}`: reconstrua o AoP com o Redis (`docker compose build aop redis`). Num volume com perfis fora do esquema, ver *Auditoria do Redis com achados*, abaixo.
-- **`campo avatar: SVG em linha nao serve` na criação de perfil:** o `avatar` é o nome de um arquivo do diretório de miniaturas (por exemplo, `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg`), e não o SVG. Uma imagem desatualizada do AoP que grave o SVG em linha recebe 404 `{"error":200}` na criação: reconstrua o AoP com o Redis (`docker compose build aop redis`). As outras recusas do mesmo campo dizem o que falhou: diretório no nome (`/` ou `\`), extensão fora de `.svg`, `.png`, `.jpg`, `.jpeg` e `.webp` (ou em maiúsculas), primeiro caractere que não é letra nem dígito, caractere fora de letras sem acento, dígitos, `.`, `_` e `-`, ou mais de 128 caracteres antes da extensão (`motivoNomeArquivo`, em `infra/redis/funcoes.lua`).
+- **`deve ser UUID no formato da RFC 9562` na criação de perfil:** o esquema exige o id do perfil em UUID estrito, em minúsculas, e a mensagem diz qual parte falhou: `versao do UUID deve ser de 1 a 8`, `variante do UUID deve ser a da RFC 9562` (primeiro dígito do quarto grupo em `8`, `9`, `a` ou `b`), `UUID nulo` ou `UUID maximo` (`motivoUuid`, em `infra/redis/functions.lua`). O AoP gera `crypto.randomUUID()` (versão 4, válido); com uma imagem desatualizada do AoP, que gere outro formato, a criação responde 404 `{"error":200}`: reconstrua o AoP com o Redis (`docker compose build aop redis`). Num volume com perfis fora do esquema, ver *Auditoria do Redis com achados*, abaixo.
+- **`campo avatar: SVG em linha nao serve` na criação de perfil:** o `avatar` é o nome de um arquivo do diretório de miniaturas (por exemplo, `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg`), e não o SVG. Uma imagem desatualizada do AoP que grave o SVG em linha recebe 404 `{"error":200}` na criação: reconstrua o AoP com o Redis (`docker compose build aop redis`). As outras recusas do mesmo campo dizem o que falhou: diretório no nome (`/` ou `\`), extensão fora de `.svg`, `.png`, `.jpg`, `.jpeg` e `.webp` (ou em maiúsculas), primeiro caractere que não é letra nem dígito, caractere fora de letras sem acento, dígitos, `.`, `_` e `-`, ou mais de 128 caracteres antes da extensão (`motivoNomeArquivo`, em `infra/redis/functions.lua`).
 
 ## Auditoria do Redis com achados
 
 ```bash
-docker exec redis redis-cli FCALL_RO tv30_auditoria 0
+docker exec redis redis-cli FCALL_RO tv30_audit 0
 ```
 
 Cada achado é `[chave, familia, motivo]`, e a auditoria vazia é o estado esperado. O `scripts/test-auth.sh` dá FAIL se ela não terminar vazia e avisa no começo se já havia achados antes da suíte. Causas comuns:
 
 - **Dados gravados sem passar pelas funções:** booleanos como `"False"`/`"True"`, ou hashes `user:{id}` só com `lastAccess`, fora de `users:index` (por exemplo, `user:abc-123`). Para começar limpo, use `docker compose down -v`, que apaga o volume e com ele os perfis criados. A outra saída é corrigir ou apagar as chaves apontadas.
-- **`{id} da chave: deve ser UUID ...`:** o esquema exige o id do perfil em UUID estrito, sem compatibilidade com outros formatos. Um perfil com outro id (como `user_<epoch-ms>` ou `c3167a18-5dc5`) aparece em `users:index`, `user:{id}`, `user:{id}:consent` e `user:{id}:broadcaster-attrs:*`, também com os motivos `versao do UUID ...`, `variante do UUID ...`, `UUID nulo` ou `UUID maximo`. A carga não roda de novo num volume já semeado (`seed:done`), então o perfil da carga (`c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`) não entra. Saída: `docker compose down -v`, que apaga os perfis criados e também os retidos do broker. Para conferir a versão do esquema carregada: `docker exec redis redis-cli FCALL_RO tv30_versao 0`, que tem de dar a versão de `infra/redis/esquema.json`.
+- **`{id} da chave: deve ser UUID ...`:** o esquema exige o id do perfil em UUID estrito, sem compatibilidade com outros formatos. Um perfil com outro id (como `user_<epoch-ms>` ou `c3167a18-5dc5`) aparece em `users:index`, `user:{id}`, `user:{id}:consent` e `user:{id}:broadcaster-attrs:*`, também com os motivos `versao do UUID ...`, `variante do UUID ...`, `UUID nulo` ou `UUID maximo`. A carga não roda de novo num volume já semeado (`seed:done`), então o perfil da carga (`c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`) não entra. Saída: `docker compose down -v`, que apaga os perfis criados e também os retidos do broker. Para conferir a versão do esquema carregada: `docker exec redis redis-cli FCALL_RO tv30_version 0`, que tem de dar a versão de `infra/redis/schema.json`.
 - **`campo avatar: SVG em linha nao serve: ...`:** o `avatar` é o nome de um arquivo, e cada perfil gravado com o SVG em linha aparece em `user:{id}`. A escolha do perfil e os atributos de emissora continuam funcionando, e as telas mostram o avatar padrão para eles. O perfil da carga se conserta com `docker exec redis redis-cli HSET user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10 avatar c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg`; o arquivo vem do template para `./user-files/thumbs` pelo `userfiles-seed` (se ainda não estiver lá, `docker compose up -d` o copia). Um perfil sem arquivo de avatar: tire o campo (`docker exec redis redis-cli HDEL user:<id> avatar`, e as telas mostram o padrão) ou recrie o volume (`docker compose down -v`, que apaga os perfis criados e os retidos do broker).
 - **Escrita à mão** pelo `redis-cli` ou pelo Redis Commander, que não passa pelas funções. Grave pela função (`FCALL <funcao> 0 ...`, exemplos em [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis)) ou desfaça a escrita.
 - **`chave sem familia no esquema`:** a chave tem um prefixo do alcance (`user:`, `session:`, `client:`...) mas não é de nenhuma família, como `user:{id}:profile`. Se ninguém a usa, apague.
 
 ## Criação de perfil recusada: `O limite de 5 perfis foi atingido`
 
-O sexto perfil é recusado, sem despejar nenhum (10.3.3). Quem confere é a função `tv30_perfil_grava`, na mesma operação da gravação (`maxMembros` de `users:index`, em `infra/redis/esquema.json`): a recusa (`TV30ESQUEMA tv30_perfil_grava: users:index teto de 5 perfis atingido ...`) vira, no AoP, o 400 com a mensagem. Para abrir espaço, remova um perfil no seletor de perfil: a opção "Remove", embaixo de cada perfil, só aparece com mais de um perfil e pede confirmação; a remoção apaga o perfil, a visibilidade, os atributos de emissora e o arquivo do avatar ([Modelo de dados Redis]({{ site.baseurl }}/modelo-redis)). Num ambiente de teste, `docker compose down -v` volta à carga inicial, apagando os perfis criados e os retidos do broker.
+O sexto perfil é recusado, sem despejar nenhum (10.3.3). Quem confere é a função `tv30_profile_write`, na mesma operação da gravação (`maxMembers` de `users:index`, em `infra/redis/schema.json`): a recusa (`TV30SCHEMA tv30_profile_write: users:index teto de 5 perfis atingido ...`) vira, no AoP, o 400 com a mensagem. Para abrir espaço, remova um perfil no seletor de perfil: a opção "Remove", embaixo de cada perfil, só aparece com mais de um perfil e pede confirmação; a remoção apaga o perfil, a visibilidade, os atributos de emissora e o arquivo do avatar ([Modelo de dados Redis]({{ site.baseurl }}/modelo-redis)). Num ambiente de teste, `docker compose down -v` volta à carga inicial, apagando os perfis criados e os retidos do broker.
 
 Com o Redis sem nenhum perfil, o AoP cria o perfil padrão "Viewer 1", sem avatar, idiomas nem visibilidade, na partida e ao abrir o seletor.
 
@@ -247,12 +247,12 @@ O QtWebEngine não foi testado com os nomes `*.apps.localhost`.
 
 ## Rota exclusiva do cliente local, ou o `/tv3/authorize`, dá 106
 
-As duas superfícies têm as 26 rotas; o que muda de uma para a outra é o 106 ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). Sai nos dois modos, `enforce` e `warn`:
+As duas superfícies têm as 27 rotas; o que muda de uma para a outra é o 106 ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). Sai nos dois modos, `enforce` e `warn`:
 
-- **Na 44643 (externa, HTTPS):** as rotas de uso exclusivo do cliente local (`POST` e `DELETE /tv3/bind-context`, `GET /tv3/remote-device/devices/{classId}` da C.6.15.5 e as rotas por *handle*, `GET` e `DELETE /tv3/remote-device/device/{handle}`) e o `GET /tv3/authorize` respondem 404 `{"error":106}` a qualquer requisição (C.4.1.8; a C.6.1.2 "can only be accessed via the HTTP protocol"). Use a 44642.
-- **Na 44642 (interna, HTTP):** o access token de classe `non-local` só vale no `/tv3/authorize` e no `/tv3/token`; nas demais rotas, 106 (C.4.1.6), com o log `cliente nao local por HTTP fora da C.6.1.2/C.6.1.3`. Depois de obter o token, o cliente não local usa a 44643. Nas rotas só do cliente local, ele recebe antes o 106 da regra de classe (`rota nao disponivel para non-local`; `infra/edgegateway/plugin/handler.go`).
+- **Na 44643 (externa, HTTPS):** as rotas de uso exclusivo do cliente local (`POST` e `DELETE /tv3/bind-context`, `GET /tv3/remote-device/devices/{classId}` da C.6.15.5 e as notificações da 100.0, `GET /tv3/notifications/{className}` e `DELETE /tv3/notifications/{handle}`) e o `GET /tv3/authorize` respondem 404 `{"error":106}` a qualquer requisição (C.4.1.8; a C.6.1.2 "can only be accessed via the HTTP protocol"; na C.6.15.5, a Tabela C.80 lista 107 para o não local: [Não implementado]({{ site.baseurl }}/nao-implementado)). Use a 44642.
+- **Na 44642 (interna, HTTP):** o access token de classe `nonLocal` só vale no `/tv3/authorize` e no `/tv3/token`; nas demais rotas, 106 (C.4.1.6), com o log `cliente nao local por HTTP fora da C.6.1.2/C.6.1.3`. Depois de obter o token, o cliente não local usa a 44643. Nas rotas só do cliente local, ele recebe antes o 106 da regra de classe (`rota nao disponivel para nonLocal`; `infra/edgegateway/plugin/handler.go`).
 
-A C.6.7.9 lista as 20 APIs nas duas superfícies: a restrição aparece pelo 106 no uso, e não na lista.
+A C.6.7.9 lista as 22 APIs nas duas superfícies: a restrição aparece pelo 106 no uso, e não na lista.
 
 ## `POST /tv3/<scid>/users` dá 100
 
@@ -260,12 +260,12 @@ A C.6.7.9 lista as 20 APIs nas duas superfícies: a restrição aparece pelo 106
 
 ## Access token válido recebe 107 (`cliente fora de clients:authorized`)
 
-A borda exige que o `sub` do access token esteja no SET `clients:authorized`, nas rotas que pedem token (`token` e `token+bind`; as de `auth: none` não mudam). Fora dele, a resposta é 404 `{"error":107}` (em `warn`, só o aviso `X-TV30-Auth-Warn: 107`), como a do cliente bloqueado, também com token de classe `local-associated`. O log da borda diz `cliente fora de clients:authorized: autorizacao do espectador ausente ou removida`; token sem `sub` dá `access token sem sub: cliente fora de clients:authorized`, e o bloqueado mantém `cliente bloqueado pelo usuario (C.4.2.2)`, porque é conferido antes.
+A borda exige que o `sub` do access token esteja no SET `clients:authorized`, nas rotas que pedem token (`token` e `token+bind`; as de `auth: none` não mudam). Fora dele, a resposta é 404 `{"error":107}` (em `warn`, só o aviso `X-TV30-Auth-Warn: 107`), como a do cliente bloqueado, também com token de classe `associated`. O log da borda diz `cliente fora de clients:authorized: autorizacao do espectador ausente ou removida`; token sem `sub` dá `access token sem sub: cliente fora de clients:authorized`, e o bloqueado mantém `cliente bloqueado pelo usuario (C.4.2.2)`, porque é conferido antes.
 
 | Causa | O que fazer |
 |---|---|
 | O token não veio do fluxo `/tv3/authorize` + `/tv3/token` (assinado à mão com o `JWT_SECRET`, por exemplo o do `scripts/test-dev-host.sh`), e o `sub` dele nunca foi autorizado pelo espectador | Obtenha o token pelo fluxo real. Em `warn`, a requisição passa com o aviso |
-| O cliente foi bloqueado e depois desbloqueado à mão (`SREM clients:blocked`) | O desbloqueio não o devolve a `clients:authorized`. A tela de gerenciamento da C.4.2.2 não existe; inclua o id com a função do esquema, como o tv3ws faz no boot e o `scripts/test-auth.sh` faz no teste: `docker exec redis redis-cli FCALL tv30_cliente_inclui_autorizado 0 <clientid>`. A função só inclui quem tem `client:{id}` (que fica gravado depois do bloqueio) e está fora de `clients:blocked` |
+| O cliente foi bloqueado e depois desbloqueado à mão (`SREM clients:blocked`) | O desbloqueio não o devolve a `clients:authorized`. A tela de gerenciamento da C.4.2.2 não existe; inclua o id com a função do esquema, como o tv3ws faz no boot e o `scripts/test-auth.sh` faz no teste: `docker exec redis redis-cli FCALL tv30_client_add_authorized 0 <clientid>`. A função só inclui quem tem `client:{id}` (que fica gravado depois do bloqueio) e está fora de `clients:blocked` |
 | O cliente foi autorizado num volume do Redis que foi recriado (`docker compose down -v`) | O registro sumiu com o volume. Autorize de novo com `clientid` novo (o refresh token antigo não vale mais) |
 
 ```bash
@@ -284,7 +284,7 @@ Nas rotas `token+bind` (`infra/edgegateway/routes.json`), depois da classe e do 
 | 104 | Sem o cabeçalho `bind-token` | Mande o bind-token assinado pela emissora |
 | 108 | O bind-token não foi assinado por uma chave registrada (C.6.8.2) para o contexto de serviço da rota: o `{serviceContextId}` do caminho, que é o `globalServiceId` do BAM, ou o serviço corrente em `current-service`. Na C.6.16.3, também sem serviço selecionado | A app da emissora registra a chave pela C.6.8.2 (`POST /tv3/bind-context`, que grava no serviço corrente; `bindcontext.go`). Confira se o contexto da rota é esse serviço |
 
-A app de emissora reconhecida pelo `Origin` (local associado) dispensa o bind-token só no próprio contexto de serviço, o do serviço que a lançou (valor em `origins:associated`). Noutro contexto, recebe 104 ou 108 como qualquer cliente (C.4.1.1). Um access token de classe `local-associated` não dispensa o bind-token: segue a regra geral. O 104 e o 108 seguem o modo: em `warn`, só o aviso `X-TV30-Auth-Warn`.
+A app de emissora reconhecida pelo `Origin` (local associado) dispensa o bind-token só no próprio contexto de serviço, o do serviço que a lançou (valor em `origins:associated`). Noutro contexto, recebe 104 ou 108 como qualquer cliente (C.4.1.1). Um access token de classe `associated` não dispensa o bind-token: segue a regra geral. O 104 e o 108 seguem o modo: em `warn`, só o aviso `X-TV30-Auth-Warn`.
 
 ## A página da TV não conecta no MQTT (`/mqtt`)
 
@@ -323,7 +323,7 @@ A 44643 (superfície externa) fala TLS com o certificado autoassinado do recepto
 
 ## `errors/<client_id>`: `INVALID_JSON` num payload que parece JSON, ou mensagem com `"truncated":true`
 
-O plugin do broker lê o payload inteiro e monta a mensagem de erro sempre como JSON válido ([Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos), *Plugin C do Mosquitto*; detalhes em `infra/docs/09-schema-validation.md`).
+O plugin do broker lê o payload inteiro e monta a mensagem de erro sempre como JSON válido ([Broker MQTT]({{ site.baseurl }}/broker-mqtt)).
 
 - **`INVALID_JSON` num payload que começa como JSON:** o plugin só aceita exatamente um texto JSON. Sobra depois do valor (`{"value":1}lixo`, `{"a":1}{"b":2}`), NUL em qualquer posição (um terminador de string C contado no comprimento, por exemplo), comentário, aspas simples e vírgula sobrando dão `INVALID_JSON`; espaço, tab, CR e LF em volta do valor passam. Mande só o JSON.
 - **Texto recusado num tópico de string** (`aop/currentUser`, `aop/currentService` e as camadas `rxgui`, `graphics` e `video/url`): o payload que não é texto JSON vale inteiro como string; o que é JSON (`42`, `true`, `{"id":"x"}`) vale como esse valor e falha no `type`.
@@ -343,8 +343,8 @@ docker exec redis redis-cli GET session:current-user
 docker exec redis redis-cli GET session:current-service-id # servico corrente (vazio = nenhum)
 docker exec redis redis-cli HGETALL origins:associated   # origem da app em execucao -> servico
 docker exec redis redis-cli SMEMBERS services:announced  # servicos do Application Catalog (BAMT)
-docker exec redis redis-cli FCALL_RO tv30_auditoria 0    # chaves fora do esquema; vazio = ok
-docker exec redis redis-cli FCALL_RO tv30_versao 0       # versao do esquema carregado
+docker exec redis redis-cli FCALL_RO tv30_audit 0    # chaves fora do esquema; vazio = ok
+docker exec redis redis-cli FCALL_RO tv30_version 0       # versao do esquema carregado
 docker exec redis redis-cli SMEMBERS clients:authorized  # clientes que a borda aceita
 
 # MQTT
@@ -360,5 +360,5 @@ Redis Commander: a porta de host é dinâmica. `docker port redis 18081` mostra 
 
 ## Redis Commander recusa o login padrão ou derruba o Redis
 
-- **O container `redis` reiniciou sozinho, e o log termina com `[redis] commander (pid <n>) morreu — derrubando o container inteiro (morre-inteiro)`:** a morte do commander derruba o container, e o `restart: unless-stopped` o traz de volta; até ele ficar saudável de novo, os serviços recebem a falha do Redis. Se a linha disser `redis-server`, foi o banco que caiu.
+- **O container `redis` reiniciou sozinho, e o log termina com `[redis] commander (pid <n>) died — bringing the whole container down`:** a morte do commander derruba o container, e o `restart: unless-stopped` o traz de volta; até ele ficar saudável de novo, os serviços recebem a falha do Redis. Se a linha disser `redis-server`, foi o banco que caiu.
 - **Login recusado com `admin`/`tv30-redis-admin`:** o `.env` da raiz define outro usuário ou outra senha. Para ver o valor em uso, rode `docker exec redis printenv REDIS_COMMANDER_USER REDIS_COMMANDER_PASSWORD`. Depois de mudar o `.env`, recrie o container com `docker compose up -d redis`, porque o valor só é lido na subida.
