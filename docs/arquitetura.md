@@ -12,8 +12,8 @@ O diagrama descreve o estado atual do código. Cada seta é um canal que o códi
 
 ```
  Clientes das APIs: app de emissora (no navegador da TV), app local autônomo, cliente não local
-       │ HTTP  :44642  interna (porta fixa da C.3.4): as 26 rotas; o não local só usa authorize e token
-       │ HTTPS :44643  externa (TLS na borda): as 26 rotas; exclusivas do local e authorize dão 106
+       │ HTTP  :44642  interna (porta fixa da C.3.4): as 27 rotas; o não local só usa authorize e token
+       │ HTTPS :44643  externa (TLS na borda): as 27 rotas; exclusivas do local e authorize dão 106
        ▼
  ┌─────────────┐  HTTP(S), ginga_net   ┌─────────┐   WebSocket 45000–45199,
  │ edgegateway │ ────────────────────▶ │  tv3ws  │ ◀── direto, sem a borda ── aparelho remoto

@@ -455,7 +455,7 @@ c.on("error",e=>{console.log(e.message);process.exit(1)});'
 # HS256 accessToken with the same claims tv3ws issues (manager.ts).
 JS_TOKEN='const c=require("crypto");const b=o=>Buffer.from(JSON.stringify(o)).toString("base64url");
 const n=Math.floor(Date.now()/1000);
-const h=b({alg:"HS256",typ:"JWT"}),p=b({iat:n,nbf:n,exp:n+600,iss:process.env.ISS,sub:"tv30-devhost-teste",class:"local-autonomous"});
+const h=b({alg:"HS256",typ:"JWT"}),p=b({iat:n,nbf:n,exp:n+600,iss:process.env.ISS,sub:"tv30-devhost-teste",class:"standAlone"});
 process.stdout.write(h+"."+p+"."+c.createHmac("sha256",process.env.SEC).update(h+"."+p).digest("base64url"));'
 
 # Both checks run in the environment of the CURRENT module; the label says
@@ -651,7 +651,8 @@ cenario_1() {
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
     USER_THUMBS="$ud/thumbs" \
-    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 LOG_LEVEL=INFO || return
+    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 \
+    LISTEN_ATTEMPTS=10 MAX_REGISTRATIONS=32 PING_INTERVAL_MS=15000 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || { host_stop; return; }
   checar_redis_mqtt
@@ -738,7 +739,8 @@ cenario_4() {
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
     USER_THUMBS="$ud/thumbs" \
-    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 LOG_LEVEL=INFO || return
+    SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 \
+    LISTEN_ATTEMPTS=10 MAX_REGISTRATIONS=32 PING_INTERVAL_MS=15000 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || return
 

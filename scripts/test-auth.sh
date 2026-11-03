@@ -83,7 +83,7 @@ die()  { echo "ERRO: $*" >&2; exit 2; }
 rc() { docker exec redis redis-cli "$@"; }
 # fcall <function> [args...]: writes through the function of the schema
 # (numkeys 0), in place of the service that owns the family; a refusal
-# (TV30ESQUEMA) or an error gives a message and a return != 0.
+# (TV30SCHEMA) or an error gives a message and a return != 0.
 fcall() {
   local out st
   out=$(docker exec redis redis-cli --no-raw FCALL "$1" 0 "${@:2}" 2>&1); st=$?
@@ -97,10 +97,10 @@ fcall() {
 }
 # Current service in place of tv3ws (mirror of aop/currentService); empty
 # means no current service.
-servico_corrente() { fcall tv30_sessao_servico_id "$1" >/dev/null; }
+servico_corrente() { fcall tv30_session_service_id "$1" >/dev/null; }
 # Schema audit: one "key | family | reason" line per finding.
 auditoria() {
-  docker exec redis redis-cli --raw FCALL_RO tv30_auditoria 0 2>&1 \
+  docker exec redis redis-cli --raw FCALL_RO tv30_audit 0 2>&1 \
     | awk 'NR%3==1{k=$0} NR%3==2{f=$0} NR%3==0{print k " | " f " | " $0}'
 }
 env_of() { docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" | sed -n "s/^$2=//p" | head -1; }
@@ -128,9 +128,9 @@ ORIG_CS_HASH=$(rc HGETALL session:current-service | base64 | tr -d "\n")
 ORIG_ANUNCIADOS=$(rc --raw SMEMBERS services:announced | tr -d '\r')
 echo "== borda: modo=$ORIG_MODE variante=$ORIG_VARIANT; servico corrente='${ORIG_SVC}'; $CS_TOPIC retido='${ORIG_CS}' =="
 # Without the function library the script cannot act as the services.
-VERSAO_ESQUEMA=$(rc --raw FCALL_RO tv30_versao 0 2>&1)
+VERSAO_ESQUEMA=$(rc --raw FCALL_RO tv30_version 0 2>&1)
 case "$VERSAO_ESQUEMA" in
-  ''|*ERR*|*rror*) die "funcoes do Redis ausentes (FCALL_RO tv30_versao 0: '$VERSAO_ESQUEMA'): reconstrua a imagem do redis (docker compose build redis && docker compose up -d redis)" ;;
+  ''|*ERR*|*rror*) die "funcoes do Redis ausentes (FCALL_RO tv30_version 0: '$VERSAO_ESQUEMA'): reconstrua a imagem do redis (docker compose build redis && docker compose up -d redis)" ;;
 esac
 echo "== Redis: biblioteca de funcoes tv30, esquema versao $VERSAO_ESQUEMA =="
 AUD_ANTES=$(auditoria)
@@ -165,6 +165,15 @@ TV3WS_TOUCHED=0
 REDIS_TOUCHED=0
 # 1 after the C.6.3.1 cases publish aop/currentService.
 CS_TOUCHED=0
+
+# app_state <state>: publishes the change of state of the test associated
+# application, in place of the Application Lifecycle Manager (not
+# retained).
+APP_STATE_TOPIC=aop/application-lifecycle-manager/application-state
+app_state() {
+  docker exec mqtt-broker mosquitto_pub -q 1 -t "$APP_STATE_TOPIC" \
+    -m "{\"serviceContextId\":\"$SVC_A\",\"appId\":\"tv30-test-assoc-$RUN\",\"origin\":\"$ASSOC\",\"state\":\"$1\"}"
+}
 
 # cs_publish <sid>: publishes aop/currentService retained in place of the
 # platform (empty deletes the retained message; the broker delivers "" to the
@@ -217,7 +226,7 @@ anuncia() {
   fi
   ANUNCIO_PELA_LLS=0
   # shellcheck disable=SC2086
-  fcall tv30_servicos_anunciados $ORIG_ANUNCIADOS "$@" >/dev/null || return 1
+  fcall tv30_announced_services $ORIG_ANUNCIADOS "$@" >/dev/null || return 1
   if [ $# -gt 0 ]; then ANUNCIO_FCALL=1; else ANUNCIO_FCALL=0; fi
   TESTE_ANUNCIADOS="$*"
 }
@@ -241,7 +250,7 @@ restaura_redis() {
   # The retained aop/currentService before Redis: tv3ws rewrites
   # session:current-service-id and the hash session:current-service when it
   # gets it. The previous hash comes back through the function
-  # (tv30_sessao_servico); without a previous hash, what tv3ws rewrote for the
+  # (tv30_session_service); without a previous hash, what tv3ws rewrote for the
   # restored message stays.
   if [ "$CS_TOUCHED" = 1 ]; then
     if cs_publish "$ORIG_CS"; then echo "$CS_TOPIC retido restaurado ('$ORIG_CS')"
@@ -249,7 +258,7 @@ restaura_redis() {
     local k v hs=()
     while IFS= read -r k && IFS= read -r v; do hs+=("$k" "$v"); done < <(printf '%s' "$ORIG_CS_HASH" | base64 -d)
     if [ "${#hs[@]}" -gt 0 ]; then
-      fcall tv30_sessao_servico "${hs[@]}" >/dev/null \
+      fcall tv30_session_service "${hs[@]}" >/dev/null \
         || echo "ATENCAO: o hash session:current-service de antes da suite nao passou no esquema (veja a auditoria)"
     fi
   fi
@@ -259,7 +268,8 @@ restaura_redis() {
   if [ "$LLS_RETIDO" = 1 ] || [ "$ANUNCIO_FCALL" = 1 ]; then
     anuncia 2>/dev/null || echo "ATENCAO: servicos de teste ainda em services:announced: $(rc --raw SMEMBERS services:announced | tr '\n' ' ')"
   fi
-  fcall tv30_origem_remove "$ASSOC" >/dev/null
+  fcall tv30_origin_remove "$ASSOC" >/dev/null
+  app_state ended >/dev/null 2>&1
   # Test data (ids and services with the suffix of this run): a direct write
   # on purpose, since no service deletes a client or the whole bind-context
   # list, so there is no function for it. What is left (the sets without the
@@ -334,6 +344,22 @@ expect_err() {
 expect_api_version() {
   local want=${2:-2.0} v; v=$(hdr API-Version)
   if [ "$v" = "$want" ]; then pass "$1 -> API-Version: $v"; else fail "$1 -> esperado API-Version: $want, veio '$v'"; fi
+}
+
+# expect_list_v100 NAME [curl args]: the listing of C.6.15.5 in 100.0
+# (proposal v2 of C.6.15), answered by tv3ws with sequence and API-Version
+# 100.0. tv3ws identifies the local client by the class and the identity the
+# edge passes on (X-TV30-Client-Class, X-TV30-Client-Id): without them, it
+# gives 107.
+expect_list_v100() {
+  local name=$1 why=""; shift
+  req GET "$H_INT/tv3/remote-device/devices/x" -H 'Accept-Version: 100.0' "$@"
+  [ "$CE" = 0 ] || why="$why curl=$CE"
+  [ "$ST" = 200 ] || why="$why status=$ST corpo=$(short)"
+  [ "$(origin_of)" = tv3ws ] || why="$why origem=borda"
+  body | grep -Eq '^\{"sequence":[0-9]+' || why="$why corpo=$(short)"
+  [ "$(hdr API-Version)" = 100.0 ] || why="$why api-version='$(hdr API-Version)'"
+  if [ -z "$why" ]; then pass "$name -> 200 do tv3ws $(short)"; else fail "$name -> esperado 200 do tv3ws com sequence:$why"; fi
 }
 
 # Reached tv3ws (X-Powered-By: Express) without a block or warning from the
@@ -495,16 +521,16 @@ out('BT_EXP', jwt(H('HS256'), { iat: now - 7200, nbf: now - 7200, exp: now - 360
 out('BT_IAT', jwt(H('HS256'), { iat: now + 3600, nbf: now - 10, exp: now + 7200 }, hs('HS256', hs256)));
 out('BT_NONE', jwt({ alg: 'none', typ: 'JWT' }, ok, () => ''));
 out('AT_EXPIRED', jwt(H('HS256'),
-  { iat: now - 7200, nbf: now - 7200, exp: now - 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'local-autonomous' },
+  { iat: now - 7200, nbf: now - 7200, exp: now - 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'standAlone' },
   hs('HS256', process.env.SECRET)));
 // Within its period, but signed with another secret (tampered, for warn).
 out('AT_BADSIG', jwt(H('HS256'),
-  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'local-autonomous' },
+  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.SUB, class: 'standAlone' },
   hs('HS256', 'tv30-test-outro-segredo-' + crypto.randomBytes(8).toString('hex'))));
 // Valid, of the client the script puts in clients:authorized in place of
 // tv3ws.
 out('AT_WARN', jwt(H('HS256'),
-  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.WARN, class: 'local-autonomous' },
+  { iat: now, nbf: now, exp: now + 3600, iss: process.env.ISS, sub: process.env.WARN, class: 'standAlone' },
   hs('HS256', process.env.SECRET)));
 JS
 docker run --rm -i -e ISS="$EDGE_ISSUER" -e SUB="$CLIENT" -e WARN="$WARN_CID" -e SECRET="$EDGE_SECRET" "$NODE_IMG" node - <"$TMP/gen.js" >"$TMP/mat" 2>"$TMP/mat.err" \
@@ -677,8 +703,8 @@ pair() {
   else
     fail "$S [44642] primeiro /token por HTTP -> esperado corpo cifrado application/octet-stream (C.6.1.3.3), veio '$ct'"
   fi
-  if [ -n "$NL_AT" ] && [ "$NL_CLASS" = non-local ] && [ "$NL_SUB" = "$cid" ] && [ -n "$NL_RT" ]; then
-    pass "$S accessToken com class=non-local e sub=clientid, mais refreshToken (tokenType=$NL_TT, expiresIn=$NL_EXP)"
+  if [ -n "$NL_AT" ] && [ "$NL_CLASS" = nonLocal ] && [ "$NL_SUB" = "$cid" ] && [ -n "$NL_RT" ]; then
+    pass "$S accessToken com class=nonLocal e sub=clientid, mais refreshToken (tokenType=$NL_TT, expiresIn=$NL_EXP)"
   else
     fail "$S credencial do primeiro /token: class='$NL_CLASS' sub='$NL_SUB' accessToken=${NL_AT:+presente} refreshToken=${NL_RT:+presente}"
     return 1
@@ -748,7 +774,7 @@ ext_skip() { if [ "$1" = "$H_EXT" ] && [ "$EXT_OK" != 1 ]; then info "pulado (se
 # 304: the test services go in it; $SVC_FORA never.
 anuncia "$SVC_A" "$SVC_B" || die "nao consegui por $SVC_A e $SVC_B no Application Catalog"
 if [ "$ANUNCIO_PELA_LLS" = 1 ]; then info "$SVC_A e $SVC_B no Application Catalog pela BAMT de teste ($LLS_TOPIC), gravada pelo AoP"
-else info "$SVC_A e $SVC_B no Application Catalog pela funcao tv30_servicos_anunciados, no lugar do AoP"; fi
+else info "$SVC_A e $SVC_B no Application Catalog pela funcao tv30_announced_services, no lugar do AoP"; fi
 
 # ==================================================================== WARN ===
 echo; echo "== 1. modo warn (borda recriada com AUTH_ENFORCE=warn; o padrao e enforce) =="
@@ -780,7 +806,7 @@ if true; then
   expect_err "[warn 44643] GET /tv3/authorize (so por HTTP, C.4.1.8: 106 tambem em warn)" 106 borda GET "$H_EXT/tv3/authorize?clientid=x&display-name=y"
   # 304 also blocks in warn, as 300: it needs a valid access token (107 in
   # warn only warns and ends the decision) of an authorized client.
-  fcall tv30_cliente_autoriza "$WARN_CID" class local-autonomous refreshToken tv30-test-warn >/dev/null \
+  fcall tv30_client_authorize "$WARN_CID" class standAlone refreshToken tv30-test-warn >/dev/null \
     || fail "autorizacao de $WARN_CID pela funcao recusada"
   servico_corrente "$SVC_A"
   WARN_TOK=(-H "Authorization: Bearer $AT_WARN")
@@ -884,7 +910,8 @@ echo "ok: as duas superficies registraram o plugin em enforce"
 # In place of tv3ws (current service) and of the AoP (associated origin),
 # through the functions of the schema.
 servico_corrente "$SVC_A" || die "nao consegui gravar o servico corrente de teste pela funcao"
-fcall tv30_origem_registra "$ASSOC" "$SVC_A" >/dev/null || die "nao consegui registrar a origem associada de teste pela funcao"
+fcall tv30_origin_register "$ASSOC" "$SVC_A" >/dev/null || die "nao consegui registrar a origem associada de teste pela funcao"
+app_state started || die "nao consegui publicar o inicio da aplicacao associada de teste"
 ASSOC_H=(-H "Origin: $ASSOC")
 
 echo; echo "-- access token (fluxo real /tv3/authorize + /tv3/token) --"
@@ -984,20 +1011,20 @@ expect_pass "[44642] X-TV30-API-Version do cliente nao passa" GET "$H_INT/tv3/cu
 expect_api_version "[44642] X-TV30-API-Version do cliente nao passa" 2.0
 
 # Block by the viewer: the script acts as tv3ws and blocks through the
-# function (tv30_cliente_bloqueia: leaves clients:authorized and enters
+# function (tv30_client_block: leaves clients:authorized and enters
 # clients:blocked, as BlockClient); from here on only the edge checks the
 # token of this client. Unblock: there is no service operation, so the
 # script removes the id from clients:blocked directly, on purpose; the id
 # stays out of both sets, a state that satisfies the schema.
 desbloqueia() { rc SREM clients:blocked "$1" >/dev/null; }
-fcall tv30_cliente_bloqueia "$CLIENT" >/dev/null || fail "bloqueio de $CLIENT pela funcao recusado"
+fcall tv30_client_block "$CLIENT" >/dev/null || fail "bloqueio de $CLIENT pela funcao recusado"
 expect_err "[44642] cliente em clients:blocked" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
 desbloqueia "$CLIENT"
 # The edge requires the client in clients:authorized: unblocked without a
 # new authorization, it is still refused; back in the set
-# (tv30_cliente_inclui_autorizado, as tv3ws on boot), it passes.
+# (tv30_client_add_authorized, as tv3ws on boot), it passes.
 expect_err "[44642] cliente desbloqueado, fora de clients:authorized" 107 borda GET "$H_INT/tv3/current-service" "${TOK[@]}"
-fcall tv30_cliente_inclui_autorizado "$CLIENT" >/dev/null || fail "reinclusao de $CLIENT em clients:authorized pela funcao recusada"
+fcall tv30_client_add_authorized "$CLIENT" >/dev/null || fail "reinclusao de $CLIENT em clients:authorized pela funcao recusada"
 expect_pass "[44642] cliente de volta em clients:authorized passa" GET "$H_INT/tv3/current-service" "${TOK[@]}"
 
 echo; echo "-- reuso de clientid: 101 sem nova consulta ao espectador --"
@@ -1248,7 +1275,7 @@ req DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: tv30-test-inexiste
 [ "$ST" = 200 ] && pass "DELETE de chave inexistente -> 200" || fail "DELETE inexistente -> status=$ST corpo=$(short)"
 expect_err "DELETE sem cabecalho key" 105 borda DELETE "$H_INT/tv3/bind-context" "${ASSOC_H[@]}"
 expect_err "DELETE por nao associado" 106 borda DELETE "$H_INT/tv3/bind-context" -H "key: $HS512_KEY"
-# The DELETE (classes: local-associated) also gives 106 on 44643.
+# The DELETE (classes: associated) also gives 106 on 44643.
 expect_err "[44643] DELETE bind-context (exclusiva do cliente local)" 106 borda DELETE "$H_EXT/tv3/bind-context" "${ASSOC_H[@]}" -H "key: $HS512_KEY"
 expect_pass "a HS512 continua registrada depois do DELETE recusado na 44643" GET "$H_INT$CU" "${TOK[@]}" -H "bind-token: $BT_HS512"
 servico_corrente ""
@@ -1284,7 +1311,11 @@ else
   fail "[44643] GET /tv3/api-info -> status=$ST origem=$(origin_of), esperada a lista da 44642 corpo=$(short)"
 fi
 expect_edge "[44643] GET /tv3/api-info/tv3ws-bind-context-register" '^\{"receiverApi":\{"id":"tv3ws-bind-context-register","version":"2.0"\}\}$' GET "$H_EXT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
-expect_edge "[44643] GET /tv3/api-info/tv3ws-remotedevice-communication" '^\{"receiverApi":\{"id":"tv3ws-remotedevice-communication","version":"[0-9.]+"\}\}$' GET "$H_EXT/tv3/api-info/tv3ws-remotedevice-communication" "${TOK[@]}"
+# C.6.7.8: the APIs of C.6.15 and C.6.2 report 100.0, the latest version
+# they serve.
+for API in tv3ws-remotedevice-register tv3ws-remotedevice-cancel tv3ws-remotedevice-communication tv3ws-register-notifications tv3ws-deregister-notifications; do
+  expect_edge "[44643] GET /tv3/api-info/$API" "^\\{\"receiverApi\":\\{\"id\":\"$API\",\"version\":\"100\\.0\"\\}\\}\$" GET "$H_EXT/tv3/api-info/$API" "${TOK[@]}"
+done
 expect_edge "[44642] GET /tv3/api-info/tv3ws-bind-context-register" '^\{"receiverApi":\{"id":"tv3ws-bind-context-register","version":"2.0"\}\}$' GET "$H_INT/tv3/api-info/tv3ws-bind-context-register" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=ncl (subsistema conhecido, sem API)" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=ncl" "${TOK[@]}"
 expect_edge "[44642] GET /tv3/api-info?subsystem=nclua" '^\{"receiverApis":\[\]\}$' GET "$H_INT/tv3/api-info?subsystem=nclua" "${TOK[@]}"
@@ -1358,18 +1389,18 @@ for PM in qrcode kex; do
   # C.4.1.8).
   expect_err "$S [44642] GET /tv3/remote-device/devices/x (C.6.15.5, so cliente local)" 106 borda GET "$H_INT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
   expect_err "$S [44643] GET /tv3/remote-device/devices/x (exclusiva do cliente local)" 106 borda GET "$H_EXT/tv3/remote-device/devices/x" "${NL_TOK[@]}"
-  # Routes by handle (100.0): the same rule.
-  for M in GET DELETE; do
-    expect_err "$S [44642] $M /tv3/remote-device/device/x (100.0, so cliente local)" 106 borda $M "$H_INT/tv3/remote-device/device/x" "${NL_TOK[@]}"
-    expect_err "$S [44643] $M /tv3/remote-device/device/x (exclusiva do cliente local)" 106 borda $M "$H_EXT/tv3/remote-device/device/x" "${NL_TOK[@]}"
-  done
+  # Notifications (C.6.2.2, C.6.2.3; only 100.0): the same rule.
+  expect_err "$S [44642] GET /tv3/notifications/remote-device (100.0, so cliente local)" 106 borda GET "$H_INT/tv3/notifications/remote-device" "${NL_TOK[@]}" -H 'Accept-Version: 100.0'
+  expect_err "$S [44643] GET /tv3/notifications/remote-device (exclusiva do cliente local)" 106 borda GET "$H_EXT/tv3/notifications/remote-device" "${NL_TOK[@]}" -H 'Accept-Version: 100.0'
+  expect_err "$S [44642] DELETE /tv3/notifications/x (100.0, so cliente local)" 106 borda DELETE "$H_INT/tv3/notifications/x" "${NL_TOK[@]}" -H 'Accept-Version: 100.0'
+  expect_err "$S [44643] DELETE /tv3/notifications/x (exclusiva do cliente local)" 106 borda DELETE "$H_EXT/tv3/notifications/x" "${NL_TOK[@]}" -H 'Accept-Version: 100.0'
   expect_err "$S [44642] renovacao por HTTP com refresh-token" 106 tv3ws GET "$H_INT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
   if ! ext_skip "$H_EXT" "$S [44643] renovacao com refresh-token"; then
     req GET "$H_EXT/tv3/token?clientid=$NCID&refresh-token=$NL_RT"
     RCT=$(hdr Content-Type)
     if [ "$ST" = 200 ] && nl_node MODO=token CT="$RCT" BODY="$(base64 <"$TMP/b" | tr -d "\n")" SECRET="$NL_SECRET" \
-       && [ "$NL_ENC" = 0 ] && [ -n "$NL_AT" ] && [ "$NL_CLASS" = non-local ]; then
-      pass "$S [44643] renovacao com refresh-token -> 200 JSON sem a cifra do primeiro acesso, accessToken class=non-local"
+       && [ "$NL_ENC" = 0 ] && [ -n "$NL_AT" ] && [ "$NL_CLASS" = nonLocal ]; then
+      pass "$S [44643] renovacao com refresh-token -> 200 JSON sem a cifra do primeiro acesso, accessToken class=nonLocal"
     else
       fail "$S [44643] renovacao com refresh-token -> status=$ST content-type='$RCT' corpo=$(short) ${NL_ERR}"
     fi
@@ -1382,16 +1413,37 @@ for PM in qrcode kex; do
 done
 
 expect_pass "[44642] GET /tv3/remote-device/devices/x (C.6.15.5) pelo cliente local" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}"
-expect_pass "[44642] GET /tv3/remote-device/device/x (100.0) pelo cliente local" GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
-expect_err "[44642] GET /tv3/remote-device/device/x sem Accept-Version (so existe na 100.0)" 100 borda GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}"
-expect_err "[44642] GET /tv3/remote-device/device/x com 2.0" 100 borda GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 2.0'
-expect_pass "[44642] GET /tv3/remote-device/devices/x com 100.0 (C.6.15.5, so handles)" GET "$H_INT/tv3/remote-device/devices/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
-expect_api_version "[44642] C.6.15.5 com 100.0" 100.0
-# 100.0 reaches tv3ws on the internal path /v100.0, where its handlers are:
-# a nonexistent handle gives the 101 of tv3ws.
-expect_err "[44642] GET /tv3/remote-device/device/x com 100.0 (handle inexistente)" 101 tv3ws GET "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
-expect_api_version "[44642] rota por handle com 100.0" 100.0
-expect_err "[44642] DELETE /tv3/remote-device/device/x com 100.0 (handle inexistente)" 101 tv3ws DELETE "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
+# 100.0 (proposal v2 of C.6.15) reaches tv3ws on the internal path /v100.0.
+expect_list_v100 "[44642] C.6.15.5 com 100.0 pelo local autonomo (classe e clientid repassados)" "${TOK[@]}"
+# tv3ws keeps the running application in memory, and the suite restarts it:
+# the start of the test application is published again.
+app_state started || fail "inicio da aplicacao associada de teste nao publicado"
+expect_list_v100 "[44642] C.6.15.5 com 100.0 pelo associado (classe repassada)" "${ASSOC_H[@]}"
+expect_list_v100 "[44642] C.6.15.5 com 100.0 e X-TV30-Client-Class forjado (apagado pela borda)" "${TOK[@]}" -H 'X-TV30-Client-Class: associated' -H 'X-TV30-Client-Id: forjado'
+# Update of a registration (C.6.15.2) of a nonexistent handle: 305 in both
+# versions.
+expect_err "[44642] POST /tv3/remote-device/x sem Accept-Version (2.0, handle inexistente)" 305 tv3ws POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
+expect_err "[44642] POST /tv3/remote-device/x com 2.0 (handle inexistente)" 305 tv3ws POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 2.0' -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
+expect_err "[44642] POST /tv3/remote-device/x com 100.0 (handle inexistente)" 305 tv3ws POST "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 100.0' -H 'Content-Type: application/json' -d '{"deviceClass":"x","supportedTypes":[]}'
+expect_api_version "[44642] atualizacao com 100.0" 100.0
+# Deregistration (C.6.15.3) of a nonexistent handle: 305 in both versions.
+expect_err "[44642] DELETE /tv3/remote-device/x com 100.0 (handle inexistente)" 305 tv3ws DELETE "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
+expect_err "[44642] DELETE /tv3/remote-device/x com 2.0 (handle inexistente)" 305 tv3ws DELETE "$H_INT/tv3/remote-device/x" "${TOK[@]}" -H 'Accept-Version: 2.0'
+# Notifications (C.6.2.2, C.6.2.3): only 100.0, for the local client.
+req GET "$H_INT/tv3/notifications/remote-device" "${TOK[@]}" -H 'Accept-Version: 100.0'
+if [ "$ST" = 200 ] && [ "$(origin_of)" = tv3ws ] && body | grep -q '"url":"ws://' && [ "$(hdr API-Version)" = 100.0 ]; then
+  pass "[44642] GET /tv3/notifications/remote-device com 100.0 -> 200 do tv3ws com a url do ouvinte"
+else
+  fail "[44642] GET /tv3/notifications/remote-device com 100.0 -> status=$ST origem=$(origin_of) api-version='$(hdr API-Version)' corpo=$(short)"
+fi
+expect_err "[44642] GET /tv3/notifications/remote-device sem Accept-Version (so existe na 100.0)" 100 borda GET "$H_INT/tv3/notifications/remote-device" "${TOK[@]}"
+expect_err "[44642] GET /tv3/notifications/remote-device com 2.0" 100 borda GET "$H_INT/tv3/notifications/remote-device" "${TOK[@]}" -H 'Accept-Version: 2.0'
+# The routes by handle of the former 100.0 no longer exist.
+for V in 2.0 100.0; do
+  for M in GET DELETE; do
+    expect_err "[44642] $M /tv3/remote-device/device/x com $V (rota retirada)" 100 borda $M "$H_INT/tv3/remote-device/device/x" "${TOK[@]}" -H "Accept-Version: $V"
+  done
+done
 
 echo; echo "-- rota nao declarada e preflight CORS --"
 for H in "$H_INT" "$H_EXT"; do
@@ -1399,7 +1451,7 @@ for H in "$H_INT" "$H_EXT"; do
   expect_err "$S GET /tv3/naoexiste" 100 borda GET "$H/tv3/naoexiste"
   # The internal path (edge -> service) sent by the client is not a declared
   # route.
-  expect_err "$S GET /v100.0/tv3/remote-device/device/x (caminho interno)" 100 borda GET "$H/v100.0/tv3/remote-device/device/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
+  expect_err "$S GET /v100.0/tv3/notifications/remote-device (caminho interno)" 100 borda GET "$H/v100.0/tv3/notifications/remote-device" "${TOK[@]}" -H 'Accept-Version: 100.0'
   expect_err "$S GET /v100.0/tv3/remote-device/devices/x (caminho interno)" 100 borda GET "$H/v100.0/tv3/remote-device/devices/x" "${TOK[@]}" -H 'Accept-Version: 100.0'
   expect_err "$S GET /tv3/xyz/abc" 100 borda GET "$H/tv3/xyz/abc"
   expect_err "$S GET /tv3/abc" 100 borda GET "$H/tv3/abc"
@@ -1534,7 +1586,7 @@ echo; echo "-- esquema do Redis: auditoria depois de desfazer o que a suite seme
 restaura_redis
 AUD=$(auditoria)
 if [ -z "$AUD" ]; then
-  pass "auditoria do esquema vazia (FCALL_RO tv30_auditoria 0) depois da suite"
+  pass "auditoria do esquema vazia (FCALL_RO tv30_audit 0) depois da suite"
 else
   ANTES=""
   [ -n "$AUD_ANTES" ] && ANTES=" (ja havia achados ANTES da suite: volume antigo? ver o aviso do comeco e docs/modelo-redis.md)"

@@ -30,12 +30,10 @@ O que a ABNT NBR 25608 especifica e o testbed não implementa, e o que ele imple
 
 ## APIs da Tabela C.2 não implementadas
 
-Das 66 APIs da Tabela C.2, o testbed implementa 20, listadas pela C.6.7.9 (`GET /tv3/api-info`) e em [APIs do tv3ws]({{ site.baseurl }}/apis-tv3ws). Faltam:
+Das 66 APIs da Tabela C.2, o testbed implementa 22, listadas pela C.6.7.9 (`GET /tv3/api-info`) e em [APIs do tv3ws]({{ site.baseurl }}/apis-tv3ws). Faltam:
 
 | Seção | API id | Título da seção |
 |---|---|---|
-| C.6.2.2 | `tv3ws-register-notifications` | Registering event notifications |
-| C.6.2.3 | `tv3ws-deregister-notifications` | Deregistering event notifications |
 | C.6.3.2 | `tv3ws-list-service` | Obtaining the list of the available DTV services |
 | C.6.3.3 | `tv3ws-select-service` | Selecting a DTV service |
 | C.6.4.1 | `tv3ws-service-apps` | Obtaining the list of Broadcaster Applications available in a service |

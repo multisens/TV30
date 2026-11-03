@@ -10,7 +10,7 @@ O **tv3ws** é a implementação dos **TV 3.0 WebServices** da ABNT NBR 25608 (A
 
 Dois grupos de APIs declarados na borda **não** chegam ao tv3ws: a borda os responde sozinha (C.6.8, `/tv3/bind-context`, e C.6.7.8/C.6.7.9, `/tv3/api-info`). Eles aparecem na tabela abaixo, marcados "(borda)". Qual processo responde cada API é decisão deste testbed; a norma só define as APIs.
 
-O cliente não fala com o tv3ws diretamente: todo acesso às APIs passa pela **borda** ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). As duas superfícies têm as 26 rotas: a interna, `http://<host>:44642` (`Server-BaseURL`), e a externa, `https://<host>:44643` (`Server-SecureBaseURL`, com TLS). A exceção são os WebSockets de remote-device: o tv3ws publica a faixa 45000–45199 no host, e o cliente abre direto a URL que a API devolve. O ponto de entrada do dispositivo remoto (registro, C.6.15.2) sai em `wss://<SERVER_URL>:<porta>`, com o certificado do receptor (ou `ws://` com `TV3WS_WS_TLS=false`); o local (C.6.15.5 e ativação por *handle*), sempre em `ws://<SERVER_URL>:<porta>`.
+O cliente não fala com o tv3ws diretamente: todo acesso às APIs passa pela **borda** ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)). As duas superfícies têm as 27 rotas: a interna, `http://<host>:44642` (`Server-BaseURL`), e a externa, `https://<host>:44643` (`Server-SecureBaseURL`, com TLS). A exceção são os WebSockets de remote-device: o tv3ws publica a faixa 45000–45199 no host, e o cliente abre direto a URL que a API devolve. O ponto de entrada do dispositivo remoto (registro, C.6.15.2) sai em `wss://<SERVER_URL>:<porta>`, com o certificado do receptor (ou `ws://` com `TV3WS_WS_TLS=false`); o local (C.6.15.5 e ativação por *handle*), sempre em `ws://<SERVER_URL>:<porta>`.
 
 > Borda, mensageria e Redis são decisões de implementação do testbed, não da norma.
 
@@ -24,26 +24,26 @@ O cliente não fala com o tv3ws diretamente: todo acesso às APIs passa pela **b
 - **Falha do Redis.** Comando sem resposta em 1,5 s falha (`tv3ws/src/redis-client.ts`), e a API responde 404 `{"error":200}`.
 - **CORS.** Quem aplica é a borda. O tv3ws não envia cabeçalhos CORS, com uma exceção: o `/manifest` manda `Access-Control-Expose-Headers` com os seis nomes da C.3.4.
 - **Versão (C.3.6).** Quem negocia é a borda, rota a rota, pelas versões do `routes.json` (campo `versions`; ausente = 2.0). Sem `Accept-Version` vale a 2.0; fora do formato X.Y, 101; versão que a rota não serve, 100. A versão decidida chega ao tv3ws no cabeçalho interno `X-TV30-API-Version`, e ele responde nela, com `API-Version` em toda resposta (C.3.6.6). No erro 100, `API-Version` é a versão mais recente do servidor, 100.0.
-  - **2.0** é a norma. **100.0** é uma extensão do testbed para o remote-device por *handle* (as versões de 100 em diante ficam reservadas às extensões do testbed). A C.6.15.5 serve as duas: na 2.0 a listagem traz o `url` de cada aparelho; na 100.0, só os *handles*. `GET` e `DELETE /tv3/remote-device/device/{handle}` só existem na 100.0: pedidas com 2.0, ou sem o cabeçalho, dão 100.
-  - **Caminho interno das extensões.** Nas versões de 100 em diante, a borda repassa ao tv3ws em `/v<X.Y>` + o caminho público, e o tv3ws registra os tratadores da 100.0 sob `/v100.0/tv3/remote-device/...` (`routerV100`, em `tv3ws/src/api/remote-device/index.ts`), sem ramificar pelo cabeçalho. O cliente usa só o caminho público: `/v...` vindo dele não é rota declarada e dá 100.
+  - **2.0** é a norma. **100.0** é uma extensão do testbed com a proposta v2 da C.6.15 (as versões de 100 em diante ficam reservadas às extensões do testbed). O registro, a atualização do registro (`POST /tv3/remote-device/{handle}`), o cancelamento e a listagem de dispositivos remotos servem as duas; nas duas, `handle` inexistente dá 305, o cancelamento responde `{}`, o corpo é validado (101 para corpo que não é objeto JSON ou valor inválido, 105 para campo ausente) e a classe é livre (guia operacional, Seção 9). As notificações (`GET /tv3/notifications/{className}`, `DELETE /tv3/notifications/{handle}`) só existem na 100.0: pedidas com 2.0, ou sem o cabeçalho, dão 100.
+  - **Caminho interno das extensões.** Nas versões de 100 em diante, a borda repassa ao tv3ws em `/v<X.Y>` + o caminho público, e o tv3ws registra os tratadores da 100.0 sob `/v100.0` (`tv3ws/src/v100.0/`). O cliente usa só o caminho público: `/v...` vindo dele não é rota declarada e dá 100.
   - Fora de `/tv3`, o `/health` e o `/manifest` não levam `API-Version`.
 
 ---
 
 ## Endpoints declarados na borda
 
-As 26 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou `token+bind`; **`classes`** = as classes de cliente que a rota admite ("todas" quando o campo falta); **versões** = as que a rota serve. Na externa, as rotas só do cliente local e o `/tv3/authorize` respondem 106 a qualquer requisição (C.4.1.8); na interna, o não local recebe 106 fora de `/tv3/authorize` e `/tv3/token` (C.4.1.6).
+As 27 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou `token+bind`; **`classes`** = as classes de cliente que a rota admite ("todas" quando o campo falta); **versões** = as que a rota serve. Na externa, as rotas só do cliente local e o `/tv3/authorize` respondem 106 a qualquer requisição (C.4.1.8); na interna, o não local recebe 106 fora de `/tv3/authorize` e `/tv3/token` (C.4.1.6).
 
 | Método | Rota | Norma | `auth` | `classes` | versões |
 |--------|------|-------|--------|-----------|---------|
 | GET | `/health` | testbed (fora da norma) | `none` | todas | 2.0 |
 | GET | `/manifest` | resposta ao `LOCATION` do anúncio SSDP | `none` | todas | 2.0 |
-| GET | `/tv3/authorize` | C.6.1.2 | `none` | `local-autonomous`, `non-local` | 2.0 |
-| GET | `/tv3/token` | C.6.1.3 | `none` | `local-autonomous`, `non-local` | 2.0 |
+| GET | `/tv3/authorize` | C.6.1.2 | `none` | `standAlone`, `nonLocal` | 2.0 |
+| GET | `/tv3/token` | C.6.1.3 | `none` | `standAlone`, `nonLocal` | 2.0 |
 | GET | `/tv3/current-service` | C.6.3.1 | `token` | todas | 2.0 |
-| POST | `/tv3/bind-context` | C.6.8.2 (borda) | `none` | `local-associated` | 2.0 |
-| GET | `/tv3/bind-context` | C.6.8.3 (borda) | `token` | `local-autonomous`, `non-local` | 2.0 |
-| DELETE | `/tv3/bind-context` | C.6.8.4 (borda) | `none` | `local-associated` | 2.0 |
+| POST | `/tv3/bind-context` | C.6.8.2 (borda) | `none` | `associated` | 2.0 |
+| GET | `/tv3/bind-context` | C.6.8.3 (borda) | `token` | `standAlone`, `nonLocal` | 2.0 |
+| DELETE | `/tv3/bind-context` | C.6.8.4 (borda) | `none` | `associated` | 2.0 |
 | GET | `/tv3/api-info/{apiId}` | C.6.7.8 (borda) | `token` | todas | 2.0 |
 | GET | `/tv3/api-info` | C.6.7.9 (borda) | `token` | todas | 2.0 |
 | GET | `/tv3/current-service/apps/{appid}/files` | C.6.4.7 | `token+bind` (300 sem serviço) | todas | 2.0 |
@@ -54,18 +54,19 @@ As 26 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou 
 | POST | `/tv3/current-service/users/current-user` | C.6.14.4 | `token+bind` (300 sem serviço) | todas | 2.0 |
 | POST | `/tv3/{serviceContextId}/users/{userid}` | C.6.14.5 | `token+bind` (300 sem serviço; 304 fora do catálogo) | todas | 2.0 |
 | GET | `/tv3/current-service/users/files` | C.6.14.6 | `token+bind` (300 sem serviço) | todas | 2.0 |
-| POST | `/tv3/remote-device` | C.6.15.2 | `token` | todas | 2.0 |
-| DELETE | `/tv3/remote-device/{handle}` | C.6.15.3 | `token` | todas | 2.0 |
-| GET | `/tv3/remote-device/devices/{classId}` | C.6.15.5 | `token` | `local-associated`, `local-autonomous` | 2.0, 100.0 |
-| GET | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `local-associated`, `local-autonomous` | 100.0 |
-| DELETE | `/tv3/remote-device/device/{handle}` | extensão do testbed (100.0) | `token` | `local-associated`, `local-autonomous` | 100.0 |
+| POST | `/tv3/remote-device` | C.6.15.2 | `token` | todas | 2.0, 100.0 |
+| POST | `/tv3/remote-device/{handle}` | C.6.15.2 (atualização) | `token` | todas | 2.0, 100.0 |
+| DELETE | `/tv3/remote-device/{handle}` | C.6.15.3 | `token` | todas | 2.0, 100.0 |
+| GET | `/tv3/remote-device/devices/{classId}` | C.6.15.5 | `token` | `associated`, `standAlone` | 2.0, 100.0 |
+| GET | `/tv3/notifications/{className}` | C.6.2.2 (só na 100.0) | `token` | `associated`, `standAlone` | 100.0 |
+| DELETE | `/tv3/notifications/{handle}` | C.6.2.3 (só na 100.0) | `token` | `associated`, `standAlone` | 100.0 |
 | GET | `/tv3/sensory-effect-renderers` | C.6.16.1 | `token` | todas | 2.0 |
 | GET | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.2 | `token` | todas | 2.0 |
 | POST | `/tv3/sensory-effect-renderers/{rendererId}` | C.6.16.3 | `token+bind` (108 sem serviço) | todas | 2.0 |
 
 **Notas:**
 
-- **C.6.7.8 e C.6.7.9 (borda).** Listam as 20 APIs implementadas nas duas superfícies, cada uma com a versão mais recente que serve (100.0 para a `tv3ws-remotedevice-communication`, 2.0 para as demais). Um id da Tabela C.2 não implementado dá 101; sem `subsystem`, a lista traz todas.
+- **C.6.7.8 e C.6.7.9 (borda).** Listam as 22 APIs implementadas nas duas superfícies, cada uma com a versão mais recente que serve (100.0 para as APIs da C.6.15 e da C.6.2, 2.0 para as demais). Um id da Tabela C.2 não implementado dá 101; sem `subsystem`, a lista traz todas.
 - **`GET /tv3/current-service`** (C.6.3.1, Tabela C.8). Sem serviço em uso, 404 `{"error":300}`. Com serviço, 200 com `serviceContextId` (o `globalServiceId`), `transportStreamId` e `originalNetworkId`. O `serviceName` e o `serviceId` inteiro ficam de fora: sem SLT, o testbed não os tem, e o `aop/services` só traz o `serviceContextId`. O 302 não é emitido ([Não implementado]({{ site.baseurl }}/nao-implementado)).
 - **304 (serviço fora do catálogo).** Na C.6.14.2 e na C.6.14.5 com `{serviceContextId}` explícito, a borda responde 304 ("DTV service not found", Tabelas C.71 e C.74) ao serviço fora de `services:announced`, a lista dos serviços anunciados na LLS que o AoP grava e que o Application Catalog mostra; `current-service` não confere. Vem depois do 107 e do 300 e antes do bind-token, para todo cliente e nos dois modos; Redis fora, 200.
 - **`POST /tv3/current-service/users/current-user`** (C.6.14.4, Tabela C.73). Sem `id` no corpo, 105; sem serviço DTV em uso, 300; `id` fora de `users:index`, 305; perfil que não deu acesso à emissora do serviço corrente (`user:{id}:consent`), 405 (`setCurrentUser`, em `tv3ws/src/api/user/service.ts`). Aceito, o tv3ws grava `session:current-user` e publica `aop/currentUser` retido.
@@ -90,11 +91,11 @@ A tentativa pendente do não local (o "sim" dado e o pareamento não concluído)
 
 **103 com a camada gráfica ocupada.** Um pedido de autorização de cada vez: enquanto houver na tela o sim/não de um pedido esperando resposta, ou o QR code ou o PIN de um pareamento, o `/tv3/authorize` responde 404 `{"error":103}` na hora, sem pop-up (C.4.2.3: "If there is any restriction preventing the pop-up from being displayed at that time, the implementation shall immediately send a response to the request with error code 103, so that the client can try again later"; Tabela C.3: "103: When the TV 3.0 receiver is unable to display the authorization pop-up"). O cliente tenta de novo depois. Vale também para o reuso **simultâneo**: um segundo `/tv3/authorize` com o mesmo `clientid` enquanto o sim/não do primeiro espera resposta. O 103 vem depois do 105 e do 101. A camada libera no fim do pedido, no sucesso do pareamento (o `/tv3/token` com o desafio resolvido) ou no fim da trava de 120 s do QR code e do PIN (`reservarCamada`, em `tv3ws/src/api/client-identification/service.ts`).
 
-**Autorizados e bloqueados.** O tv3ws guarda os clientes autorizados no SET `clients:authorized` e os recusados em `clients:blocked`. Um id fica em no máximo um dos dois, porque autorizar e bloquear são uma função do Redis cada (`tv30_cliente_autoriza` e `tv30_cliente_bloqueia`), que tira o id de um conjunto e o põe no outro.
+**Autorizados e bloqueados.** O tv3ws guarda os clientes autorizados no SET `clients:authorized` e os recusados em `clients:blocked`. Um id fica em no máximo um dos dois, porque autorizar e bloquear são uma função do Redis cada (`tv30_client_authorize` e `tv30_client_block`), que tira o id de um conjunto e o põe no outro.
 - **Quando grava.** O "não" é gravado na hora, em `clients:blocked`, para as duas classes. O "sim" do local autônomo é gravado na hora (`client:{id}` e `clients:authorized`). O "sim" do não local fica só na memória do tv3ws, como tentativa pendente com o material do pareamento (`StartPairing`, em `manager.ts`): `client:{id}` e `clients:authorized` só são gravados quando o `/tv3/token` confere o `challenge-response` (`AuthorizePairedClient`), e só então sai a credencial. Se essa gravação falhar, a resposta é 404 `{"error":200}`, e o material volta ao cliente. A trava de 120 s só fecha o pop-up; um reinício do tv3ws perde a tentativa.
 - **No `/tv3/token`,** o fluxo por `challenge-response` aceita a tentativa pendente; o por `refresh-token` exige a autorização gravada (`clients:authorized`). Sem o que o fluxo exige, 102. Um cliente bloqueado depois de autorizado recebe 102, como pede a C.4.2.2 ("it is not able to request the access token").
 - O bloqueio só acontece na recusa do pop-up (ou quando ele expira). A tela de gerenciamento da C.4.2.2 não existe ([Não implementado]({{ site.baseurl }}/nao-implementado)).
-- A borda recusa com 107 o token de um `sub` que está em `clients:blocked`, o de um `sub` que não está em `clients:authorized` e o token sem `sub`. Vale nas rotas que pedem token, para toda classe; o bloqueio é conferido antes e mantém a mensagem dele. O token de classe `local-associated` segue a regra geral, com bind-token nas rotas `token+bind`; o tv3ws não emite essa classe.
+- A borda recusa com 107 o token de um `sub` que está em `clients:blocked`, o de um `sub` que não está em `clients:authorized` e o token sem `sub`. Vale nas rotas que pedem token, para toda classe; o bloqueio é conferido antes e mantém a mensagem dele. O token de classe `associated` segue a regra geral, com bind-token nas rotas `token+bind`; o tv3ws não emite essa classe.
 
 O 102 fica só para a recusa no próprio pop-up ("If the user does not grant access"), o que inclui o pop-up que expira sem resposta: o tempo esgotado conta como recusa e também bloqueia o cliente (`showYesNoPopUpAsync`, em `tv3ws/src/core.ts`, e `checkAuthorization`, em `controller.ts`).
 
@@ -174,7 +175,7 @@ Esse *consent* é a visibilidade do perfil por serviço guardada no Redis. Não 
 
 ## Atributos de emissora e o aviso ao espectador (C.6.14.5)
 
-**`POST /tv3/{serviceContextId}/users/{userid}`** (C.6.14.5, Tabela C.74). O corpo é um objeto de atributos; valor `""` remove o atributo. O tv3ws grava no hash `user:{id}:broadcaster-attrs:{scid}`, pela função `tv30_atributos_emissora` (`writeBroadcasterAttrs`, em `tv3ws/src/api/user/service.ts`), e responde o JSON dos atributos enviados. Corpo sem atributo, ou com `id`, `nickname`, `parentalControl` ou `maxContentRating`, dá 101; perfil inexistente, 305; perfil não visível no serviço, 405; `current-service` sem serviço em uso, 300; serviço do caminho fora do Application Catalog, 304 (na borda); mais de 20 MB no hash resultante, 404 `{"error":200}`.
+**`POST /tv3/{serviceContextId}/users/{userid}`** (C.6.14.5, Tabela C.74). O corpo é um objeto de atributos; valor `""` remove o atributo. O tv3ws grava no hash `user:{id}:broadcaster-attrs:{scid}`, pela função `tv30_broadcaster_attributes` (`writeBroadcasterAttrs`, em `tv3ws/src/api/user/service.ts`), e responde o JSON dos atributos enviados. Corpo sem atributo, ou com `id`, `nickname`, `parentalControl` ou `maxContentRating`, dá 101; perfil inexistente, 305; perfil não visível no serviço, 405; `current-service` sem serviço em uso, 300; serviço do caminho fora do Application Catalog, 304 (na borda); mais de 20 MB no hash resultante, 404 `{"error":200}`.
 
 **O aviso.** A Tabela C.74, em "Restrictions", diz que "it is necessary to notify the user that the application wants to change/add the attribute". O tv3ws avisa, sem pedir confirmação ([Decisões]({{ site.baseurl }}/decisoes)). Depois de gravar, e só se algum valor mudou (gravar o mesmo valor ou remover um atributo que não existe não avisa), o tv3ws publica, sem retenção, em `aop/display/layers/popup/info` (`notifyUserOfWrite`):
 

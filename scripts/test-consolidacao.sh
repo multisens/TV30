@@ -17,9 +17,9 @@ docker exec redis redis-cli --raw SCARD users:index | xargs echo "users:index SC
 # Function library loaded before the initial load, and the schema audit: a
 # finding is a key outside the schema (a manual write or an old volume;
 # docs/modelo-redis.md).
-docker logs redis 2>&1 | grep -E "biblioteca de funcoes|carga" | tail -2
-docker exec redis redis-cli --raw FCALL_RO tv30_versao 0 | xargs echo "funcoes tv30: esquema versao ="
-AUD=$(docker exec redis redis-cli --raw FCALL_RO tv30_auditoria 0)
+docker logs redis 2>&1 | grep -E "function library|load" | tail -2
+docker exec redis redis-cli --raw FCALL_RO tv30_version 0 | xargs echo "funcoes tv30: esquema versao ="
+AUD=$(docker exec redis redis-cli --raw FCALL_RO tv30_audit 0)
 if [ -z "$AUD" ]; then echo "auditoria do esquema: vazia (OK)"
 else
   echo "auditoria do esquema: ACHADOS (chave | familia | motivo)"
