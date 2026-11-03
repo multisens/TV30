@@ -1,7 +1,7 @@
-# Imagem do componente de EXEMPLO do template (ver README.md). Mesma base
-# dos Dockerfiles de infra/dockerfiles/. O exemplo nao tem dependencias npm;
-# um componente real copia package*.json e roda `npm ci --omit=dev` aqui,
-# antes de copiar o codigo.
+# Image of the EXAMPLE component of the template (see README.md). Same base
+# as the Dockerfiles of infra/dockerfiles/. The example has no npm
+# dependencies; a real component copies package*.json and runs
+# `npm ci --omit=dev` here, before copying the code.
 ARG NODE_IMAGE=node:23-alpine
 FROM ${NODE_IMAGE}
 WORKDIR /app

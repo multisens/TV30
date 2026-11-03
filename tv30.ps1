@@ -1,17 +1,16 @@
-# tv30.ps1 — sobe e desce o testbed com a descoberta SSDP (C.3.4), no Windows.
+# tv30.ps1: starts and stops the testbed with SSDP discovery (C.3.4), Windows.
 #
-#   .\tv30.ps1 up   [args do docker compose up]    compose up -d + anunciante
-#   .\tv30.ps1 down [args do docker compose down]  anunciante (ssdp:byebye) + compose down
-#   .\tv30.ps1 status                              containers e anunciante
-#   .\tv30.ps1 logs                                log do anunciante
+#   .\tv30.ps1 up   [compose up args]    compose up -d, then the announcer
+#   .\tv30.ps1 down [compose down args]  announcer (ssdp:byebye), then down
+#   .\tv30.ps1 status                    containers and announcer
+#   .\tv30.ps1 logs                      announcer log
 #
-# Equivalente do ./tv30 (Linux e macOS); ver o cabecalho dele. No Windows nao
-# ha SIGTERM para processo em segundo plano: a descida cria o arquivo de parada
-# (SSDP_STOP_FILE), e o anunciante manda o ssdp:byebye e sai. Na primeira
-# execucao o Windows Defender pede permissao de rede para o anunciante: marque
-# "redes privadas", com o perfil da rede como Privada.
-# Sem docker no PowerShell (Docker Engine so no WSL2), usa "wsl docker ...", na
-# mesma pasta; esse caminho NAO foi medido no Windows. Roda tambem no pwsh.
+# The equivalent of ./tv30 (Linux and macOS); see its header. Stopping
+# creates the stop file (SSDP_STOP_FILE), and the announcer sends
+# ssdp:byebye and exits. On the first run Windows Defender asks for network
+# permission for the announcer: check "private networks", with the network
+# profile set to Private. Without docker in PowerShell (Docker Engine only in
+# WSL2), it uses "wsl docker ...", in the same folder. Also runs on pwsh.
 param([Parameter(Position = 0)][string]$Cmd = '', [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest = @())
 $ErrorActionPreference = 'Stop'
 
@@ -24,13 +23,14 @@ $Bin   = Join-Path (Join-Path $State 'bin') $Exe
 $PidF  = Join-Path $State 'ssdp.pid'
 $Log   = Join-Path $State 'ssdp.log'
 $StopF = Join-Path $State 'ssdp.stop'
-$GoImg = if ($env:GO_IMG) { $env:GO_IMG } else { 'golang:1.22.7-alpine3.19' }  # o mesmo Go da borda
+# The same Go as the edge.
+$GoImg = if ($env:GO_IMG) { $env:GO_IMG } else { 'golang:1.22.7-alpine3.19' }
 $SsdpKeys = 'SSDP_ENABLED', 'SSDP_ADVERTISE_HOST', 'SSDP_INTERFACE', 'EDGE_HTTP_PORT', 'EDGE_HTTPS_PORT', 'UDN'
 
 function Info([string]$m) { Write-Host "[tv30] $m" }
 function Die([string]$m) { Write-Host "[tv30] ERRO: $m"; exit 1 }
 
-# docker do PowerShell ou, sem ele, o do WSL
+# The docker of PowerShell or, without it, the one of WSL.
 $UseWsl = $false
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     if ($OnWindows -and (Get-Command wsl -ErrorAction SilentlyContinue)) { $UseWsl = $true }
@@ -38,14 +38,14 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 function DockerCmd {
     if ($UseWsl) { wsl docker @args } else { docker @args }
 }
-# caminho do Windows como o Docker do WSL o ve
+# Windows path as the Docker of WSL sees it.
 function DockerPath([string]$p) {
     if ($UseWsl) { return (wsl wslpath -a ($p -replace '\\', '/')).Trim() }
     return $p
 }
 
-# valor da chave nos arquivos de ambiente (tv3ws/.env, depois o .env da raiz,
-# como no compose); o ambiente do processo prevalece
+# Value of the key in the environment files (tv3ws/.env, then the root .env,
+# as in the compose); the process environment prevails.
 function EnvValue([string]$Key) {
     $val = ''
     foreach ($f in @((Join-Path (Join-Path $Root 'tv3ws') '.env'), (Join-Path $Root '.env'))) {
@@ -73,7 +73,7 @@ function Target {
     return @($os, $arch)
 }
 
-# compila o anunciante se faltar o binario ou se o codigo mudou depois dele
+# Builds the announcer if the binary is missing or the code changed after it.
 function Build([switch]$Force) {
     if (-not $Force -and (Test-Path $Bin)) {
         $t = (Get-Item $Bin).LastWriteTime
@@ -108,7 +108,8 @@ function Build([switch]$Force) {
 function SsdpStop {
     $p = AnnouncerProcess
     if ($null -eq $p) { Remove-Item $PidF, $StopF -ErrorAction SilentlyContinue; return }
-    New-Item -ItemType File -Force $StopF | Out-Null   # ssdp:byebye e saida
+    # ssdp:byebye and exit.
+    New-Item -ItemType File -Force $StopF | Out-Null
     if (-not $p.WaitForExit(5000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
     Remove-Item $PidF, $StopF -ErrorAction SilentlyContinue
     $n = (Select-String -Path $Log -Pattern 'ssdp:byebye' -ErrorAction SilentlyContinue | Measure-Object).Count
@@ -123,7 +124,7 @@ function SsdpStart {
     Remove-Item $StopF -ErrorAction SilentlyContinue
     foreach ($k in $SsdpKeys) { $v = EnvValue $k; if ($v) { Set-Item "Env:$k" $v } }
     $env:SSDP_STOP_FILE = $StopF
-    # o anunciante escreve no stderr; cada subida comeca o log de novo
+    # The announcer writes to stderr; each start begins the log anew.
     $opts = @{ FilePath = $Bin; PassThru = $true; RedirectStandardError = $Log; RedirectStandardOutput = "$Log.out" }
     if ($OnWindows) { $opts.WindowStyle = 'Hidden' }
     $p = Start-Process @opts

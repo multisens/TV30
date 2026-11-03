@@ -1,7 +1,7 @@
 ---
 title: Descoberta SSDP
 parent: Como funciona
-nav_order: 6
+nav_order: 7
 ---
 
 # Descoberta SSDP (C.3.4)

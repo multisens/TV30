@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# push-images.sh — Builda, tageia e publica todas as imagens TV30 no Docker Hub.
+# push-images.sh: builds, tags and publishes every TV30 image on Docker Hub.
 #
-# Pre-requisitos:
-#   docker login (ou docker login -u <namespace>)
+# Prerequisite:
+#   docker login (or docker login -u <namespace>)
 #
-# Uso:
+# Usage:
 #   ./push-images.sh <DOCKERHUB_NS> [TAG]
-#   ./push-images.sh multisens                  # tag default: latest
+#   ./push-images.sh multisens                  (default tag: latest)
 #   ./push-images.sh multisens 1.0.0
-#   ./push-images.sh multisens 1.0.0 --no-build # so retag+push (assume imagens ja buildadas)
+#   ./push-images.sh multisens 1.0.0 --no-build (only retag and push, with
+#                                                the images already built)
 
 set -euo pipefail
 
@@ -29,23 +30,22 @@ step()   { echo -e "\n${c_cyan}==> $*${c_off}"; }
 ok()     { echo -e "    ${c_green}[OK]${c_off} $*"; }
 err()    { echo -e "    ${c_red}[ERRO]${c_off} $*"; }
 
-# (apps tv30) name: ctx-dir, dockerfile-relative-to-ROOT
+# (TV30 applications) name|context dir|dockerfile relative to ROOT
 declare -a APPS=(
     "tv30-tv3ws|tv3ws|infra/dockerfiles/tv3ws.Dockerfile"
     "tv30-aop|aop|infra/dockerfiles/aop.Dockerfile"
     "tv30-bcast|bcast|infra/dockerfiles/bcast.Dockerfile"
 )
 
-# (infra customs) name: context (relative-to-ROOT) | dockerfile (relative-to-ROOT)
-# A borda inteira e o edgegateway; o redis leva seed+commander.
+# (infrastructure) name|context relative to ROOT|dockerfile relative to ROOT
 declare -a INFRA=(
     "tv30-mosquitto|infra/mqtt-broker|infra/mqtt-broker/infra/Dockerfile"
     "tv30-edgegateway|infra/edgegateway|infra/edgegateway/Dockerfile"
     "tv30-redis|infra|infra/redis/Dockerfile"
 )
 
-# tv30-aop e tv30-tv3ws usam contextos adicionais (template de user-files +
-# entrypoint compartilhado). Demais apps usam build simples.
+# tv30-aop and tv30-tv3ws use additional contexts (user-files template and
+# shared entrypoint). The other applications use a plain build.
 if [ "$NO_BUILD" != "--no-build" ]; then
     step "Buildando ${#APPS[@]} apps + ${#INFRA[@]} infra customs..."
     for entry in "${APPS[@]}" "${INFRA[@]}"; do

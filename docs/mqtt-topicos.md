@@ -10,6 +10,20 @@ O Mosquitto leva a **sinalização e os eventos** entre os serviços. Não é o 
 
 ---
 
+## Clientes MQTT
+
+| Client ID | Processo | Arquivo | Conexão |
+|---|---|---|---|
+| `aop-core` | AoP (servidor) | `aop/src/core.js` | `mqtt://${MQTT_HOST}` (no compose, `mosquitto:1883`) |
+| `rp-display` | página da TV, no navegador | `aop/src/modules/graphic-overlays/view.ejs`, `connect()` | `ws://<host da página>/mqtt`, que o AoP repassa à 9001 do Mosquitto (`aop/src/mqtt-ws.js`) |
+| `tv3ws-client` | tv3ws | `tv3ws/src/mqtt-client.ts` | `mqtt://${MQTT_HOST}`, MQTT 5 |
+| `bcast_svc` | bcast | `bcast/src/index.ts` | `mqtt://${MQTT_HOST}`, MQTT 5 |
+| (sem cliente) | plugin C do broker | `infra/mqtt-broker/plugin/src/` | publica de dentro do broker (`mosquitto_broker_publish`) |
+
+As assinaturas do AoP, da página e do tv3ws usam *no local* (`noLocal`, ou `nl: true` no tv3ws): ninguém recebe a própria publicação. O tv3ws assina com QoS 1, um tratador por tópico exato (`addTopicHandler`, em `tv3ws/src/mqtt-client.ts`).
+
+---
+
 ## Tópicos principais
 
 Publicadores, consumidores e flag de retenção conferidos nas chamadas `publish`/`subscribe` do código de aop, tv3ws e bcast.
@@ -32,13 +46,15 @@ Publicadores, consumidores e flag de retenção conferidos nas chamadas `publish
 | `aop/devices/<classe>` | tv3ws (`tv3ws/src/modules/remotedevice-manager/manager.ts`) | — (nenhum consumidor nestes módulos) | sim | Dispositivos remotos registrados: lista JSON dos *handles* da classe, regravada a cada registro e remoção; vazio quando a classe fica sem dispositivo |
 | `aop/<sid>/<appId>/path`, `aop/<sid>/<appId>/doc/nodes` | — (nenhum publicador nestes módulos; o `path`, do mesmo publicador de `currentApp`, retido) | tv3ws (`tv3ws/src/mqtt-client.ts`, `core.ts`) | — | Diretório da aplicação (a C.6.4.7 lê dele) e nós do documento, para o remote-device |
 | `aop/<sid>/<appId>/doc/<nó>/...` | tv3ws (eventos do remote-device: `.../eventNotification` sem retain; `.../user` e `.../value` com retain) | tv3ws (`/interfaces`, `.../actionNotification`, `.../attributionEvent/value`) | misto | Troca de estado dos nós entre a aplicação e os dispositivos remotos (`tv3ws/src/modules/remotedevice-manager/remote-device.ts`). O `publish` do tv3ws retém por padrão (`tv3ws/src/mqtt-client.ts`) |
-| `errors/<client_id>` | plugin do broker | — (nenhum consumidor nestes módulos) | não | Erro de validação de esquema de uma publicação daquele cliente, em JSON (ver *Plugin C do Mosquitto*). No `<client_id>` do tópico, `+`, `#`, `/` e controles viram `_` |
+| `errors/<client_id>` | plugin do broker | — (nenhum consumidor nestes módulos) | não | Erro de validação de esquema de uma publicação daquele cliente, em JSON ([Broker MQTT]({{ site.baseurl }}/broker-mqtt)). No `<client_id>` do tópico, `+`, `#`, `/` e controles viram `_` |
+| `PublisherResponseTime<id>/iteration<n>` | medidor de `infra/mqtt-broker/brokertimetest/` (`server.js`, `headless-run.js`) | plugin do broker, que o deixa passar | não | Pedido do teste de latência ([Broker MQTT]({{ site.baseurl }}/broker-mqtt#teste-de-latência)) |
+| `PluginResponseTime<id>/iteration<n>` | plugin do broker (`response_time_tester.c`) | o medidor (`PluginResponseTime<id>/#`) | não | Resposta do teste de latência, `{localtime, id, iteration, diffTime}`; não sai se passar de 511 bytes |
 | `video/event` | bcast (`src/modules/live_stream/index.ts`) | front do AoP (camada gráfica) | não | Eventos do fluxo simulado. O front os repassa à app da camada gráfica como `stream_event`; com a app em outra origem, por `postMessage`, e a ponte `bcast/public/js/aop-bridge.js` os redespacha no documento dela |
 | `tlm/lls/<bsid>/bamt` | bcast | AoP (`aop-transport-layer-metadata-lls`) | sim | BAMT: os serviços anunciados, um BAM por serviço; mensagem vazia retira o fluxo `<bsid>`. As outras tabelas de `tlm/lls/#` não mudam a lista |
 | `tlm/sls/<sid>/esg`, `tlm/sls/<sid>/bald` | bcast | AoP (assina o serviço selecionado) | sim | ESG e BALD por serviço; a BALD traz o `bcastEntryPackageUrl` |
 
 **O QR code e o PIN ficam na tela até o fim do pareamento** (C.4.3.2 e C.4.3.3):
-- o tv3ws abre o pop-up com prazo de 120 s, uma trava de segurança para o caso de o cliente desistir (`PAIRING_POPUP_TIMEOUT_MS`, em `tv3ws/src/api/client-identification/service.ts`; valor escolhido pelo projeto, a norma não fixa prazo);
+- o tv3ws abre o pop-up com prazo de 120 s, que o fecha se o cliente desistir (`PAIRING_POPUP_TIMEOUT_MS`, em `tv3ws/src/api/client-identification/service.ts`);
 - no fim do pareamento, o `GET /tv3/token` com o desafio resolvido, o tv3ws publica `{"close":true}` no mesmo tópico (`closeQRCodePopUp`/`closePINPopUp`, em `tv3ws/src/core.ts`), e a página fecha o pop-up aberto daquele tipo (`handlePopupMessage`, em `aop/public/js/popup.js`). O `/tv3/token` que falha não fecha;
 - a camada gráfica tem um pop-up só: o novo substitui o da tela, menos o aviso da C.6.14.5 (abaixo), que espera. O fim do pareamento de um cliente não fecha o pop-up de outro (o tv3ws guarda de quem é cada pop-up). O tv3ws não manda um sim/não com outro sim/não, QR code ou PIN na tela: o pedido de autorização recebe 103, e o QR code ou o PIN de um pareamento em andamento não sai da tela por causa de outro cliente;
 - mensagem inválida num tópico de pop-up vai para o console e não para a página;
@@ -56,16 +72,9 @@ O `scripts/test-auth.sh` lê a abertura do pop-up direto do broker (primeira men
 
 ---
 
-## Plugin C do Mosquitto
+## Validação de esquema no broker
 
-O plugin (`infra/mqtt-broker/plugin/src/mosquitto_plugin.c`) **valida o esquema** das mensagens publicadas em tópicos que têm esquema declarado (`infra/mqtt-broker/plugin/config/schemas.json`):
-- **Tópicos com esquema:** `aop/currentUser`, `aop/removedUser`, `aop/currentService`, `aop/services`, `aop/display/layers/rxgui`, `aop/display/layers/graphics`, `aop/display/layers/video/url`, `aop/display/layers/video/size`, `video/event`, `tlm/lls/+/bamt`, `tlm/sls/+/esg`, `tlm/sls/+/bald`, `aop/+/currentApp` e `aop/+/+/path`, mais três tópicos de teste (`sensor/room1/temperature`, `sensor/room2/humidity` e `sensor/comprehensive/test`). Os demais, inclusive os pop-ups, `aop/devices/*` e os tópicos do remote-device, passam sem validação.
-- **Publicação inválida é recusada,** e não só registrada: o plugin devolve `MOSQ_ERR_ACL_DENIED` ao broker e publica o erro em `errors/<client_id>` (QoS 0, sem retain). Payload vazio não é validado, e por isso a limpeza dos retidos de `tlm/*` com mensagem vazia passa.
-- **Payload inteiro** (`infra/mqtt-broker/plugin/src/json_payload.c`): o payload é lido pelo comprimento e só vale como JSON se for exatamente um texto JSON (RFC 8259, json-c no modo estrito); sobra depois do valor (`{"value":1}lixo`), NUL, comentário, aspas simples ou vírgula sobrando dão `INVALID_JSON`. Nos tópicos de esquema `type: string` (`aop/currentUser`, `aop/removedUser`, `aop/currentService`, `aop/display/layers/rxgui`, `.../graphics`, `.../video/url`, `aop/+/currentApp` e `aop/+/+/path`), o payload que não é texto JSON vale **inteiro** como string.
-- **Mensagem de erro sempre JSON válido** (`infra/mqtt-broker/plugin/src/error_json.c`): `{"timestamp", "topic", "error_type", "details", "client_id", "payload"}`, com escape da RFC 8259, UTF-8 inválido trocado por U+FFFD, até 2047 bytes e `"truncated":true` quando algum campo foi cortado. Formato e limites em `infra/docs/09-schema-validation.md`.
-- **Medidor de tempo de resposta:** o plugin também responde às mensagens dos tópicos `PublisherResponseTime*`, publicando em `PluginResponseTime<id>/iteration<n>` (`response_time_tester.c`). Serve à medição de `infra/mqtt-broker/brokertimetest/`.
-
-O plugin não faz controle de acesso a tópicos nem consulta o Redis. É decisão de desenho: o isolamento que a norma exige é por contexto de serviço DTV, na fronteira das APIs.
+O plugin C do Mosquitto valida o payload das publicações nos tópicos com esquema declarado e recusa as que não o cumprem: [Broker MQTT]({{ site.baseurl }}/broker-mqtt).
 
 ---
 

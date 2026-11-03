@@ -4,9 +4,9 @@ layout: home
 nav_order: 1
 ---
 
-# TV 3.0 — Plataforma de Referência
+# TV30 — testbed aberto da camada de Codificação de Aplicações da TV 3.0
 
-Documentação técnica do monorepo **multisens/TV30**: um testbed, todo em containers Docker, do lado do receptor da TV 3.0 (o sistema de TV digital terrestre das ABNT NBR 25601 a 25609, também chamado DTV+; ABNT NBR 25608, 3.37). Ele implementa parte dos TV 3.0 WebServices da **ABNT NBR 25608**, Anexo C, e simula a emissora que alimenta o receptor. O público destas páginas são os alunos que chegam ao projeto e quem desenvolve nele.
+Documentação técnica do monorepo **multisens/TV30**: um testbed, todo em containers Docker, do lado do receptor da TV 3.0 (o sistema de TV digital terrestre das ABNT NBR 25601 a 25609, também chamado DTV+; ABNT NBR 25608, 3.39). Ele implementa parte dos TV 3.0 WebServices da **ABNT NBR 25608**, Anexo C, e simula a emissora que alimenta o receptor. O público destas páginas são os alunos que chegam ao projeto e quem desenvolve nele.
 
 ---
 
@@ -16,7 +16,7 @@ São três módulos do projeto, cada um num submódulo git, mais a infraestrutur
 
 **Peças que correspondem a papéis descritos na norma:**
 
-- **AoP** (`aop/`): a interface do receptor. Tem o catálogo de aplicações, as camadas de vídeo e gráficos e o gestor de perfis. É Node.js e fica na porta 8080. Na norma, a *TV 3.0 Application-oriented Platform* (3.38) é a plataforma inteira do receptor, com back-end e front-end; o módulo `aop/` é só a parte de interface dela.
+- **AoP** (`aop/`): a interface do receptor. Tem o catálogo de aplicações, as camadas de vídeo e gráficos e o gestor de perfis. É Node.js e fica na porta 8080. Na norma, a *TV 3.0 Application-oriented Platform* (3.40) é a plataforma inteira do receptor, com back-end e front-end; o módulo `aop/` é só a parte de interface dela.
 - **tv3ws** (`tv3ws/`): a implementação dos TV 3.0 WebServices (Anexo C), em TypeScript. Na norma, esse componente faz parte da AoP (C.1 e C.2). Os clientes das APIs chegam a ele pela borda, nas portas 44642 e 44643. A exceção são os WebSockets de remote-device, que vão direto ao tv3ws, na faixa 45000–45199.
 - **bcast** (`bcast/`): faz o papel da **emissora**, fora do receptor. Publica a sinalização (BAMT, ESG e BALD) e serve as aplicações de emissora e a mídia (webmedia, users-test, uff, eduplay).
 
@@ -79,10 +79,10 @@ Ficam fixas no host a 44642, a 44643 (o `/manifest` a anuncia), a do AoP (8080),
 | Seção | Páginas |
 |---|---|
 | **Primeiros passos** | [Instalação]({{ site.baseurl }}/instalacao) · [Desenvolvimento com serviço no host]({{ site.baseurl }}/dev-local) · [Como testar]({{ site.baseurl }}/como-testar) · [Glossário]({{ site.baseurl }}/glossario) |
-| **Como funciona** | [Arquitetura]({{ site.baseurl }}/arquitetura) · [APIs do tv3ws]({{ site.baseurl }}/apis-tv3ws) · [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis) · [Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos) · [Borda e credenciais]({{ site.baseurl }}/borda-credenciais) · [Descoberta SSDP]({{ site.baseurl }}/ssdp) |
+| **Como funciona** | [Arquitetura]({{ site.baseurl }}/arquitetura) · [APIs do tv3ws]({{ site.baseurl }}/apis-tv3ws) · [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis) · [Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos) · [Broker MQTT]({{ site.baseurl }}/broker-mqtt) · [Borda e credenciais]({{ site.baseurl }}/borda-credenciais) · [Descoberta SSDP]({{ site.baseurl }}/ssdp) · [Decisões]({{ site.baseurl }}/decisoes) · [Não implementado]({{ site.baseurl }}/nao-implementado) |
 | **Solução de problemas** | [Solução de problemas]({{ site.baseurl }}/troubleshooting) |
 
-A documentação da infraestrutura (borda, broker, Redis) fica no repositório [multisens/Infra](https://github.com/multisens/Infra/tree/main/docs), fora deste site.
+Estas páginas são a documentação única do testbed, inclusive da infraestrutura (borda, broker e Redis).
 
 ---
 

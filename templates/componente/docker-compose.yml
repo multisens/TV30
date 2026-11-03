@@ -1,19 +1,18 @@
-# Template de compose para um COMPONENTE NOVO do TV30. Ver README.md ao
-# lado. Troque "meu-componente", a porta 8090 e as variaveis pelas suas.
-# Como veio, sobe o componente de EXEMPLO (Dockerfile + index.js ao lado:
-# fala com o Redis e com o broker pelo nome do servico e expoe /health);
-# scripts/test-template.sh executa este arquivo de verdade.
+# Compose template for a NEW TV30 component; see the README.md next to it.
+# Replace "meu-componente", port 8090 and the variables with yours. As it
+# comes, it starts the EXAMPLE component (Dockerfile and index.js next to
+# it: it talks to Redis and to the broker by service name and exposes
+# /health).
 #
-# Uso (com a stack da raiz ja de pe — a rede ginga_net precisa existir):
-#   cp -r templates/componente <pasta-do-componente>
-#   docker compose --env-file <raiz-do-TV30>/.env \
-#     -f <pasta-do-componente>/docker-compose.yml up -d --build
-# (o --env-file faz o .env da RAIZ valer aqui: sem ele, o compose le o .env
-# da pasta do componente, e um JWT_SECRET/DOCKERHUB_NS proprio da raiz nao
-# chega a este arquivo)
+# Usage, with the root stack already up (the ginga_net network must exist):
+#   cp -r templates/componente <component-folder>
+#   docker compose --env-file <TV30-root>/.env \
+#     -f <component-folder>/docker-compose.yml up -d --build
+# (--env-file makes the root .env apply here: without it, compose reads the
+# .env of the component folder)
 #
-# Projeto separado do "tv30": `docker compose down` na raiz nao derruba este
-# componente, e vice-versa.
+# A project separate from "tv30": `docker compose down` in the root does not
+# bring this component down, and vice versa.
 name: tv30-meu-componente
 
 services:
@@ -23,50 +22,50 @@ services:
       context: .
     container_name: meu-componente
     networks: [ginga_net]
-    # Morre-inteiro: se o processo principal cair, o container cai e o
-    # Docker religa. Componente com mais de um processo precisa de um
-    # supervisor que derrube tudo quando qualquer um morrer (modelo:
-    # infra/edgegateway/entrypoint.sh). Nada de meio-vivo.
+    # If the main process exits, the container exits and Docker restarts it.
+    # A component with more than one process needs a supervisor that brings
+    # everything down when any of them exits (model:
+    # infra/edgegateway/entrypoint.sh).
     restart: unless-stopped
-    # init minimo do Docker como PID 1, com o processo como filho: repassa o
-    # SIGTERM do `docker stop` (o node como PID 1 o ignoraria e esperaria o
-    # SIGKILL) e, se o processo morrer por sinal, sai junto com o mesmo
-    # codigo — o container cai e o restart acima religa.
+    # Minimal Docker init as PID 1, with the process as its child: forwards the
+    # SIGTERM of `docker stop` and, if the process dies by a signal, exits with
+    # the same code.
     init: true
     extra_hosts:
-      # Permite alcancar um servico rodando no HOST (ex.: outro modulo em
-      # npm run dev) por host.docker.internal tambem em Linux. Inocuo se nao
-      # for usado.
+      # Reaches a service running on the host (e.g. another module in npm run
+      # dev) by host.docker.internal, also on Linux.
       - "host.docker.internal:host-gateway"
     environment:
-      # Dentro da ginga_net os servicos se acham pelo NOME DO SERVICO, nunca
-      # por localhost (localhost e o proprio container).
+      # Inside ginga_net the services find each other by service name, never by
+      # localhost (localhost is the container itself).
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
       REDIS_HOST: redis
       REDIS_PORT: 6379
       PORT: 8090
-      # So do exemplo (index.js): topico e chave de teste. Os padroes derivam
-      # do nome do componente: tv30/<nome>/exemplo e tv30:<nome>:exemplo.
+      # Only for the example (index.js): test topic and key. The defaults
+      # derive from the component name: tv30/<name>/exemplo and
+      # tv30:<name>:exemplo.
       # EXEMPLO_TOPICO: tv30/meu-componente/exemplo
       # EXEMPLO_CHAVE: tv30:meu-componente:exemplo
-      # Componente novo NAO valida credencial: quem valida access token e
-      # bind-token e a borda (plugin tv30-auth). Rota nova da norma entra em
-      # infra/edgegateway/routes.json com auth/classes. So se o componente
-      # EMITIR accessToken, use a MESMA fonte do tv3ws e da
-      # borda (.env da raiz ou shell):
+      # A new component does not validate credentials: the edge (tv30-auth
+      # plugin) validates the access token and the bind-token. A new route of
+      # the standard goes in infra/edgegateway/routes.json with auth and
+      # classes. Only if the component issues an accessToken, use the same
+      # source as tv3ws and the edge (root .env or shell):
       # JWT_SECRET: ${JWT_SECRET:-tv30-dev-secret-nao-usar-em-producao}
       # JWT_ISSUER: ${JWT_ISSUER:-GenericIssuer}
     ports:
-      # Publique so o que um cliente FORA do Docker precisa. Clientes das
-      # APIs da norma entram pela borda (44642/44643), nao por porta propria.
+      # Publish only what a client outside Docker needs. Clients of the APIs of
+      # the standard come in through the edge (44642/44643), not by a port of
+      # their own.
       - "${MEU_COMPONENTE_PORT:-8090}:8090"
-    # depends_on nao alcanca servicos de outro projeto compose: o componente
-    # tem de tolerar broker/Redis ainda subindo (tentar de novo ou sair com
-    # erro e deixar o restart religar — nunca seguir meio-vivo; o exemplo
-    # sai com erro).
-    # healthcheck: o /health do exemplo so abre com Redis e broker
-    # conectados (wget e o do busybox da imagem alpine)
+    # depends_on does not reach services of another compose project: the
+    # component must tolerate a broker or Redis still starting (retry, or exit
+    # with an error and let the restart bring it back; the example exits with
+    # an error).
+    # healthcheck: the /health of the example opens only with Redis and the
+    # broker connected (wget is the busybox one of the alpine image).
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8090/health || exit 1"]
       interval: 5s
@@ -74,8 +73,8 @@ services:
       retries: 10
 
 networks:
-  # Rede criada pela stack da raiz (infra/docker-compose.yml). external: o
-  # componente entra nela, nao cria uma propria.
+  # Network created by the root stack (infra/docker-compose.yml). external:
+  # the component joins it, without creating its own.
   ginga_net:
     external: true
     name: ginga_net

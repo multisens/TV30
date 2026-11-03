@@ -10,13 +10,13 @@ O Redis guarda o estado de sessão, os perfis de usuário e as credenciais. Ele 
 
 Redis, borda e mensageria são decisões de implementação deste testbed, não da ABNT NBR 25608. O *consent* destas chaves é a visibilidade do perfil por serviço, e não o consentimento da seção 8.8 da norma.
 
-**Porta e acesso.** A 6379 é publicada só em `127.0.0.1`: aberta à rede, um aparelho gravaria na lista de associados ou nas chaves de bind e contornaria a borda. O Redis fica sem senha e sem ACL; a escrita direta fora das funções que validam (abaixo) é vedada por convenção. Os serviços em container usam a `ginga_net`; os que rodam no host (dev-host) usam `127.0.0.1`.
+**Porta e acesso.** A 6379 é publicada só em `127.0.0.1`. O Redis fica sem senha e sem ACL ([Decisões]({{ site.baseurl }}/decisoes)); a escrita direta fora das funções que validam (abaixo) é possível e aparece na auditoria. Os serviços em container usam a `ginga_net`; os que rodam no host (dev-host) usam `127.0.0.1`.
 
 UI de inspeção: Redis Commander, em porta dinâmica do host — `docker port redis 18081` mostra qual. A UI exige login: usuário `admin` e senha `tv30-redis-admin` por padrão, trocáveis por `REDIS_COMMANDER_USER`/`REDIS_COMMANDER_PASSWORD` no `.env` da raiz. A senha vale só para a UI: a conexão com o banco (6379) segue sem senha. A morte do commander derruba o container do Redis inteiro, e o `restart` o traz de volta (`infra/redis/entrypoint.sh`).
 
 **Id do perfil em UUID.** O esquema exige o id do perfil no formato textual da IETF RFC 9562 (8-4-4-4-12 dígitos hexadecimais), em minúsculas, como pede a Tabela 7 ("UUID string"). O UUID é estrito: a versão (primeiro dígito do terceiro grupo) tem de ser de 1 a 8, e a variante (primeiro dígito do quarto grupo), a da RFC 9562 (`8`, `9`, `a` ou `b`); o UUID nulo (todo 0) e o máximo (todo f) são recusados, e a mensagem diz qual parte falhou (`motivoUuid`, em `infra/redis/funcoes.lua`). O AoP gera `crypto.randomUUID()` (versão 4), e a carga inicial traz `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10` (versão 4, variante 9). Um id fora do formato, gravado à mão, fica fora do esquema (seção *Auditoria*, abaixo).
 
-**Avatar como nome de arquivo.** A Tabela 7 define o `avatar` como "Path indicating the file with the graphical representation of the viewer profile" (*file path*, opcional). O esquema exige, quando o campo existe, o nome de um arquivo do diretório de miniaturas (`<USER_DATA_PATH>/thumbs` no AoP, o mesmo `USER_THUMBS` do tv3ws: `user-files/thumbs`, volume dos dois), no formato `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(svg|png|jpg|jpeg|webp)$`: sem `/` nem `\`, começando por letra ou dígito, com a extensão em minúsculas (tipo `nomeArquivo`, conferido por partes em `motivoNomeArquivo`, `infra/redis/funcoes.lua`). Sem o campo, cada tela mostra o avatar padrão. O AoP grava `<id do perfil>.svg` na criação, e a carga traz `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg`, com o arquivo em `infra/user-files-template/thumbs/`. O SVG em linha no campo é recusado (`campo avatar: SVG em linha nao serve`). Restringir o caminho a um nome dentro de um diretório é decisão do projeto.
+**Avatar como nome de arquivo.** A Tabela 7 define o `avatar` como "Path indicating the file with the graphical representation of the viewer profile" (*file path*, opcional). O esquema exige, quando o campo existe, o nome de um arquivo do diretório de miniaturas (`<USER_DATA_PATH>/thumbs` no AoP, o mesmo `USER_THUMBS` do tv3ws: `user-files/thumbs`, volume dos dois), no formato `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(svg|png|jpg|jpeg|webp)$`: sem `/` nem `\`, começando por letra ou dígito, com a extensão em minúsculas (tipo `nomeArquivo`, conferido por partes em `motivoNomeArquivo`, `infra/redis/funcoes.lua`). Sem o campo, cada tela mostra o avatar padrão. O AoP grava `<id do perfil>.svg` na criação, e a carga traz `c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10.svg`, com o arquivo em `infra/user-files-template/thumbs/`. O SVG em linha no campo é recusado (`campo avatar: SVG em linha nao serve`).
 
 **Esquema nas escritas.** Toda escrita que o código do projeto faz nas famílias abaixo passa por uma **função do próprio Redis**, que confere o esquema e grava de forma atômica. Dado fora do esquema volta como erro `TV30ESQUEMA`, e nada é gravado. São 17 funções de escrita, uma por operação, e duas só de leitura: a auditoria, que aponta as chaves fora do esquema, e a que informa a versão do esquema. A escrita manual pelo `redis-cli` ou pelo commander continua possível. Como funciona, como inspecionar, como rodar a auditoria e como gravar à mão: seção *Esquema nas escritas*, logo abaixo da tabela de donos.
 
@@ -52,7 +52,54 @@ Toda escrita do código do projeto (tv3ws, AoP, borda e carga inicial) nas famí
 - **Carga:** o `infra/redis/entrypoint.sh` carrega a biblioteca **a cada partida**, com `FUNCTION LOAD REPLACE`, **antes** da carga inicial, que também passa pelas funções. O Redis guarda as funções no AOF; o `REPLACE` garante que vale a versão da imagem, não a que ficou no volume. Sem a biblioteca, o container encerra com a mensagem do Redis no log. O healthcheck só fica saudável depois da biblioteca e da carga.
 - **No build:** o `infra/redis/confere-imagem.sh` carrega a biblioteca num Redis temporário, aplica a carga inicial e exige a auditoria vazia. Um `userData.json` fora do esquema não vira imagem.
 
-Detalhes, a lista de funções com argumentos e como mudar uma regra: `infra/redis/README.md`.
+**Partida do container** (`infra/redis/entrypoint.sh`):
+
+1. `redis-server` com AOF (`appendonly yes`).
+2. **Biblioteca de funções**, a cada partida, com `FUNCTION LOAD REPLACE`. O Redis guarda as funções no AOF; o `REPLACE` garante que vale a versão desta imagem, não a que ficou no volume. Se a biblioteca não carregar, o container encerra com a mensagem do Redis no log (sem ela, toda escrita dos serviços falharia com `ERR Function not found`).
+3. **Carga inicial**, só se não existir a chave `seed:done`: `redis-cli --pipe < /seed.resp`, que chama `tv30_perfil_grava` para cada perfil do `userData.json`. Se alguma chamada for recusada pelo esquema, `seed:done` não é gravado e o container fica *unhealthy*, com os erros no log. Na prática isso não acontece com a imagem do repositório: o build já aplicou a mesma carga e falharia antes.
+4. Marca `/tmp/tv30-redis-pronto` e commander na porta 18081, com login.
+5. **Vigia (morre-inteiro).** O entrypoint confere os dois processos a cada segundo. Se o `redis-server` ou o commander cair, ele encerra o outro, espera o `redis-server` terminar de desligar (AOF gravado) e sai com 1; o `restart: unless-stopped` do compose traz o container de volta. No `docker stop`, o entrypoint para o commander e espera o `redis-server` desligar antes de sair.
+
+O healthcheck exige a marca e `seed:done`. A marca é apagada no começo de cada partida, então um `docker restart` só volta a ficar saudável depois de recarregar a biblioteca.
+
+### As funções
+
+As funções são chamadas com `numkeys 0`: elas montam os nomes das chaves a partir dos argumentos (flag `no-cluster`; o testbed usa um Redis só).
+
+| Função | Argumentos | Efeito | Quem chama |
+|---|---|---|---|
+| `tv30_sessao_usuario` | `<id ou vazio>` | `SET session:current-user` | tv3ws (espelho de `aop/currentUser`; C.6.14.4) |
+| `tv30_sessao_servico_id` | `<id ou vazio>` | `SET session:current-service-id` | tv3ws (espelho de `aop/currentService`) |
+| `tv30_sessao_servico` | `<campo> <valor> ...` | regrava `session:current-service` inteiro | tv3ws (troca de serviço) |
+| `tv30_perfil_grava` | `<id> <n> <serviço 1..n> <campo> <valor> ...` | `users:index` + `user:{id}` regravado + serviços acrescentados a `user:{id}:consent`; id novo com `users:index` no teto de cinco (`maxMembros`, 10.3.3) é recusado, na mesma operação | AoP (criação e perfil padrão), carga inicial, `migrate_to_redis.py` |
+| `tv30_perfil_ultimo_acesso` | `<id> <ms>` | `lastAccess`, só de perfil em `users:index` (devolve 1 ou 0) | AoP (troca de usuário corrente) |
+| `tv30_perfil_remove` | `<id>` | tira o perfil e as quatro famílias dele | AoP (remoção pelo telespectador, no seletor de perfil) |
+| `tv30_atributos_emissora` | `<id> <scid> <campo> <valor> ...` | `HDEL` dos vazios e `HSET` dos demais, teto de 20 MB | tv3ws (C.6.14.5) |
+| `tv30_cliente_grava` | `<id> <campo> <valor> ...` | `HSET client:{id}` | tv3ws (emissão e rotação de token) |
+| `tv30_cliente_autoriza` | `<id> <campo> <valor> ...` | `client:{id}` + sai de `clients:blocked` + entra em `clients:authorized` | tv3ws: o "sim" do local autônomo no pop-up; o do não local, no `/tv3/token` que confere o `challenge-response` |
+| `tv30_cliente_bloqueia` | `<id>` | sai de `clients:authorized` + entra em `clients:blocked` | tv3ws (pop-up recusado) |
+| `tv30_cliente_inclui_autorizado` | `<id>` | entra em `clients:authorized` se tem `client:{id}` e não está bloqueado | tv3ws (boot) |
+| `tv30_origem_registra` / `tv30_origem_remove` / `tv30_origens_limpa` | `<origem> <serviço>` / `<origem>` / nada | `origins:associated` | AoP (lançamento e encerramento de app; boot) |
+| `tv30_servicos_anunciados` | `[<serviço> ...]` (nenhum = nenhum serviço) | regrava `services:announced` inteiro (`DEL` + `SADD`); devolve o número de serviços | AoP (`aop-transport-layer-metadata-lls`: BAMT recebida ou retirada, partida) |
+| `tv30_bind_registra` / `tv30_bind_remove` | `<serviceId> <entrada JSON>` | `RPUSH` / `LREM 0` em `bind-context:{serviceId}` | borda (C.6.8.2, C.6.8.4) |
+| `tv30_auditoria` (só leitura) | nada | lista o que está fora do esquema | testes e desenvolvedor |
+| `tv30_versao` (só leitura) | nada | versão do `esquema.json` | desenvolvedor |
+
+### Regras do `esquema.json`
+
+Cada família tem `chave` (com partes como `{id}`), `tipo` (`string`, `hash`, `set`, `list`), `dono` e as regras:
+
+- `valor` (string), `campos` e `outrosCampos` (hash), `membros` (set), `itens` (list), `partes` (as partes da chave);
+- cada regra tem um `tipo`: `texto` (`min`/`max` em caracteres, `proibe`), `booleano` (`"true"`/`"false"`), `inteiro` (decimal sem zero à esquerda, `min`/`max`, `vazio`), `enum`, `idioma` (formato IETF RFC 5646), `uuid` (formato textual da IETF RFC 9562, em minúsculas, com versão de 1 a 8 e variante da RFC 9562, `8`, `9`, `a` ou `b`, o que deixa de fora o UUID nulo e o máximo; o id do perfil), `nomeArquivo` (nome de arquivo sem diretório: começa por letra ou dígito, só letras sem acento, dígitos, `.`, `_` e `-`, até `maxNome` caracteres antes da extensão, e a extensão, o que vem depois do último ponto, numa das `extensoes`, em minúsculas; o avatar do perfil), `origem` (como o navegador manda no `Origin`) e `json` (objeto com `campos`);
+- `obrigatorio`, `obrigatorioSe` (`{campo, valor}`), `campoIgualAParte`, `camposProibidos`, `maxBytes`, `maxMembros` (teto de membros de um set, conferido pela função que grava e pela auditoria; em `users:index`, os cinco perfis da 10.3.3);
+- `ref` reaproveita uma regra de `definicoes` (por exemplo, `idPerfil`);
+- `fonte` diz de onde a regra veio. A recusa do `nomeArquivo` diz o que falhou, na ordem em que a mensagem ajuda mais: `SVG em linha nao serve`, diretório (`/` ou `\`), extensão, primeiro caractere, demais caracteres e tamanho (`motivoNomeArquivo`, em `funcoes.lua`). A do `uuid` diz qual parte falhou (por exemplo, `versao do UUID deve ser de 1 a 8 (1o digito do 3o grupo; veio 9 em ...)` ou `UUID nulo (...) nao serve de id de perfil`). O id da carga (`c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10`, versão 4, variante `9`) e os do AoP (`crypto.randomUUID()`, versão 4) são válidos.
+
+As invariantes entre chaves (`perfil-indexado`, `perfil-dependentes`, `clientes-disjuntos`, `autorizado-tem-registro`) são declaradas no `esquema.json` e implementadas no `funcoes.lua`. A biblioteca recusa rodar se as duas listas não baterem.
+
+**Para mudar uma regra:** edite o `infra/redis/esquema.json`; os testes de `infra/redis/test/` geram casos para ela. Rode `bash infra/redis/test/run.sh tudo` e reconstrua a imagem (`docker compose build redis`, na raiz do TV30): o arquivo é copiado para a imagem no build (`infra/redis/Dockerfile`), e a regra nova passa a valer quando o container é recriado com ela, porque o entrypoint recarrega a biblioteca a cada partida.
+
+**Para uma operação de escrita nova:** escreva a função no `infra/redis/funcoes.lua`, acrescente o nome em `ESCRITA` (fim do arquivo) e em `funcoes` do `esquema.json`, chame-a pelo adaptador do serviço e acrescente testes. O teste estático falha se o serviço gravar direto.
 
 ### Esquema de cada família
 
@@ -123,22 +170,16 @@ docker exec redis redis-cli FCALL tv30_cliente_bloqueia 0 <clientid>
 
 A escrita direta (`SET`, `HSET`, `SADD`...) pelo `redis-cli` ou pelo commander **continua possível** e não passa pelo esquema. Depois de uma, rode a auditoria. Uma escrita manual que cumpra o esquema não se distingue da do código.
 
-### Por que não há bloqueio por ACL
+### O que impede a escrita direta
 
-Deixar o `default` só com leitura e `FCALL`, e um usuário administrativo para o resto, não funciona: o Redis aplica o ACL de quem chama **dentro** da função. Com o `default` sem `@write` e com `+fcall`, a função recebe:
-
-```
-ERR ACL failure in script: User default has no permissions to run the 'set' command
-```
-
-No Redis puro, não há como bloquear a escrita direta e liberar só a escrita pela função. As garantias ficam em duas partes:
+Nada no Redis: o `redis-cli` e o commander gravam direto ([Decisões]({{ site.baseurl }}/decisoes)). Há duas conferências:
 
 - **Teste estático:** falha se algum serviço gravar direto numa família do alcance fora do adaptador das funções (`tv3ws/src/redis-funcoes.ts`, `aop/src/redis-funcoes.js`, `fcall` em `infra/edgegateway/plugin/redis.go` e `FCALL` na carga inicial). Roda no `npm test` do tv3ws e do AoP, no `go test` da borda (inclusive no build da imagem dela) e em `infra/redis/test/run.sh estatico`.
 - **Auditoria:** mostra o que entrou por fora.
 
 Os testes das funções num Redis real ficam em `infra/redis/test/run.sh`, nos modos `funcoes`, `contrato` e `imagem`.
 
-### O que fica fora do alcance, e por quê
+### O que fica fora do alcance
 
 - `remote-devices:index`, `remote-devices:class:{classe}`, `remote-device:{handle}`: espelho dos dispositivos remotos conectados (WebSockets vivos), limpo no boot e lido só pelo próprio tv3ws. O tv3ws o grava direto (`src/modules/remotedevice-manager/manager.ts`, o único arquivo com escrita direta permitida; o teste estático exige que ele não cite chave do alcance).
 - `seed:done`: marca de controle da carga inicial.
@@ -159,6 +200,14 @@ As duas chaves STRING espelham os tópicos MQTT retidos `aop/currentUser` e `aop
 ---
 
 ## Chaves de usuário
+
+A seção 8.7 (Profile Manager) organiza os atributos do perfil em três níveis (Figura 5):
+
+| Nível | Na norma | No testbed |
+|---|---|---|
+| Atributos básicos | padronizados (Tabela 7) | `user:{id}` |
+| Atributos do dispositivo | definidos pelo fabricante ou pelo desenvolvedor da AoP | não há |
+| Atributos de emissora | definidos por cada serviço de TV digital e guardados no contexto dele | `user:{id}:broadcaster-attrs:{scid}`, gravados pela C.6.14.5 |
 
 ### `users:index` (SET)
 
@@ -206,7 +255,7 @@ docker exec redis redis-cli HGETALL user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10
 
 ### `user:{id}:consent` (SET)
 
-Serviços DTV para os quais o perfil é visível: a visibilidade do perfil por serviço, e não o consentimento da seção 8.8 da norma (o Privacy Manager, que o testbed não implementa). O tv3ws lê este SET (`tv3ws/src/api/user/service.ts`) em três lugares: no filtro da lista de perfis da C.6.14.1 (`getUserList`: só entram os perfis com o serviço corrente aqui; sem serviço corrente, ou com um serviço que nenhum perfil tem, a chamada responde 300), no 405 da C.6.14.2 e da C.6.14.5 (`assertUserVisible`, para o serviço da chamada) e no `GET /tv3/current-service/users/files` (`checkConsent`: o arquivo sai se ele é o avatar de um perfil visível no serviço corrente; o avatar só de perfis não visíveis dá 405, e o que não é avatar de ninguém, 305). O AoP o grava na criação do perfil (abaixo); a carga inicial o traz do `accessConsent` do `userData.json`.
+Serviços DTV para os quais o perfil é visível: a visibilidade do perfil por serviço, e não o consentimento da seção 8.8 da norma (o Privacy Manager, que o testbed não implementa). O tv3ws lê este SET (`tv3ws/src/api/user/service.ts`) em três lugares: no filtro da lista de perfis da C.6.14.1 (`getUserList`: só entram os perfis com o serviço corrente aqui; sem serviço corrente, ou com um serviço que nenhum perfil tem, a chamada responde 300, o que diverge da norma: [Não implementado]({{ site.baseurl }}/nao-implementado)), no 405 da C.6.14.2 e da C.6.14.5 (`assertUserVisible`, para o serviço da chamada) e no `GET /tv3/current-service/users/files` (`checkConsent`: o arquivo sai se ele é o avatar de um perfil visível no serviço corrente; o avatar só de perfis não visíveis dá 405, e o que não é avatar de ninguém, 305). O AoP o grava na criação do perfil (abaixo); a carga inicial o traz do `accessConsent` do `userData.json`.
 
 ```
 SMEMBERS user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10:consent
@@ -244,7 +293,7 @@ Chaves de validação de bind-token registradas pela emissora (C.6.8). O recepto
 - `DELETE /tv3/bind-context` (cabeçalho `key`, C.6.8.4) remove a chave da lista do serviço corrente; sucesso mesmo se não existir, e também sem serviço corrente (não há lista de que remover).
 - Codificação da `key` (norma silente — decisão de implementação): HS = bytes UTF-8 do segredo, sem trim (duplicata só se o texto for idêntico); RS = PEM (o texto começa por `-----BEGIN` e o rótulo é `PUBLIC KEY`, `RSA PUBLIC KEY`, `RSA PRIVATE KEY` ou `PRIVATE KEY`) ou base64 de DER (SPKI ou PKCS#1); chave privada recebida tem a pública derivada. Módulo RSA pequeno demais para o algoritmo dá 101. O registro e a validação usam a mesma função de leitura de chave, no plugin da borda (`infra/edgegateway/plugin/keys.go`).
 - A gravação é pela função `tv30_bind_registra` (um `RPUSH`), e a revogação pela `tv30_bind_remove` (um `LREM 0`). A função confere a entrada (um objeto JSON `{alg, key, registeredAt}` e nada mais, com `alg` entre os quatro, `key` não vazia e `registeredAt` inteiro) e o `serviceId`.
-- A leitura e a gravação do registro não são atômicas (LRANGE seguido da função de registro): dois registros simultâneos da mesma chave podem gravar uma duplicata, o que não muda o resultado. A detecção de duplicata fica na borda porque ela compara chaves RSA pela chave pública, coisa que a função não faz.
+- A leitura e a gravação do registro não são atômicas (LRANGE seguido da função de registro): dois registros simultâneos da mesma chave podem gravar uma duplicata, o que não muda o resultado. A detecção de duplicata fica na borda, que compara chaves RSA pela chave pública.
 
 ```bash
 docker exec redis redis-cli LRANGE bind-context:urn:tv30:service:users-test 0 -1
@@ -299,4 +348,4 @@ Quem grava os perfis é o **gestor de perfis do AoP** (`aop/src/modules/profile-
 
 - **tv3ws e AoP** (ioredis): `maxRetriesPerRequest: 1`, `commandTimeout` de 1500 ms, `connectTimeout` de 2000 ms, fila offline ligada e reconexão contínua (200 ms a 2 s). Comando sem resposta falha, e a rota HTTP responde 404 `{"error":200}` (no tv3ws, `src/util/error.ts`; no AoP, `src/http-error.js`). O log registra `[redis] pronto em ...`, a perda da conexão e o erro. Configuração em `tv3ws/src/redis-client.ts` e `aop/src/redis-options.js`.
 - **Borda** (cliente RESP próprio, `infra/edgegateway/plugin/redis.go`): limite de 500 ms por comando (`REDIS_TIMEOUT_MS`), e uma nova tentativa numa conexão nova quando a do pool morreu, menos para o registro de bind-context (`tv30_bind_registra`) que já saiu. A falha dá 404 `{"error":200}` nos dois modos, tanto na decisão de credencial (o 200 não segue o `AUTH_ENFORCE`; `followsMode`, em `handler.go`) quanto na C.6.8, que a própria borda responde (a C.6.7.8 e a C.6.7.9 não usam o Redis).
-- **Recusa de esquema**: erro `TV30ESQUEMA` de uma função. Os três serviços a tratam como as outras falhas do Redis (404 `{"error":200}`, com a mensagem no `description` e no log), porque ela é defeito de quem grava. O que o cliente da API manda errado é recusado antes, pelo próprio serviço, com o código da norma (101, 105...).
+- **Recusa de esquema**: erro `TV30ESQUEMA` de uma função. Os três serviços a tratam como as outras falhas do Redis (404 `{"error":200}`, com a mensagem no `description` e no log). O que o cliente da API manda errado é recusado antes, pelo próprio serviço, com o código da norma (101, 105...).

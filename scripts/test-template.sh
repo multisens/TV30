@@ -1,27 +1,32 @@
 #!/usr/bin/env bash
-# test-template.sh — executa DE FATO o template de componente
-# (templates/componente): copia a pasta, troca o nome do componente (passo 1 do
-# README do template), sobe o exemplo com o compose do template e confere a
-# rede (so ginga_net), restart e init, o redis e o mosquitto pelo nome do
-# servico (ping MQTT que volta com o valor gravado no Redis), o /health pela
-# porta publicada e o morre-inteiro (kill no node derruba o container e o
-# restart o religa). Roda contra a stack JA DE PE e nao mexe nela; no fim
-# (trap EXIT) apaga o projeto do componente, a chave de teste e a copia.
+# test-template.sh: actually runs the component template
+# (templates/componente): copies the folder, renames the component (step 1 of
+# the README of the template), starts the example with the compose of the
+# template and checks the network (only ginga_net), restart and init, redis
+# and mosquitto by service name (an MQTT ping that comes back with the value
+# written to Redis), /health on the published port and the whole-container
+# exit (a kill of node brings the container down and the restart brings it
+# back). Runs against the stack already up and does not change it; at the
+# end (trap EXIT) removes the component project, the test key and the copy.
 #
-# Uso (Linux/WSL, com acesso ao docker):  bash scripts/test-template.sh
-# Variaveis opcionais:
-#   TPL_PORT     porta do host para o /health (padrao: a primeira livre de
-#                18090 a 18129)
-#   TPL_TIMEOUT  segundos para o container ficar healthy (padrao 120; inclui
-#                o build e o pull da imagem base na primeira vez)
+# Usage (Linux/WSL, with docker access):  bash scripts/test-template.sh
+# Optional variables:
+#   TPL_PORT     host port for /health (default: the first free one from
+#                18090 to 18129)
+#   TPL_TIMEOUT  seconds for the container to become healthy (default 120;
+#                includes the build and the pull of the base image the
+#                first time)
 set -u
 cd "$(dirname "$0")/.." || exit 2
 ROOT=$(pwd)
 
 RUN="$$$(date +%s)"
-NAME="tpl$RUN"            # nome do componente na copia (servico e container)
-PROJ="tv30-$NAME"         # projeto compose (o name: do template apos a troca)
-TOPIC="tv30/$NAME/exemplo"   # padroes do index.js do exemplo
+# Name of the component in the copy (service and container).
+NAME="tpl$RUN"
+# Compose project (the name: of the template after the rename).
+PROJ="tv30-$NAME"
+# Defaults of the index.js of the example.
+TOPIC="tv30/$NAME/exemplo"
 KEY="tv30:$NAME:exemplo"
 TPL_TIMEOUT=${TPL_TIMEOUT:-120}
 TMP=$(mktemp -d)
@@ -35,7 +40,7 @@ info() { echo "      $*"; }
 die()  { echo "ERRO: $*" >&2; exit 2; }
 rc()   { docker exec redis redis-cli "$@"; }
 
-# ---------------------------------------------------------------- pre-req --
+# ----------------------------------------------------------- prerequisites --
 command -v docker >/dev/null || die "docker ausente"
 command -v curl >/dev/null || die "curl ausente"
 docker compose version >/dev/null 2>&1 || die "docker compose ausente"
@@ -55,10 +60,11 @@ else
   [ -n "${TPL_PORT:-}" ] || die "nenhuma porta livre de 18090 a 18129 (defina TPL_PORT)"
 fi
 
-# o .env da raiz vale na interpolacao, como o README do template manda
+# The root .env applies to the interpolation, as the README of the template
+# says.
 ENVF=()
 [ -f "$ROOT/.env" ] && ENVF=(--env-file "$ROOT/.env")
-# -p explicito: o projeto do componente nunca se confunde com o da stack
+# Explicit -p: the component project is never taken for the stack.
 dc() { MEU_COMPONENTE_PORT=$TPL_PORT docker compose -p "$PROJ" "${ENVF[@]}" -f "$DIR/docker-compose.yml" "$@"; }
 
 cleanup() {
@@ -83,13 +89,13 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-# ------------------------------------------------------- copia e troca --
+# --------------------------------------------------------- copy and rename --
 cp -r "$ROOT/templates/componente" "$DIR" || die "falha copiando templates/componente"
 grep -rl 'meu-componente' "$DIR" | while IFS= read -r f; do sed -i "s/meu-componente/$NAME/g" "$f"; done
 if grep -rq 'meu-componente' "$DIR"; then die "a troca do nome deixou 'meu-componente' na copia"; fi
 echo "== template copiado para $DIR (componente '$NAME', porta $TPL_PORT no host) =="
 
-# ------------------------------------------------------------------ sobe --
+# ------------------------------------------------------------------- start --
 wait_healthy() {
   local i s
   for i in $(seq 1 "$TPL_TIMEOUT"); do
@@ -113,7 +119,7 @@ else
   die "container $NAME nao ficou healthy em ${TPL_TIMEOUT}s"
 fi
 
-# ------------------------------------------------------------ verificacoes --
+# ------------------------------------------------------------------- checks --
 echo; echo "-- rede e politica do container --"
 NETS=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$NAME")
 if [ "$NETS" = "ginga_net " ]; then pass "container na ginga_net, e so nela"
@@ -133,7 +139,8 @@ else fail "log sem 'redis redis:6379 PING -> PONG': $(head -c 300 <<<"$LOGS" | t
 if grep -q "mqtt mosquitto:1883 conectado" <<<"$LOGS"; then pass "log do exemplo: mqtt mosquitto:1883 conectado"
 else fail "log sem 'mqtt mosquitto:1883 conectado': $(head -c 300 <<<"$LOGS" | tr '\n' ' ')"; fi
 
-# ping pelo broker; o exemplo responde com o valor da chave lido do Redis
+# Ping through the broker; the example answers with the value of the key read
+# from Redis.
 ping_pong() {
   local label=$1 val="v-$RUN-$RANDOM" msg="ping-$RUN-$RANDOM" bg
   rc SET "$KEY" "$val" >/dev/null
@@ -172,8 +179,8 @@ if [ -n "$PIDN" ]; then
     fi
     sleep 1
   done
-  # --until 2 s no futuro: o docker events espera ate la; com o "agora", o die
-  # de um restart rapido pode ficar fora da janela.
+  # --until 2 s in the future: docker events waits until then; with "now",
+  # the die of a quick restart may fall outside the window.
   DIE=$(docker events --since "$T0" --until "$(( $(date +%s) + 2 ))" --filter "container=$NAME" --filter event=die \
         --format '{{.Actor.Attributes.exitCode}}' 2>/dev/null | head -1)
   if [ -n "$DIE" ]; then pass "kill -9 no node derrubou o container (evento die, exitCode=$DIE)"
@@ -190,7 +197,7 @@ else
   fail "processo node nao encontrado no container (pidof node vazio)"
 fi
 
-# ================================================================ fim =====
+# ===================================================================== end ===
 echo
 echo "== resultado: $PASS PASS, $FAIL FAIL =="
 for f in "${FAILED[@]}"; do echo "  FAIL $f"; done

@@ -144,7 +144,7 @@ bash infra/redis/test/run.sh tudo     # ou um modo: funcoes | estatico | contrat
 | `contrato` (`contrato.test.js` + `contrato_test.go`) | Os adaptadores e os gestores de verdade (auth-manager do tv3ws, gestor de perfis do AoP, `redisStore` da borda) contra as funções, inclusive a leitura de `clients:authorized` pela borda; o id do AoP em UUID versão 4 com a variante da RFC 9562 e a recusa do UUID nulo e da versão fora de 1 a 8 voltando ao serviço como erro `TV30ESQUEMA`; o gestor de perfis do AoP gravando o avatar em `thumbs/` de um `USER_DATA_PATH` temporário (o `avatar` é `<id>.svg`, o arquivo tem o SVG do formulário, o sexto perfil é recusado sem gravar arquivo, e sobram só os arquivos dos perfis existentes); a remoção do perfil pelo adaptador do AoP levando os atributos de emissora; o perfil padrão no esquema; e a unidade da LLS do AoP gravando `services:announced` pela função. Termina com a auditoria vazia |
 | `imagem` | Build da imagem `tv30-redis`, que já confere biblioteca, carga e auditoria (`confere-imagem.sh`); healthcheck igual ao do compose; carga pelas funções, com o id do perfil lido do template em UUID estrito e o avatar da carga igual ao nome do arquivo que o template traz em `thumbs/`; a versão do esquema na imagem igual à do `esquema.json`; recarga da biblioteca numa nova partida; e o morre-inteiro do commander (a morte dele derruba o container, com saída 1) |
 
-Mais detalhes em `infra/redis/README.md` e em [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis).
+Mais detalhes em [Modelo de dados Redis]({{ site.baseurl }}/modelo-redis).
 
 ### Broker (`infra/mqtt-broker`): plugin C
 
@@ -271,4 +271,4 @@ bash scripts/test-virgin-up.sh
 
 Ficam fora de `scripts/`:
 - **`infra/mqtt-broker/plugin/tests/test_errors_json.sh` e `test_all_validations.sh`:** os testes de integração do plugin do broker, num broker descartável (seção *Broker*, acima).
-- **`infra/mqtt-broker/brokertimetest/`:** medição do tempo de resposta do broker com vários clientes em paralelo, pelos tópicos de teste de latência que o plugin responde ([Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos#plugin-c-do-mosquitto)).
+- **`infra/mqtt-broker/brokertimetest/`:** medição do tempo de resposta do broker com vários clientes em paralelo, pelos tópicos de teste de latência que o plugin responde ([Broker MQTT]({{ site.baseurl }}/broker-mqtt#teste-de-latência)).

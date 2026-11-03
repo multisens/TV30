@@ -1,7 +1,7 @@
 #!/bin/bash
-# Teste do shutdown limpo do bcast: confere os topicos retidos, cronometra o
-# docker stop (deve encerrar bem antes do timeout de 10s), confere que os
-# retidos foram limpos e religa o bcast.
+# Test of the clean shutdown of bcast: checks the retained topics, times the
+# docker stop (it must end well before the 10 s timeout), checks that the
+# retained topics were cleared and starts bcast again.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 

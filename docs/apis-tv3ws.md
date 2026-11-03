@@ -66,12 +66,12 @@ As 26 rotas do `infra/edgegateway/routes.json`. **`auth`** = `none`, `token` ou 
 **Notas:**
 
 - **C.6.7.8 e C.6.7.9 (borda).** Listam as 20 APIs implementadas nas duas superfícies, cada uma com a versão mais recente que serve (100.0 para a `tv3ws-remotedevice-communication`, 2.0 para as demais). Um id da Tabela C.2 não implementado dá 101; sem `subsystem`, a lista traz todas.
-- **`GET /tv3/current-service`** (C.6.3.1, Tabela C.8). Sem serviço em uso, 404 `{"error":300}`. Com serviço, 200 com `serviceContextId` (o `globalServiceId`), `transportStreamId` e `originalNetworkId`. O `serviceName` e o `serviceId` inteiro ficam de fora: sem SLT, o testbed não os tem, e o `aop/services` só traz o `serviceContextId`. O 302 (sem recepção do sinal) não é emitido: o testbed não tem estado de recepção.
+- **`GET /tv3/current-service`** (C.6.3.1, Tabela C.8). Sem serviço em uso, 404 `{"error":300}`. Com serviço, 200 com `serviceContextId` (o `globalServiceId`), `transportStreamId` e `originalNetworkId`. O `serviceName` e o `serviceId` inteiro ficam de fora: sem SLT, o testbed não os tem, e o `aop/services` só traz o `serviceContextId`. O 302 não é emitido ([Não implementado]({{ site.baseurl }}/nao-implementado)).
 - **304 (serviço fora do catálogo).** Na C.6.14.2 e na C.6.14.5 com `{serviceContextId}` explícito, a borda responde 304 ("DTV service not found", Tabelas C.71 e C.74) ao serviço fora de `services:announced`, a lista dos serviços anunciados na LLS que o AoP grava e que o Application Catalog mostra; `current-service` não confere. Vem depois do 107 e do 300 e antes do bind-token, para todo cliente e nos dois modos; Redis fora, 200.
 - **`POST /tv3/current-service/users/current-user`** (C.6.14.4, Tabela C.73). Sem `id` no corpo, 105; sem serviço DTV em uso, 300; `id` fora de `users:index`, 305; perfil que não deu acesso à emissora do serviço corrente (`user:{id}:consent`), 405 (`setCurrentUser`, em `tv3ws/src/api/user/service.ts`). Aceito, o tv3ws grava `session:current-user` e publica `aop/currentUser` retido.
 - **`POST /tv3/{serviceContextId}/users`** não existe na norma (só `POST /tv3/current-service/users`, C.6.14.1) e não é rota declarada: a borda responde 100.
 - **Efeitos sensoriais (C.6.16).** A capacidade de posição do aparelho é `location` (Tabela A.45). No comando da C.6.16.3, valem as propriedades da Tabela A.30 (`intensityValue`, `color`, `scent`, `frequency`) e os atributos de posição da A.3.19 (`azimuthal`, `polar`, `width`, `height`, `direction`, `location`); outro nome dá 101 (`tv3ws/src/api/sensory-effect/service.ts`). O valor das propriedades não é conferido: `scent` aceita qualquer texto. Nas amostras do aquário (`bcast/public/hls/aquario*/events.json`), o efeito de cheiro manda `scent: "sea"` junto com `intensityValue`.
-- **Remote-device, portas do WebSocket** (`tv3ws/src/modules/remotedevice-manager/entry-point.ts`). Cada registro (C.6.15.2) e cada ponto de entrada local abre um servidor próprio numa porta sorteada da faixa `WS_PORT_MIN`–`WS_PORT_MAX`, sem o máximo. O do dispositivo remoto (registro) tem TLS com o certificado do receptor quando ele existe (`wss://`, Tabela C.76), salvo com `TV3WS_WS_TLS=false`. O local (C.6.15.5 e ativação por *handle*) sai sempre em `ws://`, no esquema do `Server-BaseURL` que o cliente local usa; o `wss://` da Tabela C.80 não é seguido (escolha do testbed, fora da norma). Porta ocupada leva a outro sorteio, em até 10 tentativas (`LISTEN_ATTEMPTS`); esgotadas, 404 `{"error":200}`. A remoção do dispositivo fecha os servidores dele.
+- **Remote-device, portas do WebSocket** (`tv3ws/src/modules/remotedevice-manager/entry-point.ts`). Cada registro (C.6.15.2) e cada ponto de entrada local abre um servidor próprio numa porta sorteada da faixa `WS_PORT_MIN`–`WS_PORT_MAX`, sem o máximo. O do dispositivo remoto (registro) tem TLS com o certificado do receptor quando ele existe (`wss://`, Tabela C.76), salvo com `TV3WS_WS_TLS=false`. O local (C.6.15.5 e ativação por *handle*) sai sempre em `ws://`, no esquema do `Server-BaseURL` que o cliente local usa; a Tabela C.80 pede `wss://` ([Não implementado]({{ site.baseurl }}/nao-implementado)). Porta ocupada leva a outro sorteio, em até 10 tentativas (`LISTEN_ATTEMPTS`); esgotadas, 404 `{"error":200}`. A remoção do dispositivo fecha os servidores dele.
 - **Dispositivo remoto e `wss://`.** Um aparelho não abre `wss://` com certificado autoassinado em que não confia. Confie nele o `.tv30/tls/cert.pem`, ou rode o tv3ws com `TV3WS_WS_TLS=false`. A app de navegador no ponto de entrada local não depende do certificado.
 
 ---
@@ -93,10 +93,32 @@ A tentativa pendente do não local (o "sim" dado e o pareamento não concluído)
 **Autorizados e bloqueados.** O tv3ws guarda os clientes autorizados no SET `clients:authorized` e os recusados em `clients:blocked`. Um id fica em no máximo um dos dois, porque autorizar e bloquear são uma função do Redis cada (`tv30_cliente_autoriza` e `tv30_cliente_bloqueia`), que tira o id de um conjunto e o põe no outro.
 - **Quando grava.** O "não" é gravado na hora, em `clients:blocked`, para as duas classes. O "sim" do local autônomo é gravado na hora (`client:{id}` e `clients:authorized`). O "sim" do não local fica só na memória do tv3ws, como tentativa pendente com o material do pareamento (`StartPairing`, em `manager.ts`): `client:{id}` e `clients:authorized` só são gravados quando o `/tv3/token` confere o `challenge-response` (`AuthorizePairedClient`), e só então sai a credencial. Se essa gravação falhar, a resposta é 404 `{"error":200}`, e o material volta ao cliente. A trava de 120 s só fecha o pop-up; um reinício do tv3ws perde a tentativa.
 - **No `/tv3/token`,** o fluxo por `challenge-response` aceita a tentativa pendente; o por `refresh-token` exige a autorização gravada (`clients:authorized`). Sem o que o fluxo exige, 102. Um cliente bloqueado depois de autorizado recebe 102, como pede a C.4.2.2 ("it is not able to request the access token").
-- O bloqueio só acontece na recusa do pop-up (ou quando ele expira). A tela de gerenciamento que a C.4.2.2 pede, onde o espectador consulta o histórico e bloqueia ou desbloqueia, não existe; `listAuthorizedClients` e `listBlockedClients` (`manager.ts`) são a base dela.
+- O bloqueio só acontece na recusa do pop-up (ou quando ele expira). A tela de gerenciamento da C.4.2.2 não existe ([Não implementado]({{ site.baseurl }}/nao-implementado)).
 - A borda recusa com 107 o token de um `sub` que está em `clients:blocked`, o de um `sub` que não está em `clients:authorized` e o token sem `sub`. Vale nas rotas que pedem token, para toda classe; o bloqueio é conferido antes e mantém a mensagem dele. O token de classe `local-associated` segue a regra geral, com bind-token nas rotas `token+bind`; o tv3ws não emite essa classe.
 
 O 102 fica só para a recusa no próprio pop-up ("If the user does not grant access"), o que inclui o pop-up que expira sem resposta: o tempo esgotado conta como recusa e também bloqueia o cliente (`showYesNoPopUpAsync`, em `tv3ws/src/core.ts`, e `checkAuthorization`, em `controller.ts`).
+
+**Erros do `GET /tv3/authorize`** (Tabela C.3), nesta ordem:
+
+| Código | Situação |
+|---|---|
+| 106 | `Origin` em `origins:associated`: o associado não obtém credencial (C.4.1.1). A borda o recusa antes |
+| 105 | Falta `clientid`, `display-name` ou, no `kex`, `key`. Parâmetro vazio ou só com espaços conta como ausente |
+| 101 | `pm` não suportado, ou `clientid` já usado (autorizado ou bloqueado) |
+| 103 | A camada gráfica está ocupada pelo sim/não de outro pedido, ou pelo QR code ou o PIN de um pareamento, também para o mesmo `clientid` |
+| 102 | O espectador recusou no pop-up, ou o pop-up expirou |
+
+**Erros do `GET /tv3/token`** (Tabela C.4):
+
+| Código | Situação |
+|---|---|
+| 105 | Falta `clientid`, ou faltam o `challenge-response` e o `refresh-token` |
+| 106 | Cliente não local com `refresh-token` por HTTP; cliente registrado como associado |
+| 102 | Cliente sem a autorização que o fluxo exige; `challenge-response` errado, que não decifra ou repetido na URL; `challenge-response` sem desafio pendente (repetido depois do sucesso, de cliente local ou depois de um reinício do tv3ws) |
+| 101 | `refresh-token` que não pertence ao cliente, ou repetido na URL |
+| 200 | Falha da plataforma, como o Redis fora do ar, inclusive na gravação da autorização do não local |
+
+**O access token.** JWT HS256 assinado com o `JWT_SECRET`, com os claims `iat`, `nbf`, `exp` (24 h), `iss` (o `JWT_ISSUER`, padrão `GenericIssuer`), `sub` (o `clientid`) e `class` (`tv3ws/src/modules/auth-manager/manager.ts`). O `/tv3/token` reaproveita o token já emitido enquanto ele vale, e o `expiresIn` é o tempo que resta, em segundos (C.6.1.3). O refresh token é trocado a cada chamada.
 
 **O que o cliente faz** (C.6.1.4.5):
 1. Gera um `clientid` no formato UUID da RFC 9562 (C.6.1.4.3) e o guarda.
@@ -106,7 +128,7 @@ O 102 fica só para a recusa no próprio pop-up ("If the user does not grant acc
 
 **Resposta do não local por método de pareamento** (Tabela C.3, formatos 2 e 3):
 - `pm=qrcode`: `{"challenge"}`. A chave vai no QR code que a TV mostra.
-- `pm=kex`: `{"challenge","key"}`. O `key` é a chave parcial ECDH do servidor (ponto SEC 1 sem compressão, em base64 URL safe, C.4.3.4). O cliente deriva dela o segredo (C.4.3.3) e resolve o `challenge`. O PIN que a TV mostra sai com quatro dígitos, com zeros à esquerda (`0042`), porque a C.4.3.3 diz que ele é "a four-digit number" (`pinFromHash`, em `tv3ws/src/api/client-identification/service.ts`).
+- `pm=kex`: `{"challenge","key"}`. O `key` é a chave parcial ECDH do servidor (ponto SEC 1 sem compressão, em base64 URL safe, C.4.3.4). O cliente deriva dela o segredo (C.4.3.3) e resolve o `challenge`. O PIN que a TV mostra sai com quatro dígitos, com zeros à esquerda (`0042`): a C.4.3.3 diz que ele é "a four-digit number" (`pinFromHash`, em `tv3ws/src/api/client-identification/service.ts`).
 
 **O QR code e o PIN ficam na tela até o fim do pareamento** (C.4.3.2, C.4.3.3). O fim do pareamento é o `GET /tv3/token` que confere o `challenge-response` com sucesso: logo depois da resposta, o tv3ws manda a camada gráfica fechar o pop-up daquele cliente (`{"close":true}` no tópico do pop-up; [Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos)). O pop-up vai com uma trava de 120 s (`PAIRING_POPUP_TIMEOUT_MS`), escolha do projeto, para não ficar preso se o cliente desistir. O `/tv3/token` que falha não fecha o pop-up.
 
@@ -144,7 +166,7 @@ O corpo aceita expressões de filtro (`and`, `or` e expressão simples):
 
 Os comparadores são `eq`, `neq`, `lt`, `lte`, `gt` e `gte`.
 
-Com um serviço corrente ativo (`session:current-service-id`), a listagem só traz usuários cujo `user:{id}:consent` contém esse serviço. Sem serviço ativo, a listagem responde 404 `{"error":300}` ("No DTV service currently in use"), porque a restrição de divulgação da C.6.14.1 vale sempre (`getUserList`, em `tv3ws/src/api/user/service.ts`). Conta como sem serviço ativo também o serviço corrente que nenhum dos perfis existentes tem em `user:{id}:consent` (`resolveActiveService`, no mesmo arquivo). Sem nenhum perfil em `users:index`, o serviço corrente vale, e a lista sai vazia.
+Com um serviço corrente ativo (`session:current-service-id`), a listagem só traz usuários cujo `user:{id}:consent` contém esse serviço. Sem serviço ativo, a listagem responde 404 `{"error":300}` ("No DTV service currently in use"; `getUserList`, em `tv3ws/src/api/user/service.ts`). Conta como sem serviço ativo também o serviço corrente que nenhum dos perfis existentes tem em `user:{id}:consent` (`resolveActiveService`, no mesmo arquivo), o que diverge da norma ([Não implementado]({{ site.baseurl }}/nao-implementado)). Sem nenhum perfil em `users:index`, o serviço corrente vale, e a lista sai vazia.
 
 Esse *consent* é a visibilidade do perfil por serviço guardada no Redis. Não é o consentimento da seção 8.8 da norma.
 
@@ -154,7 +176,7 @@ Esse *consent* é a visibilidade do perfil por serviço guardada no Redis. Não 
 
 **`POST /tv3/{serviceContextId}/users/{userid}`** (C.6.14.5, Tabela C.74). O corpo é um objeto de atributos; valor `""` remove o atributo. O tv3ws grava no hash `user:{id}:broadcaster-attrs:{scid}`, pela função `tv30_atributos_emissora` (`writeBroadcasterAttrs`, em `tv3ws/src/api/user/service.ts`), e responde o JSON dos atributos enviados. Corpo sem atributo, ou com `id`, `nickname`, `parentalControl` ou `maxContentRating`, dá 101; perfil inexistente, 305; perfil não visível no serviço, 405; `current-service` sem serviço em uso, 300; serviço do caminho fora do Application Catalog, 304 (na borda); mais de 20 MB no hash resultante, 404 `{"error":200}`.
 
-**O aviso.** A Tabela C.74, em "Restrictions", diz que "it is necessary to notify the user that the application wants to change/add the attribute". A leitura do projeto: é aviso, e não pedido de confirmação. Depois de gravar, e só se algum valor mudou (gravar o mesmo valor ou remover um atributo que não existe não avisa), o tv3ws publica, sem retenção, em `aop/display/layers/popup/info` (`notifyUserOfWrite`):
+**O aviso.** A Tabela C.74, em "Restrictions", diz que "it is necessary to notify the user that the application wants to change/add the attribute". O tv3ws avisa, sem pedir confirmação ([Decisões]({{ site.baseurl }}/decisoes)). Depois de gravar, e só se algum valor mudou (gravar o mesmo valor ou remover um atributo que não existe não avisa), o tv3ws publica, sem retenção, em `aop/display/layers/popup/info` (`notifyUserOfWrite`):
 
 ```json
 {"value": "A emissora <serviço> atualizou os dados do perfil <apelido>.", "timeout": 5000}
@@ -165,7 +187,7 @@ Esse *consent* é a visibilidade do perfil por serviço guardada no Redis. Não 
 - gravação recusada ou que falha não avisa; falha ao montar ou publicar o aviso só vai para o log, e a resposta da API continua a de sucesso;
 - a mudança é medida contra o hash lido antes da gravação (o mesmo da conferência da quota), que não é atômico com ela: uma escrita concorrente no meio pode decidir o aviso pelo estado lido.
 
-A camada gráfica do AoP mostra o aviso por 5 s, escapado e sem botões, e não tira da tela um sim/não, QR code ou PIN aberto: ele espera numa fila e aparece quando a camada fica livre ([Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos)). Avisar depois de gravar, e não antes, é escolha do projeto.
+A camada gráfica do AoP mostra o aviso por 5 s, escapado e sem botões, e não tira da tela um sim/não, QR code ou PIN aberto: ele espera numa fila e aparece quando a camada fica livre ([Tópicos MQTT]({{ site.baseurl }}/mqtt-topicos)).
 
 ---
 

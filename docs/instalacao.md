@@ -42,7 +42,7 @@ Com o `.env.example`, o compose usa as imagens publicadas no Docker Hub (`DOCKER
 
 Duas coisas acontecem sozinhas na subida:
 
-- **Certificado do receptor.** O serviço `tls-init` gera em `.tv30/tls` um certificado autoassinado, usado no TLS da 44643, no HTTPS interno do tv3ws, no `serverCert` do pareamento e no `wss://` do ponto de entrada do dispositivo remoto ([HTTPS](https://github.com/multisens/TV30/blob/main/README.md#https) no `README.md` da raiz).
+- **Certificado do receptor.** O serviço `tls-init` gera em `.tv30/tls` um certificado autoassinado, usado no TLS da 44643, no HTTPS interno do tv3ws, no `serverCert` do pareamento e no `wss://` do ponto de entrada do dispositivo remoto ([HTTPS](#https)).
 - **Descoberta SSDP (C.3.4).** O `./tv30 up` compila e sobe, no host e fora do Docker, o anunciante de `infra/edgegateway/ssdp/`, com o IP da máquina detectado. Libere a UDP 1900 e a TCP 44642 no firewall. Arranjo e permissões em [Descoberta SSDP]({{ site.baseurl }}/ssdp).
 
 ---
@@ -117,7 +117,7 @@ O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla
 | `AUTH_ENFORCE` | comentada (padrão `enforce`) | `enforce` recusa a credencial inválida; `warn`, opção transitória, só avisa nas recusas de credencial (104, 107, 108) ([Borda e credenciais]({{ site.baseurl }}/borda-credenciais)) |
 | `REDIS_COMMANDER_USER`, `REDIS_COMMANDER_PASSWORD` | comentadas (padrões `admin` e `tv30-redis-admin`) | Login da interface do redis-commander. A conexão com o banco (6379) segue sem senha |
 | `SERVER_URL` | `localhost` | Host que aparelhos externos usam para abrir os WebSockets de remote-device; numa rede de verdade, o IP desta máquina |
-| `TV3WS_WS_TLS` | comentada (padrão: `wss://`) | `false` = ponto de entrada do dispositivo remoto (registro, C.6.15.2) em `ws://`. O ponto de entrada local sai sempre em `ws://` |
+| `TV3WS_WS_TLS` | comentada (padrão: `wss://`) | `false` = ponto de entrada do dispositivo remoto (registro, C.6.15.2) em `ws://`. O ponto de entrada local sai sempre em `ws://`, e não no `wss://` da Tabela C.80 ([Não implementado]({{ site.baseurl }}/nao-implementado)) |
 | `SSDP_ENABLED`, `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Liga o anunciante (padrão `true`), fixa o host do anúncio e do `/manifest` (sobreposição; sem ele, o IP detectado) e força a interface |
 | `WEBMEDIA_REMOTE_MEDIA_PATH`, `WEBMEDIA_REMOTE_USERFILES_PATH` | comentadas | Caminhos no dispositivo remoto do demo webmedia |
 
@@ -125,13 +125,36 @@ O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla
 
 A norma só fixa a 44642 (C.3.4); as demais portas fixas são decisão do projeto.
 
-| Fixas no host | Escolhidas pelo Docker a cada criação do container |
-|---|---|
-| 44642 (superfície interna da borda, HTTP), 44643 (superfície externa da borda, HTTPS), a do AoP (8080, `AOP_PUBLIC_PORT`), 1883 (MQTT), 6379 (Redis, só em `127.0.0.1`), 45000–45199 (WebSockets de remote-device) e a UDP 1900 do anunciante SSDP, no host | a 8081 do bcast, a 9001 (MQTT por WebSocket) do Mosquitto, a 8085 da documentação da borda e a 18081 do redis-commander |
+| Serviço | Porta no host | Observação |
+|---|---|---|
+| AoP (UI do receptor) | 8080, fixa (`AOP_PUBLIC_PORT`) | http://localhost:8080; o MQTT da página da TV passa por `/mqtt` |
+| Aplicações de emissora | 8080, fixa | `http://<app>.apps.localhost:8080/graphicsAppProxy/...` |
+| edgegateway, superfície interna | 44642, fixa (C.3.4) | HTTP |
+| edgegateway, superfície externa | 44643, fixa por padrão (`EDGE_EXT_PUBLISH`) | HTTPS |
+| edgegateway, documentação | escolhida pelo Docker | Swagger UI: `docker port edgegateway 8085` |
+| tv3ws | — | não publicado no host: os clientes entram pela borda |
+| tv3ws, WebSockets de remote-device | 45000–45199, fixas | `wss://SERVER_URL:<porta>`, devolvida no registro; o ponto de entrada local, `ws://SERVER_URL:<porta>` (a Tabela C.80 pede `wss://`: [Não implementado]({{ site.baseurl }}/nao-implementado)) |
+| Anunciante SSDP, no host | UDP 1900 | subido pelo `./tv30 up` |
+| bcast | escolhida pelo Docker (`BCAST_PUBLISH`) | `docker compose port bcast 8081` |
+| Mosquitto | 1883, fixa | MQTT por TCP |
+| Mosquitto, WebSocket | escolhida pelo Docker (`MQTT_WS_PUBLISH`) | `docker compose port mosquitto 9001` |
+| Redis | 6379, fixa, só em `127.0.0.1` | sem senha |
+| Redis Commander | escolhida pelo Docker | `docker port redis 18081`; login em `REDIS_COMMANDER_USER` e `REDIS_COMMANDER_PASSWORD` |
 
 Para achar a porta de host de uma delas, na raiz do clone: `docker compose port <serviço> <porta do container>`, por exemplo `docker compose port bcast 8081` ou `docker compose port mosquitto 9001`; ou `docker compose ps`, que mostra todas. Para fixar uma delas, defina no `.env` `BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` como `host:container` (por exemplo, `BCAST_PUBLISH=8081:8081`) e recrie o serviço (`docker compose up -d <serviço>`).
 
 A 44643 fica fixa porque o `/manifest` do tv3ws anuncia o `Server-SecureBaseURL` em `<host>:<EDGE_HTTPS_PORT>`, com padrão 44643 (`secureBaseURL`, em `tv3ws/src/ssdp-config.ts`), e não sabe a porta de host que o Docker escolheria. O `EDGE_EXT_PUBLISH` (padrão `44643:44643`, `infra/docker-compose.yml`) muda isso: outra porta de host fixa (por exemplo, `EDGE_EXT_PUBLISH=44743:44643`) pede também `EDGE_HTTPS_PORT=44743` no `.env` da raiz, que o tv3ws lê pelo `env_file`, senão o `/manifest` anuncia a 44643; só o número (`EDGE_EXT_PUBLISH=44643`) põe a 44643 numa porta escolhida pelo Docker (`docker compose port edgegateway 44643`), que o `/manifest` não anuncia. Quanto às portas, o `tv30-preflight` avisa, sem bloquear, quando a 1883, a 6379, a 44643 ou a do AoP já estão ocupadas no host, e só para a subida quando a 44642 está ocupada por outro processo (`scripts/preflight.sh`).
+
+---
+
+### HTTPS
+
+A superfície externa da borda (44643) fala HTTPS, com o certificado autoassinado gerado na primeira subida em `.tv30/tls`. O mesmo certificado serve ao HTTPS interno do tv3ws, ao pareamento do cliente não local (`serverCert`) e ao ponto de entrada WebSocket do dispositivo remoto (`wss://`); o ponto de entrada local sai sempre em `ws://`.
+
+- **Cliente de teste:** `curl -k https://localhost:44643/...`, ou confie no `.tv30/tls/cert.pem`. O `subjectAltName` cobre só `localhost` e `127.0.0.1`.
+- **Dispositivo remoto que não confia no certificado:** confie nele, ou use `TV3WS_WS_TLS=false`, que abre o ponto de entrada do dispositivo remoto em `ws://`.
+- **Trocar o certificado:** ponha `cert.pem` e `key.pem` em `.tv30/tls` e recrie a stack.
+- **tv3ws no host (`npm run dev`):** `TV30_TLS_DIR=../.tv30/tls`.
 
 ---
 

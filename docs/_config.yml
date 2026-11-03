@@ -1,22 +1,22 @@
-title: TV 3.0 — Plataforma de Referência
+title: TV30 — testbed aberto da camada de Codificação de Aplicações da TV 3.0
 description: Documentação técnica do monorepo TV30 (multisens), para alunos novos e desenvolvedores
 
-# Tema via remote_theme (suportado pelo GitHub Pages sem precisar instalar localmente)
+# Theme by remote_theme (supported by GitHub Pages without a local install).
 remote_theme: just-the-docs/just-the-docs
 
 plugins:
   - jekyll-remote-theme
 
-# Configurações do just-the-docs
+# just-the-docs settings.
 search_enabled: true
 heading_anchors: true
 color_scheme: dark
 
-# Navegação: as seções (Primeiros passos, Como funciona) são páginas com
-# has_children; a ordem de cada página vem do nav_order dela.
+# Navigation: the sections (Primeiros passos, Como funciona) are pages with
+# has_children; the order of each page comes from its nav_order.
 
-# Avisos em destaque. Uso no Markdown: uma linha "{: .nota }" logo antes
-# do parágrafo (ou do bloco "> ...") do aviso.
+# Highlighted notes. In Markdown: a line "{: .nota }" right before the
+# paragraph (or the "> ..." block) of the note.
 callouts:
   nota:
     title: Norma × implementação
@@ -28,10 +28,10 @@ aux_links:
   "Spec ABNT NBR 25608":
     - "https://www.abntcatalogo.com.br/"
 
-# Footer
+# Footer.
 footer_content: 'CEFET-RJ — Projeto Multisens / TV 3.0'
 
-# Excluir do build
+# Excluded from the build.
 exclude:
   - Gemfile
   - Gemfile.lock
