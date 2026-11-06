@@ -91,7 +91,9 @@ trap 'exit 130' INT TERM
 
 # --------------------------------------------------------- copy and rename --
 cp -r "$ROOT/templates/componente" "$DIR" || die "falha copiando templates/componente"
-grep -rl 'meu-componente' "$DIR" | while IFS= read -r f; do sed -i "s/meu-componente/$NAME/g" "$f"; done
+for f in $(grep -rl 'meu-componente' "$DIR"); do
+  sed -i.bak "s/meu-componente/$NAME/g" "$f" && rm -f "$f.bak"
+done
 if grep -rq 'meu-componente' "$DIR"; then die "a troca do nome deixou 'meu-componente' na copia"; fi
 echo "== template copiado para $DIR (componente '$NAME', porta $TPL_PORT no host) =="
 
