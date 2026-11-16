@@ -1,0 +1,47 @@
+{%- comment -%}
+Renders the units and summary groups of one diagram box.
+Parameters: box (box key), prefix (namespace removed from the labels),
+skip (id of a unit drawn as the box title, not listed again).
+{%- endcomment -%}
+{%- assign all_units = site.data["aop-units"].units -%}
+{%- assign box_units = all_units | where: "box", include.box -%}
+{%- assign statuses = "implemented,partial,absent,out" | split: "," -%}
+{%- for unit in box_units -%}
+{%- if unit.parent or unit.group or unit.id == include.skip -%}{%- continue -%}{%- endif -%}
+{%- assign children = box_units | where: "parent", unit.id -%}
+{%- assign stem = unit.id | remove: "-manager" -%}
+{%- if children.size > 0 -%}
+<div class="aop-family">
+<button type="button" class="aop-unit status-{{ unit.status }}" data-unit="{{ unit.id }}">{{ unit.id | remove_first: include.prefix }}</button>
+<div class="aop-children">
+{%- for child in children %}
+<button type="button" class="aop-unit aop-unit-child status-{{ child.status }}" data-unit="{{ child.id }}">{{ child.id | remove_first: stem | remove_first: "-" }}</button>
+{%- endfor %}
+</div>
+</div>
+{%- else %}
+<button type="button" class="aop-unit status-{{ unit.status }}" data-unit="{{ unit.id }}">{{ unit.id | remove_first: include.prefix }}</button>
+{%- endif -%}
+{%- endfor -%}
+{%- assign box_groups = site.data["aop-units"].groups | where: "box", include.box -%}
+{%- for group in box_groups -%}
+{%- assign members = all_units | where: "group", group.key -%}
+{%- capture group_classes -%}
+{%- for status in statuses -%}
+{%- assign with_status = members | where: "status", status -%}
+{%- if with_status.size > 0 %} has-{{ status }}{% endif -%}
+{%- endfor -%}
+{%- endcapture %}
+<button type="button" class="aop-group{{ group_classes }}" data-group="{{ group.key }}">
+<span class="aop-group-label">{{ group.label }}</span>
+<span class="aop-group-count">{{ members.size }}</span>
+<span class="aop-bar">
+{%- for status in statuses -%}
+{%- assign with_status = members | where: "status", status -%}
+{%- for member in with_status -%}
+<span class="aop-segment status-{{ status }}"></span>
+{%- endfor -%}
+{%- endfor -%}
+</span>
+</button>
+{%- endfor -%}

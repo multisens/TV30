@@ -1,0 +1,90 @@
+<link rel="stylesheet" href="{{ '/assets/css/aop-architecture.css' | relative_url }}">
+<script src="{{ '/assets/js/aop-architecture.js' | relative_url }}" defer></script>
+<div class="aop-arch" data-units-url="{{ '/assets/data/aop-units.json' | relative_url }}">
+    <div class="aop-legend" role="group" aria-label="Filtrar por estado">
+        <button type="button" class="aop-legend-item status-implemented" data-filter="implemented">Implementado</button>
+        <button type="button" class="aop-legend-item status-partial" data-filter="partial">Parcial</button>
+        <button type="button" class="aop-legend-item status-absent" data-filter="absent">No escopo, não implementado</button>
+        <button type="button" class="aop-legend-item status-out" data-filter="out">Fora do escopo</button>
+        <span class="aop-legend-item aop-neutral-sample">Sem unidade</span>
+    </div>
+    <div class="aop-scroll">
+        <div class="aop-canvas">
+            <section class="aop-box aop-platform">
+                <div class="aop-box-title aop-box-title-main">TV 3.0 Application-Oriented Platform · aop-</div>
+                <div class="aop-platform-grid">
+                    <div class="aop-box aop-area-entry">
+                        <div class="aop-box-title">TV 3.0 Entrypoint</div>
+                        <div class="aop-items">
+                            {% include aop-architecture-items.html box="entrypoint" prefix="aop-" %}
+                        </div>
+                    </div>
+                    <div class="aop-box aop-area-catalog">
+                        <div class="aop-box-title">
+                            <button type="button" class="aop-unit aop-unit-title status-{{ site.data['aop-units'].units | where: 'id', 'aop-application-catalog' | map: 'status' | first }}" data-unit="aop-application-catalog">Application Catalog</button>
+                        </div>
+                        <div class="aop-items">
+                            {% include aop-architecture-items.html box="catalog" prefix="aop-" skip="aop-application-catalog" %}
+                        </div>
+                    </div>
+                    <div class="aop-box aop-area-lifecycle">
+                        <div class="aop-items aop-vertical">
+                            {% include aop-architecture-items.html box="lifecycle" prefix="aop-" %}
+                        </div>
+                    </div>
+                    <div class="aop-box aop-area-apps aop-neutral">
+                        <div class="aop-box-title">Current TV 3.0 DTV Service — Broadcaster Apps</div>
+                        <div class="aop-items">
+                            <span class="aop-neutral-item">App A</span>
+                            <span class="aop-neutral-item">App B</span>
+                            <span class="aop-neutral-item">…</span>
+                            <span class="aop-neutral-item">App y</span>
+                        </div>
+                    </div>
+                    <div class="aop-area-engines">
+                        <div class="aop-box">
+                            <div class="aop-box-title">TV 3.0 Ginga-NCL</div>
+                            <div class="aop-items">
+                                {% include aop-architecture-items.html box="ginga-ncl" prefix="" %}
+                            </div>
+                        </div>
+                        <div class="aop-box">
+                            <div class="aop-box-title">TV 3.0 Ginga-HTML5 · ginga-html5-</div>
+                            <div class="aop-items">
+                                {% include aop-architecture-items.html box="ginga-html5" prefix="ginga-html5-" %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="aop-box aop-area-core">
+                        <div class="aop-box-title">TV 3.0 Ginga Common Core</div>
+                        <div class="aop-items">
+                            {% include aop-architecture-items.html box="common-core" prefix="aop-" %}
+                            <span class="aop-neutral-item">Other Media Players</span>
+                        </div>
+                        <div class="aop-box aop-webservices">
+                            <div class="aop-box-title">TV 3.0 WebServices · tv3ws-</div>
+                            <div class="aop-items">
+                                {% include aop-architecture-items.html box="webservices" prefix="tv3ws-" %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="aop-box aop-area-general">
+                        <div class="aop-box-title">General aspects</div>
+                        <div class="aop-items">
+                            {% include aop-architecture-items.html box="general" prefix="aop-" %}
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="aop-box aop-remote">
+                <div class="aop-box-title aop-box-title-main">Remote Devices · rd-</div>
+                <div class="aop-items aop-stack">
+                    {% include aop-architecture-items.html box="remote-devices" prefix="rd-" %}
+                </div>
+            </section>
+        </div>
+    </div>
+    <aside class="aop-detail" aria-live="polite">
+        <p class="aop-detail-hint">Clique numa unidade ou num grupo para ver os detalhes.</p>
+    </aside>
+</div>
