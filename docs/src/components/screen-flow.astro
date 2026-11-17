@@ -1,0 +1,136 @@
+---
+// Path of the viewer through the platform screens, with the returns of each
+// screen. A click on a screen shows its description; the play button walks
+// through the screens in order.
+import '../styles/diagram-detail.css';
+import '../styles/screen-flow.css';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+function page(slug: string): string {
+    return `${base}/${slug}/`;
+}
+---
+
+<div class="sf-diagram not-content" data-detail-diagram data-screen-flow>
+    <div class="sf-toolbar">
+        <button type="button" class="sf-play" aria-pressed="false">Percorrer o fluxo</button>
+    </div>
+    <ol class="sf-track">
+        <li class="sf-step">
+            <button type="button" class="sf-node" data-node="start" data-step>
+                <span class="sf-screen sf-screen-start" aria-hidden="true">
+                    <span class="sf-power"></span>
+                </span>
+                <span class="sf-title">Ligar</span>
+            </button>
+        </li>
+        <li class="sf-link" aria-hidden="true">
+            <span class="sf-line"></span>
+        </li>
+        <li class="sf-step">
+            <button type="button" class="sf-node" data-node="profiles" data-step>
+                <span class="sf-screen sf-screen-profiles" aria-hidden="true">
+                    <span class="sf-avatar"></span>
+                    <span class="sf-avatar"></span>
+                    <span class="sf-avatar"></span>
+                </span>
+                <span class="sf-title">Escolha de perfil</span>
+            </button>
+        </li>
+        <li class="sf-link" aria-hidden="true">
+            <span class="sf-line"></span>
+        </li>
+        <li class="sf-step">
+            <button type="button" class="sf-node" data-node="catalog" data-step>
+                <span class="sf-screen sf-screen-catalog" aria-hidden="true">
+                    <span class="sf-card"></span>
+                    <span class="sf-card"></span>
+                    <span class="sf-card"></span>
+                    <span class="sf-card"></span>
+                </span>
+                <span class="sf-title">Catálogo de aplicações</span>
+            </button>
+            <span class="sf-back">volta: perfis</span>
+        </li>
+        <li class="sf-link" aria-hidden="true">
+            <span class="sf-line"></span>
+        </li>
+        <li class="sf-step">
+            <button type="button" class="sf-node" data-node="bootstrap" data-step>
+                <span class="sf-screen sf-screen-bootstrap" aria-hidden="true">
+                    <span class="sf-text-lines"></span>
+                    <span class="sf-window"></span>
+                </span>
+                <span class="sf-title">Bootstrap Application</span>
+            </button>
+            <span class="sf-back">volta: catálogo ou perfis</span>
+        </li>
+        <li class="sf-link" aria-hidden="true">
+            <span class="sf-line"></span>
+        </li>
+        <li class="sf-step">
+            <button type="button" class="sf-node" data-node="fullscreen" data-step>
+                <span class="sf-screen sf-screen-fullscreen" aria-hidden="true">
+                    <span class="sf-app"></span>
+                </span>
+                <span class="sf-title">Tela cheia</span>
+            </button>
+            <span class="sf-back">Esc: volta à Bootstrap</span>
+        </li>
+    </ol>
+    <aside class="dg-detail" aria-live="polite">
+        <p class="dg-hint" data-detail="hint">
+            Clique numa tela, ou percorra o fluxo, para ver o que acontece em cada passo.
+        </p>
+        <div data-detail="start" hidden>
+            <p class="dg-detail-title">1. Ligar</p>
+            <p>
+                Subir o testbed equivale a ligar o receptor. Ao abrir a página da TV, a casca monta as
+                camadas, avisa que está pronta e a plataforma recebe o controle, mostrando a escolha de
+                perfil. Num receptor de verdade, quem aciona a plataforma é o software do fabricante; o
+                testbed não simula essa parte.
+            </p>
+        </div>
+        <div data-detail="profiles" hidden>
+            <p class="dg-detail-title">2. Escolha de perfil</p>
+            <p>
+                Mostra os perfis da casa, até cinco, com o botão de criar um novo e a opção de remover. Na
+                primeira vez já existe um perfil padrão, criado pela plataforma. O perfil escolhido passa a
+                ser o perfil corrente, que as aplicações consultam pela Users API.
+            </p>
+        </div>
+        <div data-detail="catalog" hidden>
+            <p class="dg-detail-title">3. Catálogo de aplicações</p>
+            <p>
+                O Application Catalog mostra um cartão por serviço anunciado pela emissora, com o nome e o
+                ícone da sua Bootstrap Application. O cartão do perfil volta à escolha de perfil. Os itens
+                do menu lateral, como guia de programação e privacidade, ainda não têm função.
+            </p>
+        </div>
+        <div data-detail="bootstrap" hidden>
+            <p class="dg-detail-title">4. Bootstrap Application</p>
+            <p>
+                A aplicação de entrada do serviço, montada pela plataforma a partir do manifesto que a
+                emissora anuncia. Mostra o nome, o ícone e a descrição do serviço, o programa no ar e o vídeo
+                numa janela. Daqui se volta ao catálogo ou à escolha de perfil, ou se escolhe o vídeo para ir
+                à tela cheia.
+            </p>
+        </div>
+        <div data-detail="fullscreen" hidden>
+            <p class="dg-detail-title">5. Tela cheia</p>
+            <p>
+                O vídeo ocupa a tela e só então a aplicação da emissora é carregada na camada de gráficos: a
+                que a sinalização marca para começar sozinha. Esc volta à Bootstrap Application e encerra a
+                aplicação da emissora.
+            </p>
+            <p>
+                Na norma, daqui também se abre o Access Panel, com as demais aplicações da emissora. O
+                testbed ainda não o tem.
+            </p>
+            <a href={page('mapa-unidades')}>Mapa de unidades</a>
+        </div>
+    </aside>
+</div>
+
+<script src="../scripts/screen-flow.ts"></script>

@@ -1,0 +1,74 @@
+---
+title: A TV 3.0 AoP em 5 minutos
+description: O que é a plataforma de aplicações da TV 3.0, como a tela do receptor se organiza em camadas e por quais telas o espectador passa.
+prev: false
+next: false
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import LayerStack from '../../components/layer-stack.astro';
+import ScreenFlow from '../../components/screen-flow.astro';
+
+## Cada canal é uma aplicação
+
+Na TV 3.0, o espectador não percorre uma lista de canais: escolhe aplicações. Cada serviço de TV de
+uma emissora aparece no receptor como uma aplicação de entrada, e o vídeo do canal é tocado por ela.
+A emissora pode mandar outras aplicações junto com o sinal, e celulares e outros aparelhos da casa
+podem conversar com a TV por APIs.
+
+A parte do receptor que torna isso possível é a **TV 3.0 Application-oriented Platform**, ou
+**TV 3.0 AoP**, definida na ABNT NBR 25608, Seção 6. As peças principais são estas:
+
+| Peça | O que faz | No testbed |
+|---|---|---|
+| Application Catalog | A tela inicial da TV: um cartão por serviço disponível | em parte |
+| Profile Manager | Os perfis de quem assiste, com preferências e dados que as aplicações podem consultar | sim |
+| Bootstrap Application | A aplicação de entrada de cada serviço, montada a partir do que a emissora anuncia; toca o vídeo do canal | em parte |
+| Broadcaster Application | Uma aplicação feita pela emissora, que roda sobre o vídeo | sim, em HTML5 |
+| Persistent Media Player | O tocador de vídeo, que continua tocando quando as aplicações trocam | em parte |
+| Access Panel | Painel chamado durante o programa, com atalhos e as aplicações da emissora | ainda não |
+| TV 3.0 WebServices | As APIs que aplicações e aparelhos usam para falar com a TV | em parte |
+
+O estado de cada peça, em detalhe, está no [Mapa de unidades](../mapa-unidades/).
+
+## As camadas da tela
+
+A tela do receptor é uma pilha de camadas transparentes. Cada camada mostra uma coisa, e a casca da
+plataforma decide o que vai em cada uma e para onde vai cada tecla.
+
+<LayerStack />
+
+<Aside type="note">
+A norma descreve a tela com duas camadas, vídeo e gráficos. O testbed separa a camada de gráficos em
+duas, uma para a aplicação da emissora e outra para as telas da plataforma, e põe os avisos por cima.
+O que o espectador vê é o mesmo.
+</Aside>
+
+## O caminho do espectador
+
+Da TV ligada ao programa com a aplicação da emissora, o espectador passa por quatro telas. A
+aplicação da emissora só começa depois que o serviço entra em tela cheia: antes disso, as telas da
+plataforma e a aplicação da emissora não rodam juntas.
+
+<ScreenFlow />
+
+## Quem conversa com a plataforma
+
+As APIs dos WebServices atendem três tipos de cliente, e o testbed reconhece cada um deles:
+
+| Cliente | Exemplo | Como chega |
+|---|---|---|
+| Local associado | a aplicação da emissora, rodando na camada de gráficos | não pede autorização: a plataforma a reconhece pelo serviço que a lançou |
+| Local autônomo | um programa no próprio receptor, fora de qualquer serviço | pede autorização ao espectador |
+| Não local | um aplicativo num celular da mesma rede | encontra a TV na rede, pede autorização e se pareia por QR code ou PIN |
+
+Um aparelho da rede também pode se registrar como **dispositivo remoto** e executar parte de uma
+aplicação da emissora, como um renderizador de efeitos sensoriais ou óculos de realidade virtual.
+
+## Para seguir
+
+<CardGrid>
+    <LinkCard title="Ver o que está implementado" description="As unidades da plataforma sobre a arquitetura da norma, com o estado de cada uma." href="../mapa-unidades/" />
+    <LinkCard title="Subir o testbed" description="Instalar e abrir a TV no navegador para percorrer essas telas." href="../instalacao/" />
+    <LinkCard title="Conhecer as APIs" description="As rotas dos WebServices, a autorização e o pareamento." href="../apis-tv3ws/" />
+</CardGrid>

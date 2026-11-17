@@ -192,37 +192,6 @@
     }
 }
 
-/* Detail panel */
-
-.ov-detail {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    min-height: 7rem;
-    margin-top: 0.75rem;
-    padding: 0.7rem 0.9rem;
-    border: 1px solid var(--ov-border);
-    border-radius: 0.5rem;
-}
-
-.ov-detail > div {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-}
-
-.ov-detail > [hidden] {
-    display: none;
-}
-
-.ov-hint {
-    color: var(--ov-muted);
-}
-
-.ov-detail-title {
-    font-weight: 600;
-}
-
 /* Narrow screens: columns stacked, links vertical */
 
 @media (max-width: 50rem) {

@@ -1,5 +1,14 @@
-// Interaction of the overview diagram: a click on a block shows its
-// description in the detail panel.
+// Interaction of the diagrams with a detail panel: a click on a block shows
+// its description in the panel.
+
+export function showBlock(root: HTMLElement, node: HTMLElement): void {
+    const id = node.dataset.node;
+    if (!id) {
+        throw new Error('diagram: block without data-node');
+    }
+    selectNode(root, node);
+    showDetail(root, id);
+}
 
 function initDiagram(root: HTMLElement): void {
     root.addEventListener('click', (event) => {
@@ -10,12 +19,7 @@ function initDiagram(root: HTMLElement): void {
         if (!node || !root.contains(node)) {
             return;
         }
-        const id = node.dataset.node;
-        if (!id) {
-            throw new Error('overview diagram: block without data-node');
-        }
-        selectNode(root, node);
-        showDetail(root, id);
+        showBlock(root, node);
     });
 }
 
@@ -30,13 +34,13 @@ function showDetail(root: HTMLElement, id: string): void {
     const details = root.querySelectorAll<HTMLElement>('[data-detail]');
     const target = root.querySelector<HTMLElement>(`[data-detail="${id}"]`);
     if (!target) {
-        throw new Error(`overview diagram: no detail for ${id}`);
+        throw new Error(`diagram: no detail for ${id}`);
     }
     details.forEach((detail) => {
         detail.hidden = detail !== target;
     });
 }
 
-document.querySelectorAll<HTMLElement>('.ov-diagram').forEach((root) => {
+document.querySelectorAll<HTMLElement>('[data-detail-diagram]').forEach((root) => {
     initDiagram(root);
 });

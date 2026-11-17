@@ -1,0 +1,269 @@
+/* Layers of the receiver screen (layer-stack component). */
+
+.ls-diagram {
+    --ls-border: var(--sl-color-gray-5);
+    --ls-text: var(--sl-color-white);
+    --ls-muted: var(--sl-color-gray-3);
+    --ls-flow: var(--sl-color-accent);
+    --ls-plate-width: 10rem;
+    --ls-plate-height: 5.6rem;
+    color: var(--ls-text);
+    font-size: var(--sl-text-sm);
+    line-height: 1.35;
+}
+
+.ls-diagram button {
+    margin: 0;
+    font: inherit;
+    cursor: pointer;
+}
+
+.ls-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Keyboard and the arrow into the shell */
+
+.ls-keys {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--ls-border);
+    border-radius: 999px;
+    background: var(--sl-color-bg);
+    color: var(--ls-text);
+}
+
+.ls-keys-icon {
+    font-size: 1.2rem;
+}
+
+.ls-arrow {
+    display: flex;
+    justify-content: center;
+    height: 2.2rem;
+}
+
+.ls-line {
+    width: 4px;
+    height: 100%;
+    border-radius: 2px;
+    background-image: linear-gradient(180deg, var(--ls-flow) 50%, transparent 50%);
+    background-size: 4px 14px;
+    animation: ls-flow-down 0.9s linear infinite;
+}
+
+/* Shell around the stack */
+
+.ls-shell {
+    width: 100%;
+    max-width: 34rem;
+    padding: 0.6rem 0.8rem 1rem;
+    border: 1px solid var(--tv30-platform);
+    border-radius: 0.6rem;
+    background: color-mix(in srgb, var(--tv30-platform) 10%, transparent);
+}
+
+.ls-shell-title {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ls-text);
+    font-weight: 600;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+}
+
+/* Stack: each layer is a tilted plate with its label beside it */
+
+.ls-stack {
+    display: flex;
+    flex-direction: column;
+    margin-top: 0.4rem;
+}
+
+.ls-layer {
+    display: grid;
+    grid-template-columns: var(--ls-plate-width) minmax(0, 1fr);
+    align-items: center;
+    gap: 1rem;
+    margin-top: -1.6rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ls-text);
+    text-align: left;
+    animation: ls-breathe 3.2s ease-in-out infinite alternate;
+}
+
+.ls-layer:first-child {
+    margin-top: 0;
+}
+
+.ls-layer-notice {
+    --ls-color: var(--tv30-notice);
+    --ls-shift: -0.35rem;
+}
+
+.ls-layer-platform {
+    --ls-color: var(--tv30-platform);
+    --ls-shift: -0.12rem;
+}
+
+.ls-layer-app {
+    --ls-color: var(--tv30-app);
+    --ls-shift: 0.12rem;
+}
+
+.ls-layer-video {
+    --ls-color: var(--tv30-video);
+    --ls-shift: 0.35rem;
+}
+
+.ls-plate {
+    position: relative;
+    display: block;
+    height: var(--ls-plate-height);
+    border: 2px solid var(--ls-color);
+    border-radius: 0.35rem;
+    background: color-mix(in srgb, var(--ls-color) 14%, transparent);
+    transform: perspective(36rem) rotateX(58deg) rotateZ(-8deg);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.ls-layer-video .ls-plate {
+    background: linear-gradient(160deg,
+        color-mix(in srgb, var(--ls-color) 55%, transparent),
+        color-mix(in srgb, var(--ls-color) 20%, transparent));
+}
+
+.ls-layer:hover .ls-plate,
+.ls-layer:focus-visible .ls-plate {
+    transform: perspective(36rem) rotateX(58deg) rotateZ(-8deg) translateZ(0.8rem);
+}
+
+.ls-layer.is-selected .ls-plate {
+    background: color-mix(in srgb, var(--ls-color) 40%, transparent);
+    box-shadow: 0 0 0 2px var(--ls-flow);
+}
+
+.ls-label {
+    display: flex;
+    flex-direction: column;
+    padding: 0.2rem 0.5rem;
+    border-left: 3px solid var(--ls-color);
+}
+
+.ls-layer.is-selected .ls-label {
+    outline: 2px solid var(--ls-flow);
+    outline-offset: 2px;
+}
+
+.ls-name {
+    font-weight: 600;
+}
+
+.ls-what {
+    color: var(--ls-muted);
+    font-size: var(--sl-text-xs);
+}
+
+/* Miniatures drawn on the plates */
+
+.ls-mini {
+    position: absolute;
+    border-radius: 0.15rem;
+    background: var(--ls-color);
+}
+
+.ls-mini-notice {
+    top: 10%;
+    right: 6%;
+    width: 26%;
+    height: 30%;
+}
+
+.ls-mini-card {
+    top: 30%;
+    width: 20%;
+    height: 40%;
+    opacity: 0.8;
+}
+
+.ls-mini-card:nth-child(1) {
+    left: 14%;
+}
+
+.ls-mini-card:nth-child(2) {
+    left: 40%;
+}
+
+.ls-mini-card:nth-child(3) {
+    left: 66%;
+}
+
+.ls-mini-app {
+    bottom: 10%;
+    left: 6%;
+    width: 50%;
+    height: 24%;
+}
+
+.ls-mini-play {
+    top: 32%;
+    left: 44%;
+    width: 0;
+    height: 0;
+    border-radius: 0;
+    border-top: 0.8rem solid transparent;
+    border-bottom: 0.8rem solid transparent;
+    border-left: 1.3rem solid var(--ls-text);
+    background: transparent;
+    opacity: 0.8;
+}
+
+@keyframes ls-breathe {
+    from {
+        translate: 0 0;
+    }
+
+    to {
+        translate: 0 var(--ls-shift);
+    }
+}
+
+@keyframes ls-flow-down {
+    from {
+        background-position: 0 0;
+    }
+
+    to {
+        background-position: 0 14px;
+    }
+}
+
+@media (max-width: 30rem) {
+    .ls-diagram {
+        --ls-plate-width: 7rem;
+        --ls-plate-height: 4rem;
+    }
+
+    .ls-layer {
+        gap: 0.6rem;
+        margin-top: -1.1rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ls-layer,
+    .ls-line {
+        animation: none;
+    }
+
+    .ls-plate {
+        transition: none;
+    }
+}

@@ -27,6 +27,7 @@ export default defineConfig({
                 {
                     label: 'Entenda',
                     items: [
+                        'aop-em-5-minutos',
                         'mapa-unidades',
                         'decisoes',
                         'nao-implementado',

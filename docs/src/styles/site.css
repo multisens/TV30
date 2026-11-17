@@ -41,3 +41,12 @@
 :root[data-theme="light"] .tv30-logo-dark {
     display: none;
 }
+
+/* Colors of the receiver screen, shared by the layer and screen diagrams. */
+
+:root {
+    --tv30-video: #0ea5e9;
+    --tv30-app: #f59e0b;
+    --tv30-platform: #8b5cf6;
+    --tv30-notice: #f43f5e;
+}

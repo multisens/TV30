@@ -1,0 +1,128 @@
+---
+// Layers of the receiver screen, from the notices on top to the video at
+// the bottom. A click on a layer shows its description.
+import '../styles/diagram-detail.css';
+import '../styles/layer-stack.css';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+function page(slug: string): string {
+    return `${base}/${slug}/`;
+}
+---
+
+<div class="ls-diagram not-content" data-detail-diagram>
+    <div class="ls-stage">
+        <button type="button" class="ls-keys" data-node="keys">
+            <span class="ls-keys-icon" aria-hidden="true">⌨</span>
+            <span>Teclado, no papel do controle remoto</span>
+        </button>
+        <div class="ls-arrow" aria-hidden="true">
+            <span class="ls-line"></span>
+        </div>
+        <div class="ls-shell">
+            <button type="button" class="ls-shell-title" data-node="shell">
+                Casca da plataforma · aop
+            </button>
+            <div class="ls-stack">
+                <button type="button" class="ls-layer ls-layer-notice" data-node="notice">
+                    <span class="ls-plate" aria-hidden="true">
+                        <span class="ls-mini ls-mini-notice"></span>
+                    </span>
+                    <span class="ls-label">
+                        <span class="ls-name">Avisos</span>
+                        <span class="ls-what">autorização, QR code, PIN</span>
+                    </span>
+                </button>
+                <button type="button" class="ls-layer ls-layer-platform" data-node="platform">
+                    <span class="ls-plate" aria-hidden="true">
+                        <span class="ls-mini ls-mini-card"></span>
+                        <span class="ls-mini ls-mini-card"></span>
+                        <span class="ls-mini ls-mini-card"></span>
+                    </span>
+                    <span class="ls-label">
+                        <span class="ls-name">Interface da plataforma</span>
+                        <span class="ls-what">perfis, catálogo, Bootstrap Application</span>
+                    </span>
+                </button>
+                <button type="button" class="ls-layer ls-layer-app" data-node="graphics">
+                    <span class="ls-plate" aria-hidden="true">
+                        <span class="ls-mini ls-mini-app"></span>
+                    </span>
+                    <span class="ls-label">
+                        <span class="ls-name">Gráficos</span>
+                        <span class="ls-what">a aplicação da emissora</span>
+                    </span>
+                </button>
+                <button type="button" class="ls-layer ls-layer-video" data-node="video">
+                    <span class="ls-plate" aria-hidden="true">
+                        <span class="ls-mini ls-mini-play"></span>
+                    </span>
+                    <span class="ls-label">
+                        <span class="ls-name">Vídeo</span>
+                        <span class="ls-what">o programa do serviço</span>
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+    <aside class="dg-detail" aria-live="polite">
+        <p class="dg-hint" data-detail="hint">
+            Clique numa camada para saber o que ela mostra.
+        </p>
+        <div data-detail="keys" hidden>
+            <p class="dg-detail-title">Teclado</p>
+            <p>
+                No navegador, o teclado faz as vezes do controle remoto: as setas movem o foco e Enter
+                escolhe. Em tela cheia, Esc (ou a tecla Menu) volta à Bootstrap Application. Page Up e
+                Page Down estão reservadas para trocar de canal, ainda sem efeito.
+            </p>
+        </div>
+        <div data-detail="shell" hidden>
+            <p class="dg-detail-title">Casca da plataforma</p>
+            <p>
+                A casca é a página da TV. Ela empilha as camadas, decide o que cada uma mostra e recebe
+                todas as teclas. Cada tecla vai para um lugar só, nesta ordem: o pedido de autorização, se
+                houver um aberto; a própria plataforma, no caso de Esc e Menu; a tela da plataforma, se houver
+                uma; e, por último, a aplicação da emissora.
+            </p>
+            <a href={page('arquitetura')}>Arquitetura</a>
+        </div>
+        <div data-detail="notice" hidden>
+            <p class="dg-detail-title">Avisos</p>
+            <p>
+                Mensagens da plataforma ao espectador, por cima de tudo: o pedido de autorização quando uma
+                aplicação ou um aparelho quer usar as APIs, o QR code e o PIN do pareamento, e o aviso de
+                que uma emissora gravou dados no perfil. Enquanto um pedido espera resposta, as teclas vão
+                para ele.
+            </p>
+            <a href={page('apis-tv3ws')}>APIs do tv3ws</a>
+        </div>
+        <div data-detail="platform" hidden>
+            <p class="dg-detail-title">Interface da plataforma</p>
+            <p>
+                As telas da própria plataforma: a escolha de perfil, o catálogo de aplicações e a Bootstrap
+                Application de cada serviço. Quando uma delas está na tela, recebe as teclas, e a aplicação
+                da emissora não está rodando.
+            </p>
+        </div>
+        <div data-detail="graphics" hidden>
+            <p class="dg-detail-title">Gráficos</p>
+            <p>
+                Onde roda a aplicação da emissora, uma página HTML5 (Ginga-HTML5) servida sob endereço
+                próprio. Ela é carregada quando o serviço entra em tela cheia e recebe as teclas que a
+                plataforma não usa. Aplicações NCL ainda não rodam no testbed.
+            </p>
+        </div>
+        <div data-detail="video" hidden>
+            <p class="dg-detail-title">Vídeo</p>
+            <p>
+                O Persistent Media Player toca o vídeo do serviço, em HLS ou DASH. O vídeo aparece numa
+                janela na Bootstrap Application e ocupa a tela inteira em tela cheia. As camadas de cima
+                são transparentes onde não desenham nada.
+            </p>
+        </div>
+    </aside>
+</div>
+
+<script src="../scripts/detail-diagram.ts"></script>
