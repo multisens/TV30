@@ -8,9 +8,9 @@ export default defineConfig({
     base: '/TV30',
     integrations: [
         starlight({
-            title: 'TV30',
-            description: 'Documentação técnica do testbed aberto da camada de '
-                + 'Codificação de Aplicações da TV 3.0',
+            title: 'Testbed TV 3.0',
+            description: 'Testbed aberto da camada de Codificação de Aplicações '
+                + 'da TV 3.0',
             defaultLocale: 'root',
             locales: {
                 root: { label: 'Português', lang: 'pt-BR' },
@@ -25,32 +25,35 @@ export default defineConfig({
             sidebar: [
                 { label: 'Início', slug: 'index' },
                 {
-                    label: 'Primeiros passos',
+                    label: 'Entenda',
                     items: [
-                        { label: 'Visão geral', slug: 'primeiros-passos' },
-                        'instalacao',
-                        'dev-local',
-                        'como-testar',
-                        'glossario',
+                        'mapa-unidades',
+                        'decisoes',
+                        'nao-implementado',
                     ],
                 },
                 {
-                    label: 'Como funciona',
+                    label: 'Referência',
                     items: [
-                        { label: 'Visão geral', slug: 'como-funciona' },
+                        'instalacao',
                         'arquitetura',
                         'apis-tv3ws',
+                        'borda-credenciais',
                         'modelo-redis',
                         'mqtt-topicos',
                         'broker-mqtt',
-                        'borda-credenciais',
                         'ssdp',
-                        'decisoes',
-                        'nao-implementado',
-                        'mapa-unidades',
+                        'dev-local',
+                        'como-testar',
                     ],
                 },
-                'troubleshooting',
+                {
+                    label: 'Ajuda',
+                    items: [
+                        'troubleshooting',
+                        'glossario',
+                    ],
+                },
             ],
         }),
     ],

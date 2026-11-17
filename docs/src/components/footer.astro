@@ -1,6 +1,43 @@
 ---
+// Starlight footer followed by the institution and laboratory logos.
+import { Image } from 'astro:assets';
 import Default from '@astrojs/starlight/components/Footer.astro';
+import ufcirjColor from '../assets/UFCIRJcolorida.png';
+import ufcirjWhite from '../assets/UFCIRJbranco.png';
+import multisens from '../assets/multisens.png';
+
+const UFCIRJ_URL = 'https://cefet-rj.br';
+const MULTISENS_URL = 'https://multisens.com.br';
+
+// Twice the displayed height of 2.5rem, for high-density screens.
+const LOGO_HEIGHT = 80;
 ---
 
 <Default><slot /></Default>
-<p class="tv30-footer">CEFET-RJ — Projeto Multisens / TV 3.0</p>
+<div class="tv30-footer">
+    <div class="tv30-footer-logos">
+        <a href={UFCIRJ_URL}>
+            <Image
+                class="tv30-logo tv30-logo-light"
+                src={ufcirjColor}
+                height={LOGO_HEIGHT}
+                alt="UFCIRJ — Universidade Federal de Ciência e Inovação do Rio de Janeiro"
+            />
+            <Image
+                class="tv30-logo tv30-logo-dark"
+                src={ufcirjWhite}
+                height={LOGO_HEIGHT}
+                alt="UFCIRJ — Universidade Federal de Ciência e Inovação do Rio de Janeiro"
+            />
+        </a>
+        <a href={MULTISENS_URL}>
+            <Image
+                class="tv30-logo"
+                src={multisens}
+                height={LOGO_HEIGHT}
+                alt="Laboratório MultiSenS"
+            />
+        </a>
+    </div>
+    <p>UFCIRJ - Laboratório MultiSenS - Testbed TV 3.0</p>
+</div>

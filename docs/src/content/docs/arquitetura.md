@@ -134,3 +134,18 @@ Cada submódulo (aop, bcast, tv3ws, infra) tem um workflow só, `.github/workflo
 2. **Atualiza o ponteiro do submódulo no repositório TV30**, com o PAT `TV30_REPO_TOKEN`. Esse passo depende do primeiro (`needs`): se o build ou o push falham, o ponteiro não muda.
 
 A `latest` acompanha a `main` de cada submódulo; um clone com commits ainda não publicados roda o código dele com `docker compose up -d --build`. As imagens saem só para `amd64` (o workflow não define `platforms`): num Mac com Apple Silicon, construa-as localmente com `docker compose build`; o Dockerfile da borda escolhe o Go pela arquitetura (`TARGETARCH`, `infra/edgegateway/Dockerfile`).
+
+---
+
+## Tecnologias
+
+| Tecnologia | Uso |
+|------------|-----|
+| Docker + Compose v2 | Orquestração; tudo roda em containers |
+| Node.js 23 (imagens `node:23-alpine`) | AoP, tv3ws e bcast |
+| TypeScript | tv3ws e bcast |
+| Redis | Estado de sessão, perfis e credenciais. Clientes: ioredis no tv3ws e no AoP; um cliente RESP próprio, em Go, na borda |
+| Mosquitto + plugin C | Broker MQTT, com validação de esquema das mensagens |
+| KrakenD + plugin Go | A borda (`edgegateway`), com a validação de credenciais (`tv30-auth`) |
+| FFmpeg | Só para preparar, fora da stack, os segmentos de vídeo que o bcast serve (`bcast/scripts/ffmpeg-hls.sh` e `ffmpeg-dash.sh`). A imagem do bcast não traz FFmpeg |
+| Astro Starlight | Esta documentação (`docs/`), publicada no GitHub Pages pelo workflow `docs` |

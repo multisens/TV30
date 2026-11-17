@@ -55,8 +55,8 @@ O `./tv30 up` faz o `docker compose up -d` e sobe o anunciante da descoberta SSD
 
 ## Documentação
 
-A documentação está em [`docs/`](./docs/src/content/docs/index.md), que é a fonte única:
+A documentação está em [`docs/`](./docs/src/content/docs/index.mdx), que é a fonte única:
 - [Instalação](./docs/src/content/docs/instalacao.md): pré-requisitos, `.env`, portas, HTTPS e submódulos;
-- [Arquitetura](./docs/src/content/docs/arquitetura.md) e as demais páginas de *Como funciona*;
+- [Arquitetura](./docs/src/content/docs/arquitetura.md) e as demais páginas de *Referência*;
 - [Decisões](./docs/src/content/docs/decisoes.md) e [Não implementado](./docs/src/content/docs/nao-implementado.md);
 - [Solução de problemas](./docs/src/content/docs/troubleshooting.md) e [Known Issues](./KNOWN-ISSUES.md).

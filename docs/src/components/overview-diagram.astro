@@ -1,0 +1,156 @@
+---
+// Overview of the testbed: the simulated broadcaster, the receiver and who
+// uses it. A click on a block shows its description.
+import '../styles/overview-diagram.css';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+function page(slug: string): string {
+    return `${base}/${slug}/`;
+}
+---
+
+<div class="ov-diagram not-content">
+    <div class="ov-stage">
+        <div class="ov-column ov-zone-broadcaster">
+            <p class="ov-column-title">Emissora simulada</p>
+            <button type="button" class="ov-node" data-node="broadcaster">
+                <span class="ov-node-title">bcast</span>
+                <span class="ov-chip">sinalização dos serviços</span>
+                <span class="ov-chip">aplicações de emissora</span>
+                <span class="ov-chip">vídeo</span>
+            </button>
+        </div>
+        <div class="ov-link">
+            <span class="ov-line"></span>
+            <span class="ov-link-label">sinal simulado</span>
+        </div>
+        <div class="ov-column ov-zone-receiver">
+            <button type="button" class="ov-column-title ov-title-button" data-node="aop">
+                Receptor · TV 3.0 AoP
+            </button>
+            <button type="button" class="ov-node ov-zone-platform" data-node="shell">
+                <span class="ov-node-title">Casca da plataforma · aop</span>
+                <span class="ov-chip">perfis</span>
+                <span class="ov-chip">catálogo de aplicações</span>
+                <span class="ov-chip">camadas de vídeo e gráficos</span>
+            </button>
+            <button type="button" class="ov-node ov-zone-webservices" data-node="webservices">
+                <span class="ov-node-title">TV 3.0 WebServices · tv3ws</span>
+                <span class="ov-chip">APIs para aplicações e aparelhos</span>
+            </button>
+            <button type="button" class="ov-node ov-node-substrate" data-node="infrastructure">
+                <span class="ov-node-title">Infraestrutura do testbed</span>
+                <span class="ov-chip">borda</span>
+                <span class="ov-chip">broker MQTT</span>
+                <span class="ov-chip">Redis</span>
+            </button>
+        </div>
+        <div class="ov-link ov-link-both">
+            <span class="ov-line"></span>
+            <span class="ov-link-label">telas e APIs</span>
+        </div>
+        <div class="ov-column ov-zone-users">
+            <p class="ov-column-title">Quem usa</p>
+            <button type="button" class="ov-node" data-node="tv">
+                <span class="ov-node-title">A TV, no navegador</span>
+                <span class="ov-chip">localhost:8080</span>
+            </button>
+            <button type="button" class="ov-node" data-node="device">
+                <span class="ov-node-title">Aparelho na rede</span>
+                <span class="ov-chip">celular, tablet, computador</span>
+            </button>
+            <button type="button" class="ov-node" data-node="remote">
+                <span class="ov-node-title">Dispositivo remoto</span>
+                <span class="ov-chip">efeitos sensoriais</span>
+                <span class="ov-chip">NCL 360 VR</span>
+            </button>
+        </div>
+    </div>
+    <aside class="ov-detail" aria-live="polite">
+        <p class="ov-hint" data-detail="hint">
+            Clique num bloco para saber o que ele faz.
+        </p>
+        <div data-detail="broadcaster" hidden>
+            <p class="ov-detail-title">Emissora simulada (bcast)</p>
+            <p>
+                Faz o papel da emissora, fora do receptor. Anuncia os serviços de TV e as aplicações de
+                cada um, e serve as aplicações e o vídeo. O testbed traz serviços de exemplo:
+                <code>webmedia</code>, <code>users-test</code>, <code>uff</code> e <code>eduplay</code>.
+            </p>
+            <p>
+                Hoje a emissora entrega a sinalização direto ao receptor, pela mensageria interna. Está
+                planejado o caminho da norma, em que o receptor busca a sinalização que a emissora serve.
+            </p>
+            <a href={page('arquitetura')}>Arquitetura</a>
+        </div>
+        <div data-detail="aop" hidden>
+            <p class="ov-detail-title">TV 3.0 AoP</p>
+            <p>
+                A TV 3.0 Application-oriented Platform (ABNT NBR 25608, Seção 6) é a plataforma de software
+                do receptor que atende às aplicações: telas, perfis, catálogo, ciclo de vida das aplicações e
+                WebServices. No testbed, ela está dividida em módulos: a casca (<code>aop</code>), os
+                WebServices (<code>tv3ws</code>) e a infraestrutura que os liga.
+            </p>
+            <a href={page('mapa-unidades')}>Mapa de unidades</a>
+        </div>
+        <div data-detail="shell" hidden>
+            <p class="ov-detail-title">Casca da plataforma (aop)</p>
+            <p>
+                O módulo <code>aop</code> é a aplicação-casca da plataforma. Ele monta o que o espectador vê:
+                a escolha de perfil, o catálogo de aplicações, a aplicação de entrada de cada serviço e as
+                camadas de vídeo e de gráficos, onde roda a aplicação da emissora. Também recebe a
+                sinalização dos serviços. Apesar do nome, não é a AoP inteira.
+            </p>
+            <a href={page('arquitetura')}>Arquitetura</a>
+        </div>
+        <div data-detail="webservices" hidden>
+            <p class="ov-detail-title">TV 3.0 WebServices (tv3ws)</p>
+            <p>
+                As APIs do Anexo C da norma, que aplicações e aparelhos usam para falar com o receptor:
+                perfis de usuário, serviço em uso, arquivos da aplicação, dispositivos remotos e efeitos
+                sensoriais. Os clientes chegam pelas portas 44642 (HTTP) e 44643 (HTTPS).
+            </p>
+            <a href={page('apis-tv3ws')}>APIs do tv3ws</a>
+        </div>
+        <div data-detail="infrastructure" hidden>
+            <p class="ov-detail-title">Infraestrutura do testbed</p>
+            <p>
+                Peças que ligam os módulos e que a norma não especifica: a borda, entrada única das APIs,
+                que confere as credenciais; o broker MQTT, por onde os módulos trocam mensagens; e o Redis,
+                com o estado compartilhado (perfis, credenciais e sessão).
+            </p>
+            <a href={page('arquitetura')}>Arquitetura</a>
+        </div>
+        <div data-detail="tv" hidden>
+            <p class="ov-detail-title">A TV, no navegador</p>
+            <p>
+                A tela da TV é uma página em <code>http://localhost:8080</code>. Nela se escolhe o perfil e o
+                serviço, e a aplicação da emissora aparece sobre o vídeo. O teclado faz as vezes do controle
+                remoto.
+            </p>
+            <a href={page('instalacao')}>Instalação</a>
+        </div>
+        <div data-detail="device" hidden>
+            <p class="ov-detail-title">Aparelho na rede</p>
+            <p>
+                Um celular, tablet ou computador da mesma rede usa as APIs como cliente não local: encontra
+                o receptor pela descoberta SSDP, pede autorização ao espectador e se pareia por QR code ou
+                PIN.
+            </p>
+            <a href={page('apis-tv3ws')}>APIs do tv3ws</a>
+        </div>
+        <div data-detail="remote" hidden>
+            <p class="ov-detail-title">Dispositivo remoto</p>
+            <p>
+                Um aparelho que se registra no receptor como dispositivo remoto e troca mensagens com a
+                aplicação da emissora por WebSocket. Um renderizador de efeitos sensoriais, como luz, vento
+                ou cheiro, e óculos de realidade virtual que apresentam conteúdo NCL 360 são dispositivos
+                remotos.
+            </p>
+            <a href={page('apis-tv3ws')}>APIs do tv3ws</a>
+        </div>
+    </aside>
+</div>
+
+<script src="../scripts/overview-diagram.ts"></script>

@@ -1,8 +1,43 @@
 /* Site-wide additions to the Starlight theme. */
 
 .tv30-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
     margin-top: 1.5rem;
     color: var(--sl-color-gray-3);
     font-size: var(--sl-text-xs);
     text-align: center;
+}
+
+.tv30-footer p {
+    margin: 0;
+}
+
+.tv30-footer-logos {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+}
+
+.tv30-footer-logos a {
+    display: inline-flex;
+}
+
+.tv30-logo {
+    width: auto;
+    height: 2.5rem;
+}
+
+/* Each theme shows the official logo variant made for its background. */
+
+:root[data-theme="dark"] .tv30-logo-light {
+    display: none;
+}
+
+:root[data-theme="light"] .tv30-logo-dark {
+    display: none;
 }

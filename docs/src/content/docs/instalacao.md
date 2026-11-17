@@ -97,6 +97,21 @@ Nenhuma porta precisa mudar no Windows: a página da TV conecta no MQTT pelo pr�
 
 ---
 
+## Endereços depois de subir
+
+| O quê | Onde |
+|---|---|
+| AoP (interface do receptor) | `http://localhost:8080` (`AOP_PUBLIC_PORT`) |
+| APIs, superfície interna | `http://localhost:44642` (por exemplo, `/health` e `/manifest`) |
+| APIs, superfície externa | `https://localhost:44643`, com o certificado autoassinado do receptor (`curl -k`, ou confie em `.tv30/tls/cert.pem`) |
+| Documentação Swagger das duas superfícies | porta dinâmica: `docker port edgegateway 8085` |
+| bcast (apps de emissora e mídia, direto) | porta dinâmica: `docker compose port bcast 8081` |
+| Redis Commander | porta dinâmica: `docker port redis 18081`; pede login (usuário `admin` e senha `tv30-redis-admin` por padrão; `REDIS_COMMANDER_USER` e `REDIS_COMMANDER_PASSWORD` no `.env` da raiz). A conexão com o banco (6379) segue sem senha |
+
+`docker compose ps` mostra as portas de todos os serviços; as fixas e as dinâmicas estão em [Portas](#portas).
+
+---
+
 ## Configurações via `.env`
 
 O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla os padrões da stack. O `.env` não vai para o repositório (`.gitignore`). As variáveis, com o valor do `.env.example`:

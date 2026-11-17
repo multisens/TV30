@@ -1,0 +1,74 @@
+---
+title: Testbed de Codificação de Aplicações da TV 3.0
+description: Um receptor de TV 3.0 que roda no seu computador, para estudar e experimentar com a camada de codificação de aplicações da TV digital brasileira.
+template: splash
+next: false
+hero:
+  tagline: Um receptor de TV 3.0 que roda no seu computador, para estudar e experimentar com a camada de codificação de aplicações da TV digital brasileira.
+  actions:
+    - text: Subir o testbed
+      link: instalacao/
+      icon: right-arrow
+    - text: Ver o que está implementado
+      link: mapa-unidades/
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+import OverviewDiagram from '../../components/overview-diagram.astro';
+
+## O que é
+
+A TV 3.0 é a nova geração da TV digital aberta no Brasil. Nela, cada canal é visto na TV como uma
+aplicação, e a TV oferece a essas aplicações uma plataforma comum, com perfis de usuário, catálogo de
+aplicações e APIs para que celulares e outros aparelhos da casa participem. A camada que define tudo
+isso é a de Codificação de Aplicações, da norma ABNT NBR 25608.
+
+Este projeto provê um testbed aberto dessa camada: um receptor simulado, inteiro em containers
+Docker, ao lado de uma emissora também simulada. Ele foi feito para a pesquisa e o ensino. Não é um
+receptor de produção nem um receptor certificado.
+
+<OverviewDiagram />
+
+## Para que serve
+
+<CardGrid>
+    <Card title="Aprender a norma" icon="open-book">
+        Ver funcionando o que a ABNT NBR 25608 descreve: perfis, catálogo, aplicações de emissora e
+        WebServices.
+    </Card>
+    <Card title="Testar aplicações" icon="laptop">
+        Rodar uma aplicação de emissora, ou um cliente das APIs num celular, contra um receptor que se
+        comporta como a norma manda.
+    </Card>
+    <Card title="Experimentar serviços" icon="rocket">
+        Montar serviços de TV com a emissora simulada e observar como o receptor os apresenta.
+    </Card>
+    <Card title="Propor funcionalidades" icon="puzzle">
+        Implementar ideias para versões futuras da TV 3.0 como componentes novos ou como versões
+        próprias das APIs, sem mudar o comportamento da norma.
+    </Card>
+</CardGrid>
+
+## Em três comandos
+
+Num Linux com Docker e Docker Compose v2 (no Windows, dentro do WSL2):
+
+```bash
+git clone --recurse-submodules https://github.com/multisens/TV30.git
+cd TV30
+cp .env.example .env
+./tv30 up
+```
+
+Abra `http://localhost:8080` no navegador: é a tela da TV. Para desligar, `./tv30 down`. Os detalhes
+de cada sistema estão em [Instalação](instalacao/).
+
+## Por onde seguir
+
+<CardGrid>
+    <LinkCard title="Subir o testbed" description="Pré-requisitos, Linux, macOS e Windows, e os endereços depois de subir." href="instalacao/" />
+    <LinkCard title="Ver o que está implementado" description="As unidades da plataforma sobre a arquitetura da norma, com o estado de cada uma." href="mapa-unidades/" />
+    <LinkCard title="Entender as peças por dentro" description="Módulos, containers, APIs, mensagens e estado." href="arquitetura/" />
+    <LinkCard title="Algo deu errado" description="Sintomas comuns, causa e o que fazer." href="troubleshooting/" />
+</CardGrid>
