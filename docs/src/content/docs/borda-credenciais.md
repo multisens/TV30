@@ -18,7 +18,7 @@ As duas têm as 27 rotas da tabela. O que muda é o 106:
 | Superfície | Porta | Protocolo | Regra própria | Backend no tv3ws |
 |---|---|---|---|---|
 | interna | 44642, fixa pela C.3.4 (`Server-BaseURL`) | HTTP | o cliente não local só usa `/tv3/authorize` e `/tv3/token`; nas demais rotas, 106 (C.4.1.6) | `http://tv3ws:44652` |
-| externa | 44643 (`Server-SecureBaseURL`) | **TLS**, terminado na borda | as rotas de uso exclusivo do cliente local (`POST`/`DELETE /tv3/bind-context`, C.6.15.5, rotas por `handle`) e o `/tv3/authorize` respondem 106 a qualquer requisição (C.4.1.8; na C.6.15.5, a Tabela C.80 lista 107 para o não local: [Não implementado](../nao-implementado/)) | `https://tv3ws:44653` |
+| externa | 44643 (`Server-SecureBaseURL`) | **TLS**, terminado na borda | as rotas de uso exclusivo do cliente local (`POST`/`DELETE /tv3/bind-context`, C.6.15.5, rotas por `handle`) e o `/tv3/authorize` respondem 106 a qualquer requisição (C.4.1.8; na C.6.15.5, a Tabela C.80 lista 107 para o não local: [Escopo, limites e decisões](../escopo/#onde-o-testbed-difere-da-norma)) | `https://tv3ws:44653` |
 
 - **Uma tabela de rotas só.** O `infra/edgegateway/routes.json` declara método, caminho, política (`auth`, `classes`), a linha da Tabela C.2 (`api`), as versões servidas (`versions`), o erro sem serviço selecionado (`no_service`) e o erro do serviço fora do catálogo (`not_in_catalog`). O `generate.js` gera dela, no build da imagem, as configurações do KrakenD (variantes `linux` e `windows`, com um endpoint por par rota × versão), os dois OpenAPI e a tabela de rotas do plugin.
 - **Certificado.** O serviço `tls-init` gera na primeira subida um certificado X.509 autoassinado em `.tv30/tls` (fora do git), sem ação do usuário (C.4.1.1). A borda termina com ele o TLS da 44643; o tv3ws o usa no HTTPS da 44653, no `serverCert` do pareamento (Tabela C.4) e no `wss://` do ponto de entrada do dispositivo remoto (Tabela C.76).
@@ -135,7 +135,7 @@ Configuração inválida derruba o processo (`[tv30-auth] FATAL`, `loadConfig` e
 
 ## O que não está implementado
 
-O que a borda não implementa da norma está em [Não implementado](../nao-implementado/); as limitações de operação, como o `Origin` forjável fora do navegador, em [Known Issues](https://github.com/multisens/TV30/blob/main/KNOWN-ISSUES.md).
+O que a borda não implementa da norma está em [Escopo, limites e decisões](../escopo/); as limitações de operação, como o `Origin` forjável fora do navegador, em [Known Issues](https://github.com/multisens/TV30/blob/main/KNOWN-ISSUES.md).
 
 ---
 

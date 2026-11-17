@@ -7,7 +7,7 @@ O Redis guarda o estado de sessão, os perfis de usuário e as credenciais. Ele 
 
 Redis, borda e mensageria são decisões de implementação deste testbed, não da ABNT NBR 25608. O *consent* destas chaves é a visibilidade do perfil por serviço, e não o consentimento da seção 8.8 da norma.
 
-**Porta e acesso.** A 6379 é publicada só em `127.0.0.1`. O Redis fica sem senha e sem ACL ([Decisões](../decisoes/)); a escrita direta fora das funções que validam (abaixo) é possível e aparece na auditoria. Os serviços em container usam a `ginga_net`; os que rodam no host (dev-host) usam `127.0.0.1`.
+**Porta e acesso.** A 6379 é publicada só em `127.0.0.1`. O Redis fica sem senha e sem ACL ([Escopo, limites e decisões](../escopo/#de-arquitetura)); a escrita direta fora das funções que validam (abaixo) é possível e aparece na auditoria. Os serviços em container usam a `ginga_net`; os que rodam no host (dev-host) usam `127.0.0.1`.
 
 UI de inspeção: Redis Commander, em porta dinâmica do host — `docker port redis 18081` mostra qual. A UI exige login: usuário `admin` e senha `tv30-redis-admin` por padrão, trocáveis por `REDIS_COMMANDER_USER`/`REDIS_COMMANDER_PASSWORD` no `.env` da raiz. A senha vale só para a UI: a conexão com o banco (6379) segue sem senha. A morte do commander derruba o container do Redis inteiro, e o `restart` o traz de volta (`infra/redis/entrypoint.sh`).
 
@@ -172,7 +172,7 @@ A escrita direta (`SET`, `HSET`, `SADD`...) pelo `redis-cli` ou pelo commander *
 
 ### O que impede a escrita direta
 
-Nada no Redis: o `redis-cli` e o commander gravam direto ([Decisões](../decisoes/)). Há duas conferências:
+Nada no Redis: o `redis-cli` e o commander gravam direto ([Escopo, limites e decisões](../escopo/#de-arquitetura)). Há duas conferências:
 
 - **Teste estático:** falha se algum serviço gravar direto numa família do alcance fora do adaptador das funções (`tv3ws/src/redis-functions.ts`, `aop/src/redis-functions.js`, `fcall` em `infra/edgegateway/plugin/redis.go` e `FCALL` na carga inicial). Roda no `npm test` do tv3ws e do AoP, no `go test` da borda (inclusive no build da imagem dela) e em `infra/redis/test/run.sh static`.
 - **Auditoria:** mostra o que entrou por fora.
@@ -255,7 +255,7 @@ docker exec redis redis-cli HGETALL user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10
 
 ### `user:{id}:consent` (SET)
 
-Serviços DTV para os quais o perfil é visível: a visibilidade do perfil por serviço, e não o consentimento da seção 8.8 da norma (o Privacy Manager, que o testbed não implementa). O tv3ws lê este SET (`tv3ws/src/api/user/service.ts`) em três lugares: no filtro da lista de perfis da C.6.14.1 (`getUserList`: só entram os perfis com o serviço corrente aqui; sem serviço corrente, ou com um serviço que nenhum perfil tem, a chamada responde 300, o que diverge da norma: [Não implementado](../nao-implementado/)), no 405 da C.6.14.2 e da C.6.14.5 (`assertUserVisible`, para o serviço da chamada) e no `GET /tv3/current-service/users/files` (`checkConsent`: o arquivo sai se ele é o avatar de um perfil visível no serviço corrente; o avatar só de perfis não visíveis dá 405, e o que não é avatar de ninguém, 305). O AoP o grava na criação do perfil (abaixo); a carga inicial o traz do `accessConsent` do `userData.json`.
+Serviços DTV para os quais o perfil é visível: a visibilidade do perfil por serviço, e não o consentimento da seção 8.8 da norma (o Privacy Manager, que o testbed não implementa). O tv3ws lê este SET (`tv3ws/src/api/user/service.ts`) em três lugares: no filtro da lista de perfis da C.6.14.1 (`getUserList`: só entram os perfis com o serviço corrente aqui; sem serviço corrente, ou com um serviço que nenhum perfil tem, a chamada responde 300, o que diverge da norma: [Escopo, limites e decisões](../escopo/#onde-o-testbed-difere-da-norma)), no 405 da C.6.14.2 e da C.6.14.5 (`assertUserVisible`, para o serviço da chamada) e no `GET /tv3/current-service/users/files` (`checkConsent`: o arquivo sai se ele é o avatar de um perfil visível no serviço corrente; o avatar só de perfis não visíveis dá 405, e o que não é avatar de ninguém, 305). O AoP o grava na criação do perfil (abaixo); a carga inicial o traz do `accessConsent` do `userData.json`.
 
 ```
 SMEMBERS user:c3167a18-5dc5-4a6e-9b1d-3f2a7c5e8d10:consent

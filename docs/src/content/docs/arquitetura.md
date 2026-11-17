@@ -79,7 +79,7 @@ Seis containers contínuos (`redis` a `bcast`) e quatro tarefas únicas de subid
 | `redis` | 6379, só em `127.0.0.1` (sem senha); commander em porta dinâmica (`docker port redis 18081`), com login | Redis, com carga inicial e o redis-commander embutido para debug. Morre-inteiro: se o `redis-server` ou o commander cair, o container cai, e o `restart` o traz de volta |
 | `mqtt-broker` (serviço `mosquitto`) | 1883; WebSocket (9001 do container) em porta dinâmica (`docker compose port mosquitto 9001`; `MQTT_WS_PUBLISH` fixa) | Mosquitto + plugin C de validação de esquema, sem controle de acesso a tópicos. A página da TV não usa a porta do WebSocket: fala MQTT pelo `/mqtt` do AoP |
 | `edgegateway` | 44642 (HTTP) e 44643 (HTTPS; fixa por padrão, `EDGE_EXT_PUBLISH`); docs em porta dinâmica (`docker port edgegateway 8085`) | Borda única. Contém os dois processos KrakenD (superfícies interna e externa; a externa termina o TLS com o certificado de `.tv30/tls`), com o plugin `tv30-auth`, que valida as credenciais, negocia a versão e responde a C.6.8 e a C.6.7.8/C.6.7.9, e a documentação Swagger. A externa repassa ao HTTPS do tv3ws (`https://tv3ws:44653`), com o mesmo certificado. Morre-inteiro: se um processo cai, o container cai, e o `restart` o traz de volta |
-| `tv3ws` | 45000–45199 (WebSockets de remote-device: o do dispositivo remoto em `wss://` com o certificado do receptor, o local em `ws://`, e não no `wss://` da Tabela C.80; ver [Não implementado](../nao-implementado/)) | TV 3.0 WebServices. As portas 44652 (HTTP) e 44653 (HTTPS, com o certificado de `.tv30/tls`) ficam só na `ginga_net` |
+| `tv3ws` | 45000–45199 (WebSockets de remote-device: o do dispositivo remoto em `wss://` com o certificado do receptor, o local em `ws://`, e não no `wss://` da Tabela C.80; ver [Escopo, limites e decisões](../escopo/#onde-o-testbed-difere-da-norma)) | TV 3.0 WebServices. As portas 44652 (HTTP) e 44653 (HTTPS, com o certificado de `.tv30/tls`) ficam só na `ginga_net` |
 | `aop` | `${AOP_PUBLIC_PORT:-8080}` | Interface do receptor; na mesma porta, os hosts próprios das apps de emissora (`<app>.<APPS_DOMAIN>`, padrão `apps.localhost`) e o MQTT por WebSocket da página da TV (`/mqtt`) |
 | `bcast` | 8081 do container em porta dinâmica (`docker compose port bcast 8081`; `BCAST_PUBLISH` fixa) | Broadcaster + módulos de apps de serviço. O AoP o alcança pela `ginga_net` (`bcast:8081`) |
 | `tv30-preflight`, `tv30-userfiles-seed`, `tv30-tls-init`, `tv30-sysctl-init` | — | Tarefas únicas de subida: diagnóstico de DNS e portas, carga de `./user-files`, certificado do receptor em `.tv30/tls` (gerado só na primeira subida) e ajuste de sysctl (Linux). O preflight só avisa, menos num caso: com a 44642 ocupada por processo nativo, ele sai com erro (`scripts/preflight.sh`), e a borda, que depende dele com `service_completed_successfully`, não sobe. A borda e o tv3ws também esperam o `tls-init` terminar |
@@ -122,7 +122,7 @@ Os módulos recebem o cliente MQTT do bcast (`sendSLS(client)` e `dispose(client
 
 ## Decisões arquiteturais
 
-As decisões do projeto e o motivo de cada uma estão em [Decisões](../decisoes/).
+As decisões do projeto e o motivo de cada uma estão em [Escopo, limites e decisões](../escopo/#decisões-do-projeto).
 
 ---
 

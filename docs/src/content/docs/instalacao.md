@@ -129,7 +129,7 @@ O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla
 | `AUTH_ENFORCE` | comentada (padrão `enforce`) | `enforce` recusa a credencial inválida; `warn`, opção transitória, só avisa nas recusas de credencial (104, 107, 108) ([Borda e credenciais](../borda-credenciais/)) |
 | `REDIS_COMMANDER_USER`, `REDIS_COMMANDER_PASSWORD` | comentadas (padrões `admin` e `tv30-redis-admin`) | Login da interface do redis-commander. A conexão com o banco (6379) segue sem senha |
 | `SERVER_URL` | `localhost` | Host que aparelhos externos usam para abrir os WebSockets de remote-device; numa rede de verdade, o IP desta máquina |
-| `TV3WS_WS_TLS` | comentada (padrão: `wss://`) | `false` = ponto de entrada do dispositivo remoto (registro, C.6.15.2) em `ws://`. O ponto de entrada local sai sempre em `ws://`, e não no `wss://` da Tabela C.80 ([Não implementado](../nao-implementado/)) |
+| `TV3WS_WS_TLS` | comentada (padrão: `wss://`) | `false` = ponto de entrada do dispositivo remoto (registro, C.6.15.2) em `ws://`. O ponto de entrada local sai sempre em `ws://`, e não no `wss://` da Tabela C.80 ([Escopo, limites e decisões](../escopo/#onde-o-testbed-difere-da-norma)) |
 | `SSDP_ENABLED`, `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Liga o anunciante (padrão `true`), fixa o host do anúncio e do `/manifest` (sobreposição; sem ele, o IP detectado) e força a interface |
 | `WEBMEDIA_REMOTE_MEDIA_PATH`, `WEBMEDIA_REMOTE_USERFILES_PATH` | comentadas | Caminhos no dispositivo remoto do demo webmedia |
 
@@ -145,7 +145,7 @@ A norma só fixa a 44642 (C.3.4); as demais portas fixas são decisão do projet
 | edgegateway, superfície externa | 44643, fixa por padrão (`EDGE_EXT_PUBLISH`) | HTTPS |
 | edgegateway, documentação | escolhida pelo Docker | Swagger UI: `docker port edgegateway 8085` |
 | tv3ws | — | não publicado no host: os clientes entram pela borda |
-| tv3ws, WebSockets de remote-device | 45000–45199, fixas | `wss://SERVER_URL:<porta>`, devolvida no registro; o ponto de entrada local, `ws://SERVER_URL:<porta>` (a Tabela C.80 pede `wss://`: [Não implementado](../nao-implementado/)) |
+| tv3ws, WebSockets de remote-device | 45000–45199, fixas | `wss://SERVER_URL:<porta>`, devolvida no registro; o ponto de entrada local, `ws://SERVER_URL:<porta>` (a Tabela C.80 pede `wss://`: [Escopo, limites e decisões](../escopo/#onde-o-testbed-difere-da-norma)) |
 | Anunciante SSDP, no host | UDP 1900 | subido pelo `./tv30 up` |
 | bcast | escolhida pelo Docker (`BCAST_PUBLISH`) | `docker compose port bcast 8081` |
 | Mosquitto | 1883, fixa | MQTT por TCP |

@@ -3,7 +3,7 @@ title: Broker MQTT
 ---
 
 
-O broker é o Mosquitto do container `mqtt-broker` (serviço `mosquitto`), com um plugin C (`infra/mqtt-broker/plugin/`). O plugin valida o esquema do payload de cada publicação e responde ao teste de latência. Ele não consulta o Redis e não controla o acesso a tópicos: usa o evento `MOSQ_EVT_ACL_CHECK` do Mosquitto só para validar o PUBLISH e deixa passar todo o resto (`callback_acl_check`, em `plugin/src/mosquitto_plugin.c`). Mensageria e broker são decisões do projeto ([Decisões](../decisoes/)); os tópicos estão em [Tópicos MQTT](../mqtt-topicos/).
+O broker é o Mosquitto do container `mqtt-broker` (serviço `mosquitto`), com um plugin C (`infra/mqtt-broker/plugin/`). O plugin valida o esquema do payload de cada publicação e responde ao teste de latência. Ele não consulta o Redis e não controla o acesso a tópicos: usa o evento `MOSQ_EVT_ACL_CHECK` do Mosquitto só para validar o PUBLISH e deixa passar todo o resto (`callback_acl_check`, em `plugin/src/mosquitto_plugin.c`). Mensageria e broker são decisões do projeto ([Escopo, limites e decisões](../escopo/#de-arquitetura)); os tópicos estão em [Tópicos MQTT](../mqtt-topicos/).
 
 ## Quando o validador roda
 

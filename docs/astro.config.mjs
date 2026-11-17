@@ -6,6 +6,12 @@ const REPOSITORY_URL = 'https://github.com/multisens/TV30';
 export default defineConfig({
     site: 'https://multisens.github.io',
     base: '/TV30',
+    // Pages merged into others keep their published addresses.
+    redirects: {
+        '/decisoes': '/TV30/escopo/#decisões-do-projeto',
+        '/nao-implementado': '/TV30/escopo/#fora-do-escopo',
+        '/mapa-unidades': '/TV30/escopo/#o-escopo-no-mapa',
+    },
     integrations: [
         starlight({
             title: 'Testbed TV 3.0',
@@ -28,9 +34,8 @@ export default defineConfig({
                     label: 'Entenda',
                     items: [
                         'aop-em-5-minutos',
-                        'mapa-unidades',
-                        'decisoes',
-                        'nao-implementado',
+                        'o-que-simula',
+                        'escopo',
                     ],
                 },
                 {

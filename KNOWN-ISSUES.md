@@ -1,6 +1,6 @@
 # Known Issues
 
-Problemas de operação do testbed, cada um com o sintoma, a causa e o contorno. O que a norma especifica e o testbed não implementa está em [Não implementado](./docs/src/content/docs/nao-implementado.md). A triagem de erros de operação (porta presa, Redis que não sobe, códigos de erro das APIs) está em [`docs/src/content/docs/troubleshooting.md`](./docs/src/content/docs/troubleshooting.md).
+Problemas de operação do testbed, cada um com o sintoma, a causa e o contorno. O que a norma especifica e o testbed não implementa está em [Escopo, limites e decisões](./docs/src/content/docs/escopo.mdx). A triagem de erros de operação (porta presa, Redis que não sobe, códigos de erro das APIs) está em [`docs/src/content/docs/troubleshooting.md`](./docs/src/content/docs/troubleshooting.md).
 
 ## Redis sem senha: escrita direta alcança as decisões da borda
 

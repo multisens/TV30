@@ -3,7 +3,11 @@
 # are left out. The units map and its counts derive from this file.
 # status: implemented | partial | absent | out (out of scope).
 # box: map box; parent: unit it is drawn inside; group: summary it is
-# counted in.
+# counted in (id in aop-groups.yml); note: short note shown in the panel.
+# The build refuses entries outside the schema in src/content.config.ts.
+# The map is drawn by src/components/aop-map.astro, styled by
+# src/styles/aop-map.css and made interactive by src/scripts/aop-map.ts; it
+# is shown on the page escopo.mdx.
 - id: aop-ota-physical-layer-information
   nature: fonte de dados
   sections: '7.1'
