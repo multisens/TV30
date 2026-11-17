@@ -1,0 +1,8 @@
+/* Site-wide additions to the Starlight theme. */
+
+.tv30-footer {
+    margin-top: 1.5rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+    text-align: center;
+}

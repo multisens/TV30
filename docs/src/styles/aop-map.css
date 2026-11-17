@@ -1,0 +1,594 @@
+/* Units map of the TV 3.0 AoP (aop-map component). */
+
+/* The page with the map uses a wider content column. */
+:root:has(.aop-map) {
+    --sl-content-width: 78rem;
+}
+
+.aop-map {
+    --aop-implemented: #2f9e5a;
+    --aop-partial: #c9961a;
+    --aop-absent: #d0533f;
+    --aop-out: var(--sl-color-gray-4);
+    --aop-neutral: var(--sl-color-gray-4);
+    --aop-border: var(--sl-color-gray-5);
+    --aop-text: var(--sl-color-white);
+    --aop-muted: var(--sl-color-gray-3);
+    --aop-chip-bg: var(--sl-color-bg);
+    --aop-cell: 4.4rem;
+    --aop-cell-compact: 3.2rem;
+    --aop-gap: 0.4rem;
+    --aop-zone-catalog: #8b5cf6;
+    --aop-zone-apps: #a78bfa;
+    --aop-zone-engine: #0ea5e9;
+    --aop-zone-core: #3b82f6;
+    --aop-zone-webservices: #1d4ed8;
+    --aop-zone-general: #64748b;
+    color: var(--aop-text);
+    font-size: var(--sl-text-xs);
+    line-height: 1.3;
+}
+
+.aop-map p {
+    margin: 0;
+}
+
+.aop-map button {
+    margin: 0;
+}
+
+/* Status colors */
+
+.status-implemented {
+    --aop-status: var(--aop-implemented);
+}
+
+.status-partial {
+    --aop-status: var(--aop-partial);
+}
+
+.status-absent {
+    --aop-status: var(--aop-absent);
+}
+
+.status-out {
+    --aop-status: var(--aop-out);
+}
+
+/* Legend and filter */
+
+.aop-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--aop-gap);
+    margin-bottom: 0.75rem;
+}
+
+.aop-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--aop-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--aop-text);
+    font: inherit;
+}
+
+button.aop-legend-item {
+    cursor: pointer;
+}
+
+.aop-legend-item::before {
+    content: "";
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 2px;
+    background: var(--aop-status);
+}
+
+.aop-legend-item.is-active {
+    border-color: var(--aop-status);
+    background: color-mix(in srgb, var(--aop-status) 20%, transparent);
+}
+
+.aop-legend-neutral::before {
+    border: 1px dashed var(--aop-neutral);
+    background: transparent;
+}
+
+/* Canvas: scrolls horizontally on narrow screens */
+
+.aop-scroll {
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+}
+
+/* Boxes and zones: each macro component has its own tint */
+
+.aop-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem;
+    border: 1px solid var(--aop-zone, var(--aop-border));
+    border-radius: 0.6rem;
+    background: color-mix(in srgb, var(--aop-zone, transparent) 12%, transparent);
+}
+
+.aop-outer {
+    min-width: 52rem;
+    border: 2px dotted var(--aop-border);
+    border-radius: 0.25rem;
+    background: transparent;
+}
+
+.aop-zone-catalog {
+    --aop-zone: var(--aop-zone-catalog);
+}
+
+.aop-zone-apps {
+    --aop-zone: var(--aop-zone-apps);
+    border-style: dashed;
+}
+
+.aop-zone-engine {
+    --aop-zone: var(--aop-zone-engine);
+}
+
+.aop-zone-core {
+    --aop-zone: var(--aop-zone-core);
+}
+
+.aop-zone-webservices {
+    --aop-zone: var(--aop-zone-webservices);
+    border-width: 2px;
+    background: color-mix(in srgb, var(--aop-zone-core) 28%, var(--sl-color-bg));
+}
+
+.aop-zone-general {
+    --aop-zone: var(--aop-zone-general);
+}
+
+.aop-title {
+    color: var(--aop-text);
+    font-size: var(--sl-text-sm);
+    font-style: italic;
+    font-weight: 600;
+}
+
+.aop-title-main {
+    font-size: var(--sl-text-base);
+}
+
+.aop-platform {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 2fr);
+    grid-template-areas:
+        "entry entry entry"
+        "catalog lifecycle apps"
+        "catalog lifecycle engines"
+        "core core core"
+        "general general general";
+    gap: 0.6rem;
+}
+
+.aop-area-entry {
+    grid-area: entry;
+}
+
+.aop-area-catalog {
+    grid-area: catalog;
+}
+
+.aop-area-catalog .aop-catalog {
+    flex: 1;
+}
+
+.aop-area-lifecycle {
+    grid-area: lifecycle;
+}
+
+.aop-area-apps {
+    grid-area: apps;
+}
+
+.aop-area-engines {
+    display: grid;
+    grid-area: engines;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+}
+
+.aop-area-core {
+    grid-area: core;
+}
+
+.aop-area-general {
+    grid-area: general;
+}
+
+/* Catalog: the units fill the box in rows of equal height */
+
+.aop-catalog {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: repeat(4, minmax(var(--aop-cell-compact), 1fr));
+    gap: var(--aop-gap);
+}
+
+.aop-catalog-main,
+.aop-catalog-privacy {
+    grid-row: 1 / 4;
+}
+
+.aop-catalog-guides {
+    grid-column: 1 / -1;
+}
+
+/* The parts of privacy-manager fill its frame, one under the other */
+
+.aop-catalog-privacy .aop-children {
+    flex: 1;
+    flex-direction: column;
+    flex-wrap: nowrap;
+}
+
+.aop-catalog-privacy .aop-unit-child {
+    display: flex;
+    flex: 1;
+    align-items: center;
+}
+
+.aop-items.aop-fill {
+    display: grid;
+    grid-auto-rows: 1fr;
+    align-items: stretch;
+}
+
+.aop-fill > * {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+}
+
+.aop-fill > .aop-unit {
+    display: flex;
+    align-items: center;
+}
+
+.aop-band {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.aop-band-label {
+    color: var(--aop-muted);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.aop-zone-webservices {
+    margin-top: 0.4rem;
+}
+
+/* Item layouts */
+
+.aop-items {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--aop-gap);
+}
+
+.aop-grid-1,
+.aop-grid-2,
+.aop-grid-3,
+.aop-grid-6,
+.aop-grid-7 {
+    display: grid;
+    align-items: stretch;
+}
+
+.aop-grid-1 {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.aop-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.aop-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.aop-grid-6 {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.aop-grid-7 {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+/* Groups wider than one column (span in aop-groups.yml) */
+
+.aop-span-2 {
+    grid-column: span 2;
+}
+
+.aop-span-3 {
+    grid-column: span 3;
+}
+
+.aop-span-4 {
+    grid-column: span 4;
+}
+
+.aop-span-5 {
+    grid-column: span 5;
+}
+
+.aop-span-6 {
+    grid-column: span 6;
+}
+
+.aop-span-7 {
+    grid-column: span 7;
+}
+
+/* Fixed-height cells: every item of a cell grid has the same height */
+
+.aop-cells {
+    grid-auto-rows: var(--aop-cell);
+}
+
+.aop-cells-compact {
+    grid-auto-rows: var(--aop-cell-compact);
+}
+
+.aop-cells > .aop-unit,
+.aop-cells > .aop-neutral-item {
+    display: flex;
+    align-items: center;
+}
+
+/* Units */
+
+.aop-unit,
+.aop-family,
+.aop-group {
+    border: 1px solid var(--aop-status, var(--aop-border));
+    border-left-width: 4px;
+    border-radius: 0.25rem;
+    background:
+        linear-gradient(var(--aop-tint), var(--aop-tint)),
+        var(--aop-chip-bg);
+    color: var(--aop-text);
+    font: inherit;
+    text-align: left;
+    overflow-wrap: anywhere;
+    transition: opacity 0.15s;
+}
+
+.aop-unit,
+.aop-group {
+    padding: 0.3rem 0.5rem;
+    cursor: pointer;
+}
+
+.aop-unit,
+.aop-family {
+    --aop-tint: color-mix(in srgb, var(--aop-status) 18%, transparent);
+}
+
+.aop-unit.status-out,
+.aop-family.status-out {
+    --aop-tint: transparent;
+    border-style: dashed;
+    border-left-style: solid;
+    color: var(--aop-muted);
+}
+
+.aop-unit:focus-visible,
+.aop-family-label:focus-visible,
+.aop-title-unit:focus-visible,
+.aop-group:focus-visible,
+.aop-legend-item:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+    outline-offset: 2px;
+}
+
+.aop-unit.is-selected,
+.aop-family-label.is-selected,
+.aop-title-unit.is-selected,
+.aop-group.is-selected {
+    box-shadow: 0 0 0 2px var(--sl-color-accent);
+}
+
+/* A whole component that is also a unit: the title carries its state */
+
+.aop-title-unit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.aop-title-unit::before {
+    content: "";
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: var(--aop-status);
+}
+
+/* A single unit that is a whole box of the architecture */
+
+.aop-unit-box {
+    padding: 0.5rem 0.75rem;
+    font-size: var(--sl-text-sm);
+    font-style: italic;
+    font-weight: 600;
+}
+
+.aop-unit-vertical {
+    padding: 0.75rem 0.4rem;
+    text-align: center;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+}
+
+/* A unit with parts: a frame with the parts inside */
+
+.aop-family {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.2rem 0.3rem 0.3rem;
+}
+
+.aop-family-label {
+    padding: 0.1rem 0.2rem;
+    border: 0;
+    border-radius: 0.2rem;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.aop-children {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+}
+
+.aop-unit-child {
+    padding: 0.1rem 0.35rem;
+    border-left-width: 3px;
+    font-size: 0.68rem;
+}
+
+/* Summary groups */
+
+.aop-group {
+    --aop-tint: transparent;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.25rem;
+    border-color: var(--aop-border);
+    border-left-width: 1px;
+}
+
+.aop-group-label {
+    font-weight: 600;
+}
+
+.aop-group-count {
+    color: var(--aop-muted);
+    font-size: 0.7rem;
+}
+
+.aop-bar {
+    display: flex;
+    gap: 1px;
+    height: 0.4rem;
+}
+
+.aop-segment {
+    flex: 1;
+    min-width: 2px;
+    background: var(--aop-status);
+}
+
+.aop-neutral-item {
+    padding: 0.3rem 0.5rem;
+    border: 1px dashed var(--aop-neutral);
+    border-radius: 0.25rem;
+    background: var(--aop-chip-bg);
+    color: var(--aop-muted);
+}
+
+/* Filter: dims what does not have the chosen status */
+
+.aop-map[data-filter="implemented"] .aop-scroll .aop-unit:not(.status-implemented),
+.aop-map[data-filter="partial"] .aop-scroll .aop-unit:not(.status-partial),
+.aop-map[data-filter="absent"] .aop-scroll .aop-unit:not(.status-absent),
+.aop-map[data-filter="out"] .aop-scroll .aop-unit:not(.status-out),
+.aop-map[data-filter="implemented"] .aop-family:not(.status-implemented) > .aop-family-label,
+.aop-map[data-filter="implemented"] .aop-title-unit:not(.status-implemented),
+.aop-map[data-filter="partial"] .aop-family:not(.status-partial) > .aop-family-label,
+.aop-map[data-filter="partial"] .aop-title-unit:not(.status-partial),
+.aop-map[data-filter="absent"] .aop-family:not(.status-absent) > .aop-family-label,
+.aop-map[data-filter="absent"] .aop-title-unit:not(.status-absent),
+.aop-map[data-filter="out"] .aop-family:not(.status-out) > .aop-family-label,
+.aop-map[data-filter="out"] .aop-title-unit:not(.status-out),
+.aop-map[data-filter="implemented"] .aop-group:not(.has-implemented),
+.aop-map[data-filter="partial"] .aop-group:not(.has-partial),
+.aop-map[data-filter="absent"] .aop-group:not(.has-absent),
+.aop-map[data-filter="out"] .aop-group:not(.has-out),
+.aop-map[data-filter] .aop-neutral-item {
+    opacity: 0.2;
+}
+
+/* Detail panel */
+
+.aop-detail {
+    min-height: 6rem;
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--aop-border);
+    border-radius: 0.5rem;
+    font-size: var(--sl-text-sm);
+}
+
+.aop-detail-hint {
+    color: var(--aop-muted);
+}
+
+.aop-detail-id {
+    margin-bottom: 0.4rem;
+    font-family: var(--sl-font-mono);
+    font-size: var(--sl-text-base);
+}
+
+.aop-detail-fields {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.15rem 0.75rem;
+    margin: 0;
+}
+
+.aop-detail-fields dt {
+    color: var(--aop-muted);
+}
+
+.aop-detail-fields dd {
+    margin: 0;
+}
+
+.aop-detail-status {
+    padding: 0 0.4rem;
+    border-left: 4px solid var(--aop-status);
+    background: color-mix(in srgb, var(--aop-status) 18%, transparent);
+}
+
+.aop-detail-members {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+}

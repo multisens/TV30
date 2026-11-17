@@ -11,11 +11,7 @@ docs/*.pdf
 # Local state of ./tv30 (binary of the SSDP announcer, pid, log).
 /.tv30/
 
-# Local build of the documentation site (Jekyll/bundler).
-docs/_site/
-docs/.jekyll-cache/
-docs/.jekyll-metadata
-docs/.sass-cache/
-docs/.bundle/
-docs/vendor/
-docs/Gemfile.lock
+# Documentation site (Astro Starlight).
+docs/node_modules/
+docs/dist/
+docs/.astro/

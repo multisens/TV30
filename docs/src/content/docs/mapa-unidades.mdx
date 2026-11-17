@@ -1,0 +1,67 @@
+---
+title: Mapa de unidades
+tableOfContents: false
+---
+
+import AopMap from '../../components/aop-map.astro';
+
+As unidades de implementação do receptor da TV 3.0 AoP estão distribuídas sobre a arquitetura da plataforma.
+Cada cor mostra o estado da unidade no testbed. As unidades `rd-`, que rodam nos dispositivos remotos, e não
+no receptor, ficam de fora. As seções citadas são as da ABNT NBR 25608, e cada uma se lê junto
+da seção de mesmo número do guia operacional.
+
+<AopMap />
+
+## Como ler
+
+| Elemento | Significado |
+|---|---|
+| Caixa com título | Bloco da arquitetura da TV 3.0 AoP. O sufixo do título (`aop-`, `tv3ws-`, `ginga-ncl-`, `ginga-html5-`) é o namespace, que fica fora do rótulo das unidades da caixa. A cor de fundo identifica o componente: Application Catalog, Broadcaster Apps, as duas máquinas de apresentação, o Common Core, os WebServices dentro dele e os aspectos gerais |
+| Caixa que é unidade | Bloco da arquitetura que corresponde a uma única unidade, como o Entrypoint e o Application Lifecycle Manager: a caixa inteira tem a cor do estado da unidade |
+| Componente que é unidade | Componente que contém outras unidades e é também uma unidade, como o Application Catalog: o título traz um ponto com a cor do estado e, clicado, mostra a unidade |
+| Faixa do Common Core | Agrupamento das unidades do TV 3.0 Ginga Common Core por função: sinalização e transporte, mídia, plataforma, estado e dispositivos |
+| Unidade | Uma unidade de implementação. Clicada, mostra o identificador completo, a natureza, as seções da norma, o estado e uma nota |
+| Unidade com partes | Moldura com a cor do estado da unidade e as partes dela dentro. Cada parte é uma unidade própria, com o rótulo sem o nome da unidade que a contém |
+| Grupo | Resumo de várias unidades. A barra tem um segmento por unidade, colorido pelo estado dela, e o número dá o total. Clicado, lista as unidades do grupo, e cada uma delas, clicada, mostra os seus detalhes |
+| Caixa tracejada cinza | Bloco da arquitetura que não é unidade de implementação: as Broadcaster Applications, que são conteúdo da emissora, e os demais tocadores de mídia, que a norma não especifica |
+
+Os botões da legenda filtram o mapa por estado. Para tirar o filtro, clique de novo no mesmo botão.
+
+| Estado | Critério |
+|---|---|
+| Implementado | No escopo. O comportamento que a norma pede existe no código, mesmo que haja divergência pontual registrada na nota |
+| Parcial | No escopo. Existe parte do comportamento, ou ele existe sem ser componente próprio. A nota diz o que falta |
+| No escopo, não implementado | No escopo. Não há código |
+| Fora do escopo | Fora do recorte do testbed |
+
+## Como atualizar
+
+O estado, a caixa e a nota de cada unidade ficam em `docs/src/data/aop-units.yml`, com uma entrada por
+unidade, e os grupos em `docs/src/data/aop-groups.yml`. As cores, os grupos e as contagens saem desses
+arquivos, e o build recusa entrada fora do esquema declarado em `docs/src/content.config.ts`. Para mudar o
+estado de uma unidade, troque o valor de `status`.
+
+| Campo | Conteúdo |
+|---|---|
+| `id` | Identificador da unidade |
+| `nature`, `sections` | Natureza e seções da norma |
+| `status` | Estado no testbed: `implemented`, `partial`, `absent` ou `out` |
+| `box` | Caixa ou faixa do mapa onde a unidade é desenhada |
+| `parent` | Unidade dentro da qual ela é desenhada |
+| `group` | Grupo em que ela é contada (`id` de `aop-groups.yml`) |
+| `note` | Nota curta, mostrada no painel |
+
+Nos grupos, o campo opcional `span` diz quantas colunas o grupo ocupa na grade da caixa.
+
+O desenho das caixas fica em `docs/src/components/aop-map.astro`, o estilo em `docs/src/styles/aop-map.css` e
+a interação em `docs/src/scripts/aop-map.ts`.
+
+## Referências
+
+- **ABNT NBR 25608 — TV 3.0 — Application coding**, Seção 6, Figura 2 (*TV 3.0 Application-oriented
+  Platform architecture*): o desenho de que o mapa parte
+- **Unidades de implementação da TV 3.0 AoP** (projeto Testbed-TV3.0): identificadores, natureza, seções da
+  norma e agrupamento das unidades
+- **O testbed TV 3.0 AoP — escopo e desenho** (projeto Testbed-TV3.0): as 69 unidades no escopo
+- **Código do testbed** (submódulos `aop`, `bcast`, `tv3ws` e `infra`): o estado de cada unidade. Esta fonte
+  **não é autoritativa**: ela descreve o que existe, e não o que deve existir

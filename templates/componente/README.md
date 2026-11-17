@@ -1,6 +1,6 @@
 # Template: componente novo no TV30
 
-Quem cria um componente novo precisa saber como montar o compose dele e como rodar o mesmo componente fora do Docker enquanto desenvolve. Este diretório traz o modelo de compose ([`docker-compose.yml`](./docker-compose.yml)), um componente de exemplo que sobe com ele e as regras. O passo a passo do desenvolvimento no host está em [`docs/dev-local.md`](../../docs/dev-local.md).
+Quem cria um componente novo precisa saber como montar o compose dele e como rodar o mesmo componente fora do Docker enquanto desenvolve. Este diretório traz o modelo de compose ([`docker-compose.yml`](./docker-compose.yml)), um componente de exemplo que sobe com ele e as regras. O passo a passo do desenvolvimento no host está em [`docs/src/content/docs/dev-local.md`](../../docs/src/content/docs/dev-local.md).
 
 > Mensageria (MQTT), borda (KrakenD) e armazenamento (Redis) são decisões de implementação deste testbed, não exigências da ABNT NBR 25608. O template segue essas decisões; não é requisito da norma.
 
@@ -81,6 +81,6 @@ O cenário 5 de `scripts/test-dev-host.sh` automatiza isso com este exemplo. Ele
 - um ping por MQTT que volta com o valor que o teste acabou de gravar no Redis;
 - que, sem o processo do host, o ping fica sem resposta.
 
-No fim, restaura a stack. Para outro componente, siga o mesmo padrão: subir só o necessário, parar o container do módulo, rodar o módulo real no host, conferir host → Redis (PING), host → MQTT (pub/sub) e o caminho específico, e no fim restaurar a stack. Detalhes em [`docs/dev-local.md`](../../docs/dev-local.md).
+No fim, restaura a stack. Para outro componente, siga o mesmo padrão: subir só o necessário, parar o container do módulo, rodar o módulo real no host, conferir host → Redis (PING), host → MQTT (pub/sub) e o caminho específico, e no fim restaurar a stack. Detalhes em [`docs/src/content/docs/dev-local.md`](../../docs/src/content/docs/dev-local.md).
 
 **Fora do escopo:** Windows nativo (processo no PowerShell com o Docker no WSL). Nesse arranjo, o `host-gateway` aponta para a VM do WSL, não para o Windows.

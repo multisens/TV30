@@ -1,0 +1,138 @@
+---
+// Interactive map of the TV 3.0 AoP implementation units over the
+// architecture of ABNT NBR 25608, Figure 2.
+import { getCollection } from 'astro:content';
+import Items from './aop-map-items.astro';
+import type { Unit } from '../lib/aop-units';
+import { STATUSES, STATUS_LABELS, UNITS_DATA_PATH, bySections } from '../lib/aop-units';
+import '../styles/aop-map.css';
+
+const units = (await getCollection('units')).map((entry) => entry.data).sort(bySections);
+const groups = (await getCollection('groups')).map((entry) => entry.data).sort(bySections);
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const unitsUrl = `${base}/${UNITS_DATA_PATH}`;
+const shared = { units, groups };
+
+// Unit drawn as a whole box: the only unit of that box.
+function boxUnit(box: Unit['box']): Unit {
+    const found = units.filter((unit) => unit.box === box);
+    if (found.length !== 1) {
+        throw new Error(`units map: box ${box} must hold exactly one unit`);
+    }
+    return found[0];
+}
+
+const catalog = boxUnit('catalog-title');
+const entrypoint = boxUnit('entrypoint');
+const lifecycle = boxUnit('lifecycle');
+---
+
+<div class="aop-map not-content" data-units-url={unitsUrl}>
+    <div class="aop-legend" role="group" aria-label="Filtrar por estado">
+        {STATUSES.map((status) => (
+            <button type="button" class:list={['aop-legend-item', `status-${status}`]} data-filter={status}>
+                {STATUS_LABELS[status]}
+            </button>
+        ))}
+        <span class="aop-legend-item aop-legend-neutral">Sem unidade</span>
+    </div>
+    <div class="aop-scroll">
+        <section class="aop-box aop-outer">
+            <p class="aop-title aop-title-main">TV 3.0 Application-Oriented Platform · aop-</p>
+            <div class="aop-platform">
+                <button type="button" class:list={['aop-unit', 'aop-unit-box', 'aop-area-entry', `status-${entrypoint.status}`]} data-unit={entrypoint.id}>
+                    TV 3.0 Entrypoint · entrypoint
+                </button>
+                <div class="aop-box aop-zone-catalog aop-area-catalog">
+                    <p class="aop-title">
+                        <button type="button" class:list={['aop-title-unit', `status-${catalog.status}`]} data-unit={catalog.id}>
+                            Application Catalog
+                        </button>
+                    </p>
+                    <div class="aop-catalog">
+                        <div class="aop-items aop-fill aop-catalog-main">
+                            <Items {...shared} box="catalog-main" prefix="aop-" />
+                        </div>
+                        <div class="aop-items aop-fill aop-catalog-privacy">
+                            <Items {...shared} box="catalog-privacy" prefix="aop-" />
+                        </div>
+                        <div class="aop-items aop-fill aop-grid-2 aop-catalog-guides">
+                            <Items {...shared} box="catalog-guides" prefix="aop-" />
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class:list={['aop-unit', 'aop-unit-box', 'aop-unit-vertical', 'aop-area-lifecycle', `status-${lifecycle.status}`]} data-unit={lifecycle.id}>
+                    application-lifecycle-manager
+                </button>
+                <div class="aop-box aop-zone-apps aop-area-apps">
+                    <p class="aop-title">Current TV 3.0 DTV Service — Broadcaster Apps</p>
+                    <div class="aop-items">
+                        <span class="aop-neutral-item">App A</span>
+                        <span class="aop-neutral-item">App B</span>
+                        <span class="aop-neutral-item">…</span>
+                        <span class="aop-neutral-item">App y</span>
+                    </div>
+                </div>
+                <div class="aop-area-engines">
+                    <div class="aop-box aop-zone-engine">
+                        <p class="aop-title">TV 3.0 Ginga-NCL · ginga-ncl-</p>
+                        <div class="aop-items aop-grid-3 aop-cells aop-cells-compact">
+                            <Items {...shared} box="ginga-ncl" prefix="ginga-ncl-" />
+                        </div>
+                    </div>
+                    <div class="aop-box aop-zone-engine">
+                        <p class="aop-title">TV 3.0 Ginga-HTML5 · ginga-html5-</p>
+                        <div class="aop-items aop-grid-1 aop-cells aop-cells-compact">
+                            <Items {...shared} box="ginga-html5" prefix="ginga-html5-" />
+                        </div>
+                    </div>
+                </div>
+                <div class="aop-box aop-zone-core aop-area-core">
+                    <p class="aop-title">TV 3.0 Ginga Common Core</p>
+                    <div class="aop-band">
+                        <p class="aop-band-label">Signaling and transport</p>
+                        <div class="aop-items aop-grid-6 aop-cells">
+                            <Items {...shared} box="core-transport" prefix="aop-" />
+                        </div>
+                    </div>
+                    <div class="aop-band">
+                        <p class="aop-band-label">Media</p>
+                        <div class="aop-items aop-grid-6 aop-cells">
+                            <Items {...shared} box="core-media" prefix="aop-" />
+                            <span class="aop-neutral-item">Other Media Players</span>
+                        </div>
+                    </div>
+                    <div class="aop-band">
+                        <p class="aop-band-label">Platform</p>
+                        <div class="aop-items aop-grid-6 aop-cells">
+                            <Items {...shared} box="core-platform" prefix="aop-" />
+                        </div>
+                    </div>
+                    <div class="aop-band">
+                        <p class="aop-band-label">State and devices</p>
+                        <div class="aop-items aop-grid-6 aop-cells">
+                            <Items {...shared} box="core-state" prefix="aop-" />
+                        </div>
+                    </div>
+                    <div class="aop-box aop-zone-webservices">
+                        <p class="aop-title">TV 3.0 WebServices · tv3ws-</p>
+                        <div class="aop-items aop-grid-6 aop-cells">
+                            <Items {...shared} box="webservices" prefix="tv3ws-" />
+                        </div>
+                    </div>
+                </div>
+                <div class="aop-box aop-zone-general aop-area-general">
+                    <p class="aop-title">General aspects</p>
+                    <div class="aop-items aop-grid-7 aop-cells">
+                        <Items {...shared} box="general" prefix="aop-" />
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+    <aside class="aop-detail" aria-live="polite">
+        <p class="aop-detail-hint">Clique numa unidade ou num grupo para ver os detalhes.</p>
+    </aside>
+</div>
+
+<script src="../scripts/aop-map.ts"></script>

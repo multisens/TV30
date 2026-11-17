@@ -1,0 +1,80 @@
+---
+// Units and summary groups of one box of the units map. A unit with parts
+// is drawn as a frame with its parts inside.
+import type { Group, Unit } from '../lib/aop-units';
+import { STATUSES, unitLabel } from '../lib/aop-units';
+
+type Props = {
+    units: Unit[];
+    groups: Group[];
+    box: Unit['box'];
+    prefix: string;
+};
+
+const { units, groups, box, prefix } = Astro.props;
+
+const boxUnits = units.filter((unit) => unit.box === box);
+const topUnits = boxUnits.filter((unit) => !unit.parent && !unit.group);
+const boxGroups = groups.filter((group) => group.box === box);
+
+function childrenOf(parent: Unit): Unit[] {
+    return boxUnits.filter((unit) => unit.parent === parent.id);
+}
+
+function membersOf(group: Group): Unit[] {
+    const members = units.filter((unit) => unit.group === group.id);
+    return STATUSES.flatMap((status) => {
+        return members.filter((unit) => unit.status === status);
+    });
+}
+
+function groupClasses(group: Group, members: Unit[]): string[] {
+    const present = STATUSES.filter((status) => {
+        return members.some((unit) => unit.status === status);
+    });
+    const classes = ['aop-group', ...present.map((status) => `has-${status}`)];
+    if (group.span) {
+        classes.push(`aop-span-${group.span}`);
+    }
+    return classes;
+}
+---
+
+{topUnits.map((unit) => {
+    const children = childrenOf(unit);
+    if (children.length === 0) {
+        return (
+            <button type="button" class:list={['aop-unit', `status-${unit.status}`]} data-unit={unit.id}>
+                {unitLabel(unit, prefix)}
+            </button>
+        );
+    }
+    return (
+        <div class:list={['aop-family', `status-${unit.status}`]}>
+            <button type="button" class="aop-family-label" data-unit={unit.id}>
+                {unitLabel(unit, prefix)}
+            </button>
+            <div class="aop-children">
+                {children.map((child) => (
+                    <button type="button" class:list={['aop-unit', 'aop-unit-child', `status-${child.status}`]} data-unit={child.id}>
+                        {unitLabel(child, prefix)}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+})}
+{boxGroups.map((group) => {
+    const members = membersOf(group);
+    return (
+        <button type="button" class:list={groupClasses(group, members)} data-group={group.id}>
+            <span class="aop-group-label">{group.label}</span>
+            <span class="aop-group-count">{members.length}</span>
+            <span class="aop-bar">
+                {members.map((unit) => (
+                    <span class:list={['aop-segment', `status-${unit.status}`]}></span>
+                ))}
+            </span>
+        </button>
+    );
+})}

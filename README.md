@@ -23,7 +23,7 @@ Por baixo, uma infraestrutura de apoio escolhida por este projeto:
 - **Docker Engine** e **Compose v2** (`docker compose`, não `docker-compose`).
 - **Git** com suporte a submodules.
 - **Mac com Apple Silicon:** as imagens publicadas são `amd64`. Rode `docker compose build` antes de subir.
-- **Windows:** WSL2 configurado como em [Instalação](./docs/instalacao.md#windows--wsl2).
+- **Windows:** WSL2 configurado como em [Instalação](./docs/src/content/docs/instalacao.md#windows--wsl2).
 
 ---
 
@@ -41,7 +41,7 @@ Abra http://localhost:8080, a interface do receptor (AoP). Para descer: `./tv30 
 O `./tv30 up` faz o `docker compose up -d` e sobe o anunciante da descoberta SSDP, que roda no host, fora do Docker. Também há `./tv30 status` e `./tv30 logs`. Só `docker compose up -d` também funciona, mas sem a descoberta.
 
 > **Primeira subida, o que acontece sozinho:** três tarefas preparam o ambiente antes dos serviços.
-> - O `preflight` diagnostica DNS e portas ocupadas e imprime os avisos no início do log (`docker logs tv30-preflight`). Se a subida falhar com `address already in use`, o dono da porta já está nomeado ali; a triagem completa está em [`docs/troubleshooting.md`](./docs/troubleshooting.md).
+> - O `preflight` diagnostica DNS e portas ocupadas e imprime os avisos no início do log (`docker logs tv30-preflight`). Se a subida falhar com `address already in use`, o dono da porta já está nomeado ali; a triagem completa está em [`docs/src/content/docs/troubleshooting.md`](./docs/src/content/docs/troubleshooting.md).
 > - O `userfiles-seed` cria e popula `./user-files` a partir do template.
 > - O `tls-init` gera o certificado do receptor em `.tv30/tls`.
 >
@@ -55,8 +55,8 @@ O `./tv30 up` faz o `docker compose up -d` e sobe o anunciante da descoberta SSD
 
 ## Documentação
 
-A documentação está em [`docs/`](./docs/index.md), que é a fonte única:
-- [Instalação](./docs/instalacao.md): pré-requisitos, `.env`, portas, HTTPS e submódulos;
-- [Arquitetura](./docs/arquitetura.md) e as demais páginas de *Como funciona*;
-- [Decisões](./docs/decisoes.md) e [Não implementado](./docs/nao-implementado.md);
-- [Solução de problemas](./docs/troubleshooting.md) e [Known Issues](./KNOWN-ISSUES.md).
+A documentação está em [`docs/`](./docs/src/content/docs/index.md), que é a fonte única:
+- [Instalação](./docs/src/content/docs/instalacao.md): pré-requisitos, `.env`, portas, HTTPS e submódulos;
+- [Arquitetura](./docs/src/content/docs/arquitetura.md) e as demais páginas de *Como funciona*;
+- [Decisões](./docs/src/content/docs/decisoes.md) e [Não implementado](./docs/src/content/docs/nao-implementado.md);
+- [Solução de problemas](./docs/src/content/docs/troubleshooting.md) e [Known Issues](./KNOWN-ISSUES.md).
