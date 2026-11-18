@@ -7,6 +7,7 @@ import { showBlock } from './detail-diagram';
 const LINKED_CLASS = 'is-linked';
 const FOCUS_CLASS = 'has-focus';
 const ALL_CHANNELS = 'all';
+const IN_CHANNEL_CLASS = 'in-channel';
 
 function initMap(root: HTMLElement): void {
     const filters = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-filter]'));
@@ -55,6 +56,9 @@ function showChannel(root: HTMLElement, filters: HTMLButtonElement[], chosen: HT
     root.dataset.channel = channel;
     filters.forEach((filter) => {
         filter.setAttribute('aria-pressed', String(filter === chosen));
+    });
+    root.querySelectorAll<SVGGElement>('svg [data-channel]').forEach((link) => {
+        link.classList.toggle(IN_CHANNEL_CLASS, link.dataset.channel === channel);
     });
 }
 

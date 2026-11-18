@@ -105,11 +105,13 @@ function titleY(block: Block): number {
                 </g>
             ))}
             {map.rowLabels.map((label) => (
-                <text class="cm-row-label" x={ROW_LABEL_X} y={label.y}>{label.text}</text>
+                <text class="cm-row-label" x={label.x ?? ROW_LABEL_X} y={label.y}>{label.text}</text>
             ))}
             {containers.map((block) => (
-                <g class={classesOf(block)} data-node={block.id} tabindex="0" role="button" aria-label={block.detailTitle}>
-                    <rect x={block.x} y={block.y} width={block.width} height={block.height} rx="6"></rect>
+                <g class={classesOf(block)} data-node={block.id} data-parent={block.parent} tabindex="0" role="button" aria-label={block.detailTitle}>
+                    {block.outline
+                        ? <path class="cm-outline" d={block.outline}></path>
+                        : <rect x={block.x} y={block.y} width={block.width} height={block.height} rx="6"></rect>}
                     <text class="cm-title" x={titleX(block)} y={titleY(block)}>{block.title}</text>
                 </g>
             ))}

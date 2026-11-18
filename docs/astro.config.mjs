@@ -49,17 +49,28 @@ export default defineConfig({
                 {
                     label: 'Referência',
                     items: [
-                        'instalacao',
-                        'arquitetura',
-                        'apis-tv3ws',
-                        'borda-credenciais',
-                        'modelo-redis',
-                        'mqtt-topicos',
-                        'broker-mqtt',
-                        'ssdp',
-                        'dev-local',
-                        'como-testar',
-                        'mapas-componentes',
+                        {
+                            label: 'Operar',
+                            items: [
+                                'instalacao',
+                                'ssdp',
+                                'dev-local',
+                                'como-testar',
+                            ],
+                        },
+                        {
+                            label: 'Por dentro',
+                            items: [
+                                'arquitetura',
+                                'emissora-simulada',
+                                'apis-tv3ws',
+                                'borda-credenciais',
+                                'modelo-redis',
+                                'mqtt-topicos',
+                                'broker-mqtt',
+                                'mapas-componentes',
+                            ],
+                        },
                     ],
                 },
                 {

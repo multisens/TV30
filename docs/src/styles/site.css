@@ -60,4 +60,5 @@
     --tv30-channel-mqtt: var(--tv30-video);
     --tv30-channel-state: #84cc16;
     --tv30-channel-websocket: #d946ef;
+    --tv30-channel-discovery: #f97316;
 }

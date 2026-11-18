@@ -2,11 +2,11 @@
 // first version of the map: the containers of the testbed, who uses them and
 // the channel of each link. Coordinates are in the units of the SVG viewBox.
 
-export type Channel = 'http' | 'mqtt' | 'state' | 'websocket';
+export type Channel = 'http' | 'mqtt' | 'state' | 'websocket' | 'discovery';
 
 export type BlockKind = 'node' | 'bus' | 'group' | 'new';
 
-export type Tone = 'platform' | 'webservices' | 'screen' | 'app' | 'mqtt' | 'state';
+export type Tone = 'platform' | 'webservices' | 'screen' | 'app' | 'mqtt' | 'state' | 'discovery' | 'infra';
 
 export interface Zone {
     id: string;
@@ -30,6 +30,7 @@ export interface Block {
     y: number;
     width: number;
     height: number;
+    outline?: string;
     detailTitle: string;
     detail: string;
 }
@@ -51,10 +52,12 @@ export const CHANNEL_LABELS: Record<Channel, string> = {
     mqtt: 'mensageria (MQTT)',
     state: 'armazenamento (Redis)',
     websocket: 'WebSocket',
+    discovery: 'descoberta (SSDP)',
 };
 
 export interface RowLabel {
     text: string;
+    x?: number;
     y: number;
 }
 

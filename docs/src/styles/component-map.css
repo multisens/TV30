@@ -73,6 +73,11 @@
     --cm-channel: var(--tv30-channel-websocket);
 }
 
+.cm-discovery,
+.cm-tone-discovery {
+    --cm-channel: var(--tv30-channel-discovery);
+}
+
 /* Drawing: scrolls sideways inside its box on narrow screens */
 
 .cm-stage {
@@ -175,8 +180,30 @@
     --cm-channel: var(--tv30-channel-state);
 }
 
-.cm-container rect {
+.cm-container rect,
+.cm-container .cm-outline {
     fill: transparent;
+}
+
+.cm-outline {
+    stroke: var(--cm-block-border, var(--cm-border));
+    stroke-width: 1.2;
+}
+
+.cm-block:hover .cm-outline,
+.cm-block:focus-visible .cm-outline,
+.cm-block.is-selected .cm-outline {
+    stroke: var(--cm-accent);
+}
+
+.cm-tone-infra .cm-outline {
+    fill: color-mix(in srgb, var(--sl-color-gray-4) 10%, transparent);
+    stroke-dasharray: 6 4;
+}
+
+.cm-tone-infra text {
+    fill: var(--cm-muted);
+    font-style: italic;
 }
 
 .cm-container text {
@@ -270,10 +297,7 @@
     opacity: var(--cm-dim);
 }
 
-.cm-diagram[data-channel="http"] .cm-link[data-channel="http"],
-.cm-diagram[data-channel="mqtt"] .cm-link[data-channel="mqtt"],
-.cm-diagram[data-channel="state"] .cm-link[data-channel="state"],
-.cm-diagram[data-channel="websocket"] .cm-link[data-channel="websocket"] {
+.cm-diagram:not([data-channel="all"]) .cm-link.in-channel {
     opacity: 1;
 }
 
@@ -285,10 +309,7 @@
     opacity: 0.4;
 }
 
-.cm-diagram[data-channel="http"] .cm-link[data-channel="http"]:not(.cm-planned) .cm-line,
-.cm-diagram[data-channel="mqtt"] .cm-link[data-channel="mqtt"] .cm-line,
-.cm-diagram[data-channel="state"] .cm-link[data-channel="state"] .cm-line,
-.cm-diagram[data-channel="websocket"] .cm-link[data-channel="websocket"] .cm-line,
+.cm-diagram:not([data-channel="all"]) .cm-link.in-channel:not(.cm-planned) .cm-line,
 .cm-diagram.has-focus .cm-link.is-linked:not(.cm-planned) .cm-line {
     stroke-dasharray: 8 6;
     animation: cm-flow 0.9s linear infinite;
