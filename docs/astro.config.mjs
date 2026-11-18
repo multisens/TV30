@@ -15,6 +15,7 @@ export default defineConfig({
         '/mqtt-topicos': '/TV30/mensageria/',
         '/broker-mqtt': '/TV30/mensageria/',
         '/ssdp': '/TV30/instalacao/#descoberta-na-rede',
+        '/mapas-componentes': '/TV30/estender-com-componente/#como-um-componente-conversa',
     },
     integrations: [
         starlight({
@@ -71,7 +72,6 @@ export default defineConfig({
                                 'borda-credenciais',
                                 'modelo-redis',
                                 'mensageria',
-                                'mapas-componentes',
                             ],
                         },
                         {
