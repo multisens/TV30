@@ -1,0 +1,26 @@
+---
+title: Mapas dos componentes
+description: As duas versões do mapa interativo dos componentes do testbed.
+tableOfContents: false
+prev: false
+next: false
+---
+
+import ComponentMap from '../../components/component-map.astro';
+import { currentMap } from '../../data/component-map.ts';
+import { layeredMap } from '../../data/component-layers.ts';
+
+As duas versões do mapa dos componentes, para conferir se cabem em outras páginas. A versão 2 está na
+seção *Como um componente conversa* de [Estender o testbed com um componente](../estender-com-componente/).
+
+## Versão 1: os containers do testbed
+
+<ComponentMap id="map-current" map={currentMap} />
+
+## Versão 2: em camadas, com o foco no componente novo
+
+Quem usa a TV se apoia em duas entradas: a casca, para o que aparece na tela, e a borda, para as APIs
+da norma. Um componente novo chega a quem usa por uma delas, e todos se apoiam na mensageria e no
+armazenamento.
+
+<ComponentMap id="map-layers" map={layeredMap} />

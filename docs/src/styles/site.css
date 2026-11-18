@@ -50,3 +50,14 @@
     --tv30-platform: #8b5cf6;
     --tv30-notice: #f43f5e;
 }
+
+/* Colors of the communication channels, shared by the sequence and
+   component diagrams. */
+
+:root {
+    --tv30-channel-http: var(--sl-color-gray-2);
+    --tv30-channel-https: #10b981;
+    --tv30-channel-mqtt: var(--tv30-video);
+    --tv30-channel-state: #84cc16;
+    --tv30-channel-websocket: #d946ef;
+}

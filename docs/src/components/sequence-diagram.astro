@@ -5,7 +5,7 @@
 import '../styles/diagram-detail.css';
 import '../styles/sequence-diagram.css';
 
-type Channel = 'http' | 'https' | 'cipher' | 'internal' | 'person';
+type Channel = 'http' | 'https' | 'cipher' | 'internal' | 'person' | 'mqtt' | 'state';
 
 interface Actor {
     id: string;
@@ -37,6 +37,8 @@ const CHANNEL_LABELS: Record<Channel, string> = {
     cipher: 'cifrado com a chave do pareamento',
     internal: 'dentro da plataforma',
     person: 'gesto de quem usa',
+    mqtt: 'mensageria (MQTT)',
+    state: 'armazenamento (Redis)',
 };
 
 const { actors, messages } = Astro.props;

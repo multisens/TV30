@@ -1,0 +1,328 @@
+/* Component map: containers, users and channels (component-map component). */
+
+.cm-diagram {
+    --cm-text: var(--sl-color-white);
+    --cm-muted: var(--sl-color-gray-3);
+    --cm-border: var(--sl-color-gray-5);
+    --cm-bg: var(--sl-color-bg);
+    --cm-accent: var(--sl-color-accent);
+    --cm-zone-broadcaster: #f59e0b;
+    --cm-zone-receiver: #3b82f6;
+    --cm-zone-users: #10b981;
+    --cm-platform: #8b5cf6;
+    --cm-webservices: #1d4ed8;
+    --cm-dim: 0.15;
+    color: var(--cm-text);
+    font-size: var(--sl-text-sm);
+    line-height: 1.35;
+}
+
+.cm-diagram p {
+    margin: 0;
+}
+
+/* Channel buttons, which are also the legend */
+
+.cm-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+}
+
+.cm-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--cm-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--cm-text);
+    font: inherit;
+    font-size: var(--sl-text-xs);
+    cursor: pointer;
+}
+
+.cm-filter[aria-pressed="true"] {
+    border-color: var(--cm-accent);
+    background: color-mix(in srgb, var(--cm-accent) 25%, transparent);
+}
+
+.cm-swatch {
+    width: 1.4rem;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--cm-channel);
+}
+
+.cm-http {
+    --cm-channel: var(--tv30-channel-http);
+}
+
+.cm-mqtt {
+    --cm-channel: var(--tv30-channel-mqtt);
+}
+
+.cm-state {
+    --cm-channel: var(--tv30-channel-state);
+}
+
+.cm-websocket {
+    --cm-channel: var(--tv30-channel-websocket);
+}
+
+/* Drawing: scrolls sideways inside its box on narrow screens */
+
+.cm-stage {
+    overflow-x: auto;
+}
+
+.cm-svg {
+    display: block;
+    width: 100%;
+    min-width: 44rem;
+    height: auto;
+    font-family: var(--sl-font);
+}
+
+.cm-zone rect {
+    fill: color-mix(in srgb, var(--cm-zone) 10%, transparent);
+    stroke: var(--cm-zone);
+    stroke-width: 1;
+}
+
+.cm-zone text {
+    fill: var(--cm-text);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.cm-zone-broadcaster {
+    --cm-zone: var(--cm-zone-broadcaster);
+}
+
+.cm-zone-receiver {
+    --cm-zone: var(--cm-zone-receiver);
+}
+
+.cm-zone-users {
+    --cm-zone: var(--cm-zone-users);
+}
+
+.cm-zone .cm-zone-subtitle {
+    fill: var(--cm-muted);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.cm-row-label {
+    fill: var(--cm-muted);
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* Blocks */
+
+.cm-block {
+    cursor: pointer;
+    outline: none;
+    transition: opacity 0.2s ease;
+}
+
+.cm-block rect {
+    fill: var(--cm-block-bg, var(--cm-bg));
+    stroke: var(--cm-block-border, var(--cm-border));
+    stroke-width: 1.2;
+}
+
+.cm-block text {
+    fill: var(--cm-text);
+    text-anchor: middle;
+}
+
+.cm-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.cm-subtitle {
+    fill: var(--cm-muted);
+    font-size: 11.5px;
+}
+
+.cm-block:hover rect,
+.cm-block:focus-visible rect {
+    stroke: var(--cm-accent);
+}
+
+.cm-block.is-selected rect {
+    stroke: var(--cm-accent);
+    stroke-width: 2.5;
+}
+
+.cm-kind-bus {
+    --cm-block-bg: color-mix(in srgb, var(--cm-channel) 22%, var(--cm-bg));
+    --cm-block-border: var(--cm-channel);
+}
+
+.cm-tone-mqtt {
+    --cm-channel: var(--tv30-channel-mqtt);
+}
+
+.cm-tone-state {
+    --cm-channel: var(--tv30-channel-state);
+}
+
+.cm-container rect {
+    fill: transparent;
+}
+
+.cm-container text {
+    text-anchor: start;
+}
+
+.cm-kind-group rect {
+    stroke-dasharray: 2 3;
+}
+
+.cm-kind-group text {
+    font-size: 13px;
+}
+
+.cm-kind-new {
+    --cm-block-border: var(--cm-accent);
+}
+
+.cm-kind-new rect {
+    stroke-dasharray: 5 4;
+    stroke-width: 1.6;
+}
+
+.cm-tone-platform {
+    --cm-block-bg: color-mix(in srgb, var(--cm-platform) 18%, var(--cm-bg));
+    --cm-block-border: var(--cm-platform);
+}
+
+.cm-tone-webservices {
+    --cm-block-bg: color-mix(in srgb, var(--cm-webservices) 26%, var(--cm-bg));
+    --cm-block-border: var(--cm-webservices);
+}
+
+.cm-tone-screen {
+    --cm-block-border: var(--tv30-platform);
+}
+
+.cm-tone-app {
+    --cm-block-border: var(--tv30-app);
+}
+
+/* Links: a halo in the page color keeps crossings readable */
+
+.cm-link {
+    cursor: pointer;
+    outline: none;
+    transition: opacity 0.2s ease;
+}
+
+.cm-link path {
+    fill: none;
+}
+
+.cm-halo {
+    stroke: var(--cm-bg);
+    stroke-width: 7;
+}
+
+.cm-line {
+    stroke: var(--cm-channel);
+    stroke-width: 2.2;
+}
+
+.cm-hit {
+    stroke: transparent;
+    stroke-width: 14;
+    pointer-events: stroke;
+}
+
+.cm-planned .cm-line {
+    stroke-dasharray: 3 5;
+    opacity: 0.8;
+}
+
+.cm-link-label {
+    fill: var(--cm-muted);
+    font-size: 12px;
+    font-style: italic;
+    text-anchor: middle;
+}
+
+.cm-link:hover .cm-line,
+.cm-link:focus-visible .cm-line,
+.cm-link.is-selected .cm-line {
+    stroke-width: 3.5;
+}
+
+/* Highlight: the chosen channel, or what touches the chosen block */
+
+.cm-diagram:not([data-channel="all"]) .cm-link {
+    opacity: var(--cm-dim);
+}
+
+.cm-diagram[data-channel="http"] .cm-link[data-channel="http"],
+.cm-diagram[data-channel="mqtt"] .cm-link[data-channel="mqtt"],
+.cm-diagram[data-channel="state"] .cm-link[data-channel="state"],
+.cm-diagram[data-channel="websocket"] .cm-link[data-channel="websocket"] {
+    opacity: 1;
+}
+
+.cm-diagram.has-focus .cm-link:not(.is-linked) {
+    opacity: var(--cm-dim);
+}
+
+.cm-diagram.has-focus .cm-block:not(.is-linked) {
+    opacity: 0.4;
+}
+
+.cm-diagram[data-channel="http"] .cm-link[data-channel="http"]:not(.cm-planned) .cm-line,
+.cm-diagram[data-channel="mqtt"] .cm-link[data-channel="mqtt"] .cm-line,
+.cm-diagram[data-channel="state"] .cm-link[data-channel="state"] .cm-line,
+.cm-diagram[data-channel="websocket"] .cm-link[data-channel="websocket"] .cm-line,
+.cm-diagram.has-focus .cm-link.is-linked:not(.cm-planned) .cm-line {
+    stroke-dasharray: 8 6;
+    animation: cm-flow 0.9s linear infinite;
+}
+
+@keyframes cm-flow {
+    from {
+        stroke-dashoffset: 14;
+    }
+
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+/* Channel tag in the detail panel */
+
+.cm-tag {
+    margin-left: 0.4rem;
+    padding: 0.05rem 0.5rem;
+    border: 1px solid var(--cm-channel);
+    border-radius: 999px;
+    color: var(--cm-muted);
+    font-size: var(--sl-text-xs);
+    font-weight: 400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cm-line {
+        animation: none !important;
+    }
+
+    .cm-block,
+    .cm-link {
+        transition: none;
+    }
+}

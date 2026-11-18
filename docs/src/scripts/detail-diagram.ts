@@ -1,7 +1,7 @@
 // Interaction of the diagrams with a detail panel: a click on a block shows
 // its description in the panel.
 
-export function showBlock(root: HTMLElement, node: HTMLElement): void {
+export function showBlock(root: HTMLElement, node: HTMLElement | SVGElement): void {
     const id = node.dataset.node;
     if (!id) {
         throw new Error('diagram: block without data-node');
@@ -23,7 +23,7 @@ function initDiagram(root: HTMLElement): void {
     });
 }
 
-function selectNode(root: HTMLElement, node: HTMLElement): void {
+function selectNode(root: HTMLElement, node: HTMLElement | SVGElement): void {
     root.querySelectorAll('.is-selected').forEach((item) => {
         item.classList.remove('is-selected');
     });

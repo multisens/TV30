@@ -6,11 +6,13 @@
     --sq-text: var(--sl-color-white);
     --sq-muted: var(--sl-color-gray-3);
     --sq-lifeline: var(--sl-color-gray-5);
-    --sq-http: var(--sl-color-gray-2);
-    --sq-https: #10b981;
+    --sq-http: var(--tv30-channel-http);
+    --sq-https: var(--tv30-channel-https);
     --sq-cipher: var(--tv30-app);
     --sq-internal: var(--tv30-platform);
     --sq-person: var(--tv30-notice);
+    --sq-mqtt: var(--tv30-channel-mqtt);
+    --sq-state: var(--tv30-channel-state);
     color: var(--sq-text);
     font-size: var(--sl-text-sm);
     line-height: 1.35;
@@ -251,6 +253,14 @@
 
 .sq-person {
     --sq-color: var(--sq-person);
+}
+
+.sq-mqtt {
+    --sq-color: var(--sq-mqtt);
+}
+
+.sq-state {
+    --sq-color: var(--sq-state);
 }
 
 .sq-legend {

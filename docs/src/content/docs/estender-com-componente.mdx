@@ -1,0 +1,142 @@
+---
+title: Estender o testbed com um componente
+description: Criar um componente novo a partir do modelo, ligá-lo à mensageria e ao armazenamento e desenvolvê-lo.
+prev: false
+next: false
+---
+
+import { Aside, LinkCard, CardGrid, Steps } from '@astrojs/starlight/components';
+import ComponentMap from '../../components/component-map.astro';
+import SequenceDiagram from '../../components/sequence-diagram.astro';
+import { layeredMap } from '../../data/component-layers.ts';
+import { examplePing } from '../../data/component-sequence.ts';
+
+O testbed é feito de serviços independentes, e uma funcionalidade nova entra como mais um
+deles: um **componente**. Este guia mostra como criar um a partir do modelo do repositório, como ele
+conversa com o resto do testbed e como desenvolvê-lo.
+
+## Como um componente conversa
+
+Os componentes não chamam uns aos outros: todos se apoiam na mensageria e no armazenamento. Quem usa a
+TV chega a eles por uma de duas entradas: a casca, para o que aparece na tela, e a borda, para as APIs
+da norma. Escolha um canal para ver só ele, ou clique num bloco para ver com quem ele fala.
+
+<ComponentMap id="component-layers" map={layeredMap} />
+
+Um dado que dispara comportamento e também é consultado vai nos dois: a mensagem avisa, e a chave
+guarda.
+
+Se o componente implementa uma peça da norma, o nome dela está no mapa de
+[Escopo, limites e decisões](../escopo/#o-escopo-no-mapa). Use os nomes das peças
+como nome do componente.
+
+## Criar a partir do modelo
+
+O modelo está em `templates/componente/`: o compose, um componente de exemplo que já funciona e as
+regras. O exemplo é um programa Node sem dependências, que responde a um ping pela mensageria com um
+valor lido no Redis.
+
+<Steps>
+
+1. **Copie a pasta** para onde o componente vai morar, fora do repositório ou dentro dele:
+
+   ```bash
+   cp -R templates/componente ~/meu-componente
+   ```
+
+2. **Dê o nome.** Troque `meu-componente` pelo nome do seu componente em todos os arquivos da pasta:
+   `docker-compose.yml`, `package.json`, `package-lock.json`, `index.js` e `README.md`.
+
+3. **Suba o testbed** (`./tv30 up`). É ele que cria a rede, o broker e o Redis.
+
+4. **Suba o componente**, a partir da raiz do testbed:
+
+   ```bash
+   docker compose --env-file .env -f ~/meu-componente/docker-compose.yml up -d --build --wait
+   ```
+
+   O `--env-file` faz valer o `.env` do testbed. O componente fica num projeto à parte: o
+   `./tv30 down` não o derruba, e o `down` dele não derruba o testbed.
+
+5. **Confira** que ele está de pé:
+
+   ```bash
+   curl http://localhost:8090/health
+   ```
+
+   ```json
+   {"status":"ok","componente":"meu-componente"}
+   ```
+
+</Steps>
+
+## Ver o exemplo funcionando
+
+<SequenceDiagram {...examplePing} />
+
+Grave um valor na chave, fique ouvindo a resposta e mande o ping:
+
+```bash
+docker compose exec redis redis-cli SET tv30:meu-componente:exemplo "olá"
+docker exec mqtt-broker mosquitto_sub -t tv30/meu-componente/exemplo/pong -C 1 -W 10 &
+docker exec mqtt-broker mosquitto_pub -t tv30/meu-componente/exemplo/ping -m oi
+```
+
+```json
+{"componente":"meu-componente","ping":"oi","chave":"tv30:meu-componente:exemplo","valor":"olá"}
+```
+
+Agora troque o exemplo pelo código do seu componente. Um componente de verdade usa as bibliotecas
+`mqtt` e `ioredis`.
+
+## O que o modelo já resolve
+
+O `docker-compose.yml` do modelo traz as regras que fazem o componente se comportar como os outros:
+
+- **Entra na rede do testbed** (`ginga_net`) e fala com o broker e o Redis pelo nome do serviço.
+  Dentro do container, `localhost` é o próprio container.
+- **Cai inteiro quando falha.** Se o processo morre, o container para e o Docker o sobe de novo.
+  Nenhuma parte fica caída com o resto aparentemente de pé.
+- **Publica só a porta que alguém de fora usa.** Aplicações e aparelhos chegam pela borda, e não
+  direto no componente.
+
+## Ligar o componente ao resto do testbed
+
+<Aside type="caution">
+O broker e o Redis só conferem o formato do que está declarado. Um tópico ou uma chave sem esquema
+passa sem conferência, e um erro de formato vira falha difícil de achar em outro componente.
+</Aside>
+
+| Para | Faça | Detalhes |
+|---|---|---|
+| Publicar num tópico novo | Declare o esquema do tópico em `infra/mqtt-broker/plugin/config/schemas.json` e reconstrua o broker. Mensagem fora do esquema é recusada e não chega a quem assina | [Broker MQTT](../broker-mqtt/#acrescentar-ou-mudar-um-esquema) |
+| Assinar um tópico que já existe | Consulte o tópico e o formato da mensagem | [Tópicos MQTT](../mqtt-topicos/) |
+| Guardar um dado novo no Redis | Declare a família de chaves em `infra/redis/schema.json`, com o componente como dono, e grave por uma função do Redis, que confere o formato. Cada chave tem um dono só | [Modelo de dados Redis](../modelo-redis/#esquema-nas-escritas-funções-do-redis-e-auditoria) |
+| Atender uma API da norma | Hoje a borda entrega todas as rotas ao `tv3ws`: uma API nova entra nele, com a rota declarada em `infra/edgegateway/routes.json`. Quem confere as credenciais é a borda, e não o serviço | [Borda e credenciais](../borda-credenciais/) |
+
+## Desenvolver sem reconstruir a imagem
+
+Enquanto desenvolve, rode o componente direto no computador e deixe só o broker e o Redis em
+containers. Do computador, eles respondem em `127.0.0.1`:
+
+```bash
+cd ~/meu-componente && npm ci
+MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 PORT=8090 npm run dev
+```
+
+O processo reinicia a cada arquivo salvo. As outras combinações, como rodar o `tv3ws` ou a casca
+fora do Docker, estão em [Desenvolvimento com serviço no host](../dev-local/).
+
+## Desligar
+
+```bash
+docker compose --env-file .env -f ~/meu-componente/docker-compose.yml down --rmi local
+```
+
+## Para seguir
+
+<CardGrid>
+    <LinkCard title="Arquitetura" description="Os módulos, os containers e o caminho de cada mensagem." href="../arquitetura/" />
+    <LinkCard title="Tópicos MQTT" description="Quem publica e quem assina cada tópico do testbed." href="../mqtt-topicos/" />
+    <LinkCard title="Modelo de dados Redis" description="As famílias de chaves, os donos e as funções de escrita." href="../modelo-redis/" />
+</CardGrid>

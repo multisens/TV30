@@ -43,6 +43,7 @@ export default defineConfig({
                     items: [
                         'subir-e-passear',
                         'apis-de-outro-aparelho',
+                        'estender-com-componente',
                     ],
                 },
                 {
@@ -58,6 +59,7 @@ export default defineConfig({
                         'ssdp',
                         'dev-local',
                         'como-testar',
+                        'mapas-componentes',
                     ],
                 },
                 {

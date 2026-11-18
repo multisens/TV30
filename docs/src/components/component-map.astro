@@ -1,0 +1,164 @@
+---
+// Component map: blocks, the channels between them and who uses them. A click
+// on a block or a link shows its description and highlights its links; the
+// channel buttons show one channel at a time.
+import '../styles/diagram-detail.css';
+import '../styles/component-map.css';
+import {
+    CHANNEL_LABELS,
+    type Block,
+    type Channel,
+    type ComponentMap,
+} from '../data/component-map.ts';
+
+interface Props {
+    id: string;
+    map: ComponentMap;
+}
+
+const TITLE_SIZE = 14;
+const SUBTITLE_OFFSET = 16;
+const CONTAINER_TITLE_OFFSET = 18;
+const ZONE_TITLE_OFFSET = 19;
+const ZONE_SUBTITLE_OFFSET = 36;
+const ROW_LABEL_X = 20;
+
+const { id, map } = Astro.props;
+const arrowId = `${id}-arrow`;
+const channels = Object.keys(CHANNEL_LABELS) as Channel[];
+
+function isContainer(block: Block): boolean {
+    if (block.kind === 'bus' || block.kind === 'group') {
+        return true;
+    }
+    return map.blocks.some((other) => other.parent === block.id);
+}
+
+const containers = map.blocks.filter(isContainer);
+const leaves = map.blocks.filter((block) => !isContainer(block));
+
+function classesOf(block: Block): string {
+    const classes = ['cm-block', `cm-kind-${block.kind}`];
+    if (block.tone) {
+        classes.push(`cm-tone-${block.tone}`);
+    }
+    if (isContainer(block) && block.kind !== 'bus') {
+        classes.push('cm-container');
+    }
+    return classes.join(' ');
+}
+
+function titleX(block: Block): number {
+    if (block.titleX !== undefined) {
+        return block.titleX;
+    }
+    if (isContainer(block) && block.kind !== 'bus') {
+        return block.x + 10;
+    }
+    return block.x + block.width / 2;
+}
+
+function titleY(block: Block): number {
+    if (block.kind === 'bus') {
+        return block.y + block.height / 2 + TITLE_SIZE / 2 - 2;
+    }
+    if (isContainer(block)) {
+        return block.y + CONTAINER_TITLE_OFFSET;
+    }
+    const middle = block.y + block.height / 2;
+    if (block.subtitle) {
+        return middle - 2;
+    }
+    return middle + TITLE_SIZE / 2 - 2;
+}
+---
+
+<div class="cm-diagram not-content" data-detail-diagram data-component-map data-channel="all">
+    <div class="cm-toolbar" role="group" aria-label="Canal">
+        <button type="button" class="cm-filter" data-filter="all" aria-pressed="true">Todos</button>
+        {channels.filter((channel) => map.links.some((link) => link.channel === channel)).map((channel) => (
+            <button type="button" class={`cm-filter cm-${channel}`} data-filter={channel} aria-pressed="false">
+                <span class="cm-swatch" aria-hidden="true"></span>
+                {CHANNEL_LABELS[channel]}
+            </button>
+        ))}
+    </div>
+    <div class="cm-stage">
+        <svg
+            class="cm-svg"
+            viewBox={`0 0 ${map.width} ${map.height}`}
+            role="img"
+            aria-label="Os blocos do testbed, quem os usa e os canais entre eles"
+        >
+            <defs>
+                <marker id={arrowId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                    <path d="M0 0 L10 5 L0 10 z" fill="context-stroke"></path>
+                </marker>
+            </defs>
+            {map.zones.map((zone) => (
+                <g class={`cm-zone cm-zone-${zone.id}`}>
+                    <rect x={zone.x} y={zone.y} width={zone.width} height={zone.height} rx="10"></rect>
+                    <text x={zone.x + 10} y={zone.y + ZONE_TITLE_OFFSET}>{zone.title}</text>
+                    {zone.subtitle && (
+                        <text class="cm-zone-subtitle" x={zone.x + 10} y={zone.y + ZONE_SUBTITLE_OFFSET}>{zone.subtitle}</text>
+                    )}
+                </g>
+            ))}
+            {map.rowLabels.map((label) => (
+                <text class="cm-row-label" x={ROW_LABEL_X} y={label.y}>{label.text}</text>
+            ))}
+            {containers.map((block) => (
+                <g class={classesOf(block)} data-node={block.id} tabindex="0" role="button" aria-label={block.detailTitle}>
+                    <rect x={block.x} y={block.y} width={block.width} height={block.height} rx="6"></rect>
+                    <text class="cm-title" x={titleX(block)} y={titleY(block)}>{block.title}</text>
+                </g>
+            ))}
+            {map.links.map((link) => (
+                <g
+                    class={`cm-link cm-${link.channel}${link.planned ? ' cm-planned' : ''}`}
+                    data-node={link.id}
+                    data-ends={link.ends.join(' ')}
+                    data-channel={link.channel}
+                    tabindex="0"
+                    role="button"
+                    aria-label={link.detailTitle}
+                >
+                    <path class="cm-halo" d={link.path}></path>
+                    <path class="cm-line" d={link.path} marker-end={link.channel === 'http' ? `url(#${arrowId})` : undefined}></path>
+                    <path class="cm-hit" d={link.path}></path>
+                    {link.label && (
+                        <text class="cm-link-label" x={link.label.x} y={link.label.y}>{link.label.text}</text>
+                    )}
+                </g>
+            ))}
+            {leaves.map((block) => (
+                <g class={classesOf(block)} data-node={block.id} data-parent={block.parent} tabindex="0" role="button" aria-label={block.detailTitle}>
+                    <rect x={block.x} y={block.y} width={block.width} height={block.height} rx="6"></rect>
+                    <text class="cm-title" x={titleX(block)} y={titleY(block)}>{block.title}</text>
+                    {block.subtitle && (
+                        <text class="cm-subtitle" x={titleX(block)} y={titleY(block) + SUBTITLE_OFFSET}>{block.subtitle}</text>
+                    )}
+                </g>
+            ))}
+        </svg>
+    </div>
+    <aside class="dg-detail" aria-live="polite">
+        <p class="dg-hint" data-detail="hint">
+            Clique num bloco ou numa ligação para ver o que passa por ela, ou escolha um canal acima.
+        </p>
+        {map.blocks.map((block) => (
+            <div data-detail={block.id} hidden>
+                <p class="dg-detail-title">{block.detailTitle}</p>
+                <p set:html={block.detail}></p>
+            </div>
+        ))}
+        {map.links.map((link) => (
+            <div data-detail={link.id} hidden>
+                <p class="dg-detail-title">{link.detailTitle} <span class={`cm-tag cm-${link.channel}`}>{CHANNEL_LABELS[link.channel]}</span></p>
+                <p set:html={link.detail}></p>
+            </div>
+        ))}
+    </aside>
+</div>
+
+<script src="../scripts/component-map.ts"></script>
