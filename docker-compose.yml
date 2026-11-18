@@ -226,8 +226,11 @@ services:
       - "${LIVE_PUBLIC_PORT:-8082}:8082"
     environment:
       PORT: 8082
-      SERVICES_DIR: /servicos
+      EMISSION_DIR: /emission
       LIVE_BASE_URL: http://localhost:${LIVE_PUBLIC_PORT:-8082}/live/
+      SERVICES_BASE_URL: http://bcast-sim:8082/services/
+      SIGNALING_BASE_URL: http://bcast-sim:8082/signaling/
+      PUBLIC_SERVICES_BASE_URL: http://localhost:${LIVE_PUBLIC_PORT:-8082}/services/
     volumes:
-      - ./bcast-sim/example/servicos:/servicos:ro
+      - ./bcast-sim/example:/emission:ro
     restart: unless-stopped
