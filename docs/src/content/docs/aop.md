@@ -72,7 +72,8 @@ casca define como eles se revezam na tela:
   `postMessage`. A aplicação só os recebe se incluir `bcast/public/js/aop-bridge.js`, que os
   dispara no documento dela.
 - **Esc e Menu**, em tela cheia, encerram a aplicação e abrem a aplicação de abertura em modo de
-  informação. PageUp e PageDown, a troca de canal, só vão para o log.
+  informação, e a aplicação não os recebe
+  ([diverge da norma](../escopo/#onde-o-testbed-difere-da-norma)). PageUp e PageDown, a troca de canal, só vão para o log.
 - **De outra máquina:** `*.apps.localhost` só resolve na máquina de quem abre a página. Para abrir a
   TV de outra máquina, use `APPS_DOMAIN` ([Instalação](../instalacao/#variáveis-do-env)).
 
