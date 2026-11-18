@@ -78,6 +78,7 @@ export default defineConfig({
                             label: 'Componentes',
                             items: [
                                 'tv3ws',
+                                'aop',
                             ],
                         },
                     ],
