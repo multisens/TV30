@@ -39,6 +39,12 @@ export default defineConfig({
                     ],
                 },
                 {
+                    label: 'Use',
+                    items: [
+                        'subir-e-passear',
+                    ],
+                },
+                {
                     label: 'Referência',
                     items: [
                         'instalacao',

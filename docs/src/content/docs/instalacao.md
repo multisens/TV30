@@ -13,14 +13,9 @@ title: Instalação
 
 ## Linux nativo
 
-```bash
-git clone --recurse-submodules https://github.com/multisens/TV30.git
-cd TV30
-cp .env.example .env       # ativa profiles "linux" e "mqtt"
-./tv30 up                  # docker compose up -d + anunciante SSDP
-```
-
-Acesse `http://localhost:8080`. Para descer: `./tv30 down`. Só `docker compose up -d` também funciona, sem a descoberta SSDP.
+Os comandos para subir e o que experimentar depois estão em
+[Subir e passear pela TV](../subir-e-passear/). O `./tv30 up` faz `docker compose up -d` e sobe o
+anunciante SSDP; só `docker compose up -d` também funciona, sem a descoberta SSDP.
 
 > **Importante:** sem o `.env` (ou sem `COMPOSE_PROFILES=mqtt,linux` definido de alguma forma), o receptor não sobe. O `aop`, o `tv3ws`, o `bcast` e o `sysctl-init` têm `profiles: ["linux"]`, e o `mosquitto` tem `["mqtt"]` (`docker-compose.yml` e `infra/docker-compose.yml`); sem o perfil ativo, eles ficam fora do `up`. Sobem só o `redis`, a borda (`edgegateway`) e as tarefas `tv30-preflight`, `tv30-userfiles-seed` e `tv30-tls-init`.
 

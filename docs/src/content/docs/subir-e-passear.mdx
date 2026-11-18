@@ -1,0 +1,123 @@
+---
+title: Subir e passear pela TV
+description: Subir o testbed, abrir a TV no navegador e conferir por dentro o que cada tela faz.
+prev: false
+next: false
+---
+
+import { Aside, LinkCard, CardGrid, Steps } from '@astrojs/starlight/components';
+
+Em poucos minutos, a TV aparece no navegador. Este guia mostra como subir o testbed e o que
+experimentar em cada tela, conferindo por dentro o que a plataforma fez. O que cada tela é, e por
+que existe, está em [A TV 3.0 AoP em 5 minutos](../aop-em-5-minutos/#o-caminho-do-espectador).
+
+## Antes de começar
+
+Você precisa de **Docker** com **Docker Compose v2** e de **Git**.
+
+<Aside type="caution">
+No macOS com Apple Silicon, construa as imagens antes de subir (`docker compose build`). No Windows,
+o testbed roda dentro do WSL2, com uma configuração própria. Os dois casos estão em
+[Instalação](../instalacao/#macos).
+</Aside>
+
+## Subir
+
+```bash
+git clone --recurse-submodules https://github.com/multisens/TV30.git
+cd TV30
+cp .env.example .env
+./tv30 up
+```
+
+O `.env` é obrigatório: sem ele, a TV não sobe e ficam de pé só o banco e a borda. Na primeira vez,
+o Docker baixa as imagens, o que leva alguns minutos.
+
+Para conferir, rode `./tv30 status`. Os containers `aop`, `tv3ws`, `bcast`, `edgegateway`,
+`mqtt-broker` e `redis` devem estar de pé, e o anunciante SSDP, rodando.
+
+<Aside type="note" title="Sem vídeo, por enquanto">
+Os vídeos de exemplo não vêm no clone, e por isso o vídeo dos canais fica preto. Todo o resto
+funciona, inclusive a aplicação da emissora em tela cheia. Está planejado publicar os vídeos de
+exemplo para download.
+</Aside>
+
+## Experimente
+
+As telas estão em inglês. Navegue com as setas e confirme com Enter.
+
+<Steps>
+
+1. **Abra a TV.** Acesse `http://localhost:8080`. Abrir a página entrega o controle à plataforma,
+   que mostra a escolha de perfil. Já existe um perfil, *Viewer 1*.
+
+   Os perfis ficam no Redis, a memória do receptor. Para ver a lista:
+
+   ```bash
+   docker compose exec redis redis-cli SMEMBERS users:index
+   ```
+
+   [O que é essa tela](../aop-em-5-minutos/#o-caminho-do-espectador)
+
+2. **Crie um perfil.** Escolha o cartão de novo perfil, dê um apelido e escolha um avatar. Rode o
+   comando de novo: aparece um id a mais. Para ver os dados de um perfil, use
+   `docker compose exec redis redis-cli HGETALL user:<id>`.
+
+   A plataforma aceita até cinco perfis. O sexto é recusado com a mensagem *O limite de 5 perfis foi
+   atingido*.
+
+3. **Entre num serviço.** Escolha um perfil. Aparece o catálogo, com um cartão para cada serviço que
+   a emissora simulada anuncia: *CEFET/RJ TV*, *UFF TV*, *Eduplay Quiz* e *Trocar Usuário*. Escolha
+   um deles.
+
+   A plataforma passa a ter um serviço corrente:
+
+   ```bash
+   docker compose exec redis redis-cli GET session:current-service-id
+   ```
+
+4. **Vá para a tela cheia.** A Bootstrap Application mostra o serviço, o programa no ar e o vídeo
+   numa janela. Suba até o vídeo e aperte Enter. O vídeo ocupa a tela e a aplicação da emissora
+   começa sozinha, por cima dele.
+
+5. **Volte.** Aperte Esc. A aplicação da emissora termina e a Bootstrap Application volta. O botão
+   de voltar leva ao catálogo, e o cartão do perfil, no catálogo, volta à escolha de perfil.
+
+6. **Encontre a TV na rede.** Aparelhos da rede local acham a TV por SSDP e pedem a ela o manifesto,
+   que diz onde estão as APIs:
+
+   ```bash
+   curl -i http://localhost:44642/manifest
+   ```
+
+   A resposta traz, nos cabeçalhos, os endereços das APIs (`Server-BaseURL` e
+   `Server-SecureBaseURL`), os métodos de pareamento e o nome da TV.
+
+   [Quem conversa com a plataforma](../aop-em-5-minutos/#quem-conversa-com-a-plataforma)
+
+</Steps>
+
+## Mais para olhar
+
+| O quê | Como chegar |
+|---|---|
+| As APIs, com a documentação de cada rota | `docker port edgegateway 8085` dá a porta do Swagger |
+| O banco, numa interface web | `docker port redis 18081` dá a porta do Redis Commander; usuário `admin`, senha `tv30-redis-admin` |
+| O que cada peça registra | `docker compose logs -f aop` (ou `tv3ws`, `bcast`) |
+
+## Desligar
+
+```bash
+./tv30 down
+```
+
+Os perfis criados continuam guardados para a próxima subida. Para voltar ao início, só com o
+*Viewer 1*, use `./tv30 down -v`, que apaga também os dados guardados.
+
+## Para seguir
+
+<CardGrid>
+    <LinkCard title="Entender o que você viu" description="As peças da plataforma, as camadas da tela e o caminho do espectador." href="../aop-em-5-minutos/" />
+    <LinkCard title="Instalação em detalhe" description="macOS, Windows, variáveis do .env, portas e HTTPS." href="../instalacao/" />
+    <LinkCard title="Algo deu errado" description="Sintomas comuns, causa e o que fazer." href="../troubleshooting/" />
+</CardGrid>
