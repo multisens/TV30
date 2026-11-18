@@ -59,4 +59,4 @@ A documentação está em [`docs/`](./docs/src/content/docs/index.mdx), que é a
 - [Instalação](./docs/src/content/docs/instalacao.md): pré-requisitos, `.env`, portas, HTTPS e submódulos;
 - [Arquitetura](./docs/src/content/docs/arquitetura.mdx) e as demais páginas de *Referência*;
 - [Escopo, limites e decisões](./docs/src/content/docs/escopo.mdx);
-- [Solução de problemas](./docs/src/content/docs/troubleshooting.md) e [Known Issues](./KNOWN-ISSUES.md).
+- [Solução de problemas](./docs/src/content/docs/troubleshooting.md).
