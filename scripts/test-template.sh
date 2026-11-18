@@ -202,5 +202,5 @@ fi
 # ===================================================================== end ===
 echo
 echo "== resultado: $PASS PASS, $FAIL FAIL =="
-for f in "${FAILED[@]}"; do echo "  FAIL $f"; done
+for f in ${FAILED[@]+"${FAILED[@]}"}; do echo "  FAIL $f"; done
 [ "$FAIL" -eq 0 ]

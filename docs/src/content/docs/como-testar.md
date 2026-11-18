@@ -19,8 +19,8 @@ O testbed tem dois tipos de teste:
 | Rotas da borda (`routes.json`) | `node --test generate.test.js` e `test-auth.sh` |
 | Plugin de credenciais da borda | os testes Go do `plugin/` e `test-auth.sh` |
 | Anunciante da descoberta | os testes Go do `ssdp/` |
-| Esquema ou funções do Redis | `bash infra/redis/test/run.sh all` e `test-consolidacao.sh` |
-| Plugin do broker ou esquema de tópico | `docker compose build mosquitto`, os dois testes do plugin e `test-fase0.sh` |
+| Esquema ou funções do Redis | `bash infra/redis/test/run.sh all` e `test-edge-redis.sh` |
+| Plugin do broker ou esquema de tópico | `docker compose build mosquitto`, os dois testes do plugin e `test-broker-smoke.sh` |
 | Modelo de componente | `test-template.sh` |
 | Compose, subida, ou a conversa entre módulos | `test-dev-host.sh` e `test-virgin-up.sh` |
 
@@ -42,8 +42,8 @@ Para testar o código do clone, e não as imagens publicadas, suba a stack com
 | `test-remote-device-v100.sh` | de pé | — |
 | `test-dev-host.sh` | sobe e desce o que precisa | 3 min |
 | `test-template.sh` | de pé | 30 s |
-| `test-consolidacao.sh` | derruba e sobe | 1 min |
-| `test-fase0.sh` | sobe | 20 s |
+| `test-edge-redis.sh` | derruba e sobe | 1 min |
+| `test-broker-smoke.sh` | sobe | 20 s |
 | `test-bcast-shutdown.sh` | de pé; para o bcast | 25 s |
 | `test-virgin-up.sh` | derruba e sobe do zero | — |
 
@@ -176,10 +176,10 @@ bash scripts/test-template.sh
 - **Mexe:** nada na stack. No fim, remove o que criou.
 - **Passa:** PASS em todas as verificações.
 
-### `test-consolidacao.sh`: borda e Redis
+### `test-edge-redis.sh`: borda e Redis
 
 ```bash
-bash scripts/test-consolidacao.sh
+bash scripts/test-edge-redis.sh
 ```
 
 - **Confere:** depois de subir do zero, mostra o healthcheck do Redis, a versão das funções, a
@@ -188,10 +188,10 @@ bash scripts/test-consolidacao.sh
 - **Mexe:** **derruba a stack e a sobe de novo.**
 - **Passa:** a saída tem de ser lida.
 
-### `test-fase0.sh`: broker e casca
+### `test-broker-smoke.sh`: broker e casca
 
 ```bash
-bash scripts/test-fase0.sh
+bash scripts/test-broker-smoke.sh
 ```
 
 - **Confere:** o plugin do broker carregado, uma mensagem inválida recusada e uma válida aceita, e

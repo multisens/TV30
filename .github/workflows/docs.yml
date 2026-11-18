@@ -1,5 +1,5 @@
-# Builds the documentation site (docs/, Astro Starlight) and publishes it on
-# GitHub Pages.
+# Checks the types of the documentation site (docs/, Astro Starlight), builds
+# it and publishes it on GitHub Pages.
 name: docs
 
 on:
@@ -33,6 +33,7 @@ jobs:
           cache: npm
           cache-dependency-path: docs/package-lock.json
       - run: npm ci
+      - run: npm run check
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
