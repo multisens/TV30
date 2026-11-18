@@ -87,6 +87,7 @@ export default defineConfig({
                     label: 'Ajuda',
                     items: [
                         'troubleshooting',
+                        'armadilhas',
                         'glossario',
                     ],
                 },

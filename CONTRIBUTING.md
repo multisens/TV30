@@ -118,6 +118,24 @@ published standard's, and a proposal is named (`C.x.y (proposal <n>)`).
 
 ---
 
+## Known problems: page or issue
+
+A known problem lives in one of two places, by its kind:
+
+| Kind | Where | Example |
+|---|---|---|
+| A problem that stays, from the environment or the way of use, with a known solution | the *Solução de problemas* page of the site (`docs/src/content/docs/troubleshooting.md`) | a port held by another process, CRLF in shell scripts, WSL2 networking |
+| A defect of the testbed, to be fixed | an issue on GitHub, in the repository of the code that has it: the submodule, or `TV30` for the root and the site | a check the edge does not make, a timeout that never ends |
+
+- **A defect that affects users while open** also goes on the page, with the workaround and the
+  link to the issue.
+- **The fix closes the issue and removes the page entry** in the same pull request. A behaviour
+  change that creates a lasting problem adds its entry to the page.
+- **Before opening an issue,** search the page and the open and closed issues for the error
+  message.
+
+---
+
 ## Before opening a pull request
 
 - [ ] Every statement about behaviour was read in the code body.
@@ -126,6 +144,8 @@ published standard's, and a proposal is named (`C.x.y (proposal <n>)`).
 - [ ] Every section, table and figure number was checked against the right version of the text.
 - [ ] Standard and testbed choices are told apart.
 - [ ] Nothing was repeated in a second page.
+- [ ] A fixed defect closes its issue and leaves the *Solução de problemas* page; a new lasting
+  problem enters it.
 - [ ] No agent instructions, task material or machine-specific paths in the diff.
 - [ ] Type checker and tests pass.
 
