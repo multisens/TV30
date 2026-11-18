@@ -96,7 +96,7 @@ aparelho ainda chega ao receptor pelo IP: `http://<IP>:44642/manifest`.
 | Windows: outro aparelho não recebe o anúncio | O Windows Defender não liberou o anunciante, ou a rede está como Pública | Libere em "redes privadas", com a rede como Privada |
 | `AVISO sem rede para o anuncio` | Sem rede na interface da rota padrão | Nada: o anunciante volta a anunciar quando a rede volta |
 | `SSDP_ENABLED=false: anunciante nao sobe` | `SSDP_ENABLED=false` no `.env` ou no shell | Tire a variável |
-| A descoberta parou com a stack de pé | O anunciante saiu, e nada o reinicia | `./tv30 status`; `./tv30 up` o sobe de novo |
+| A descoberta parou com a stack de pé | O anunciante saiu, e nada o reinicia ([defeito conhecido](#defeitos-conhecidos)) | `./tv30 status`; `./tv30 up` o sobe de novo |
 
 ## Redis e esquema
 
@@ -231,7 +231,9 @@ Defeitos a corrigir, com o contorno até lá.
 | Defeito | Contorno |
 |---|---|
 | A página companion do webmedia não se registra como dispositivo remoto com a borda em `enforce`: chama a 44642 sem credencial e recebe 107 | Suba a borda com `AUTH_ENFORCE=warn` para a demonstração do webmedia |
-| O OpenAPI da superfície externa, na documentação Swagger, diz 44643 em qualquer configuração, e o "Try it out" não chega à borda com outra porta | Mantenha o padrão, `EDGE_EXT_PUBLISH=44643:44643` |
+| O OpenAPI da superfície externa, na documentação Swagger, diz 44643 em qualquer configuração, e o "Try it out" não chega à borda com outra porta ([Infra#3](https://github.com/multisens/Infra/issues/3)) | Mantenha o padrão, `EDGE_EXT_PUBLISH=44643:44643` |
+| O anunciante caído não é percebido: a descoberta para, e a stack continua de pé sem aviso ([TV30#3](https://github.com/multisens/TV30/issues/3)) | `./tv30 status`, e `./tv30 up` o sobe de novo |
+| O certificado do receptor vale só para `localhost` e `127.0.0.1` ([Infra#4](https://github.com/multisens/Infra/issues/4)) | `curl -k`, ou um certificado próprio ([A 44643 recusa o certificado](#a-44643-recusa-o-certificado-ou-o-dispositivo-remoto-não-abre-o-wss)) |
 
 ## Inspecionar o estado
 
