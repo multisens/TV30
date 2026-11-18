@@ -1,0 +1,158 @@
+---
+title: Chamar as APIs de outro aparelho
+description: Achar a TV na rede, pedir autorização ao espectador, parear e chamar as APIs dos WebServices.
+prev: false
+next: false
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import SequenceDiagram from '../../components/sequence-diagram.astro';
+import { localAuthorization, nonLocalPairing } from '../../data/client-sequences.ts';
+
+Um programa que conversa com a TV pelas APIs precisa da permissão do espectador. Este guia mostra os
+dois caminhos que a norma define: o do programa que roda no próprio receptor e o do aparelho da rede
+da casa, como um celular. Os dois funcionam do seu computador, com o testbed de pé
+([Subir e passear pela TV](../subir-e-passear/)).
+
+## Quem é o seu cliente
+
+| Cliente | Exemplo | Como se autoriza |
+|---|---|---|
+| Local autônomo | um programa no próprio receptor | pede autorização; o espectador responde na TV |
+| Não local | um aplicativo num celular da rede | pede autorização e se pareia com a TV, por PIN ou QR code |
+| Local associado | a aplicação da emissora | não se autoriza: a plataforma a reconhece pelo serviço que a lançou |
+
+O testbed não descobre sozinho de onde vem o pedido: **quem pede pareamento é tratado como não local**, e
+quem não pede, como local autônomo. Por isso dá para testar os dois do mesmo computador.
+
+## Achar a TV
+
+Os aparelhos da rede acham a TV por SSDP, e ela se anuncia sozinha enquanto o testbed está de pé. O
+anúncio aponta para o manifesto, que diz onde estão as APIs:
+
+```bash
+curl -si http://localhost:44642/manifest | grep -i '^server-'
+```
+
+```text
+Server-Baseurl: localhost:44642
+Server-Pairingmethods: qrcode,kex
+Server-Securebaseurl: localhost:44643
+```
+
+Do celular, troque `localhost` pelo IP do computador: o `./tv30 status` mostra qual ele anuncia.
+
+## Cliente no próprio receptor
+
+<SequenceDiagram {...localAuthorization} />
+
+<Aside type="caution">
+O pop-up fica **10 segundos** na TV. Sem resposta, conta como recusa, e aquele `clientid` fica
+bloqueado: gere outro para tentar de novo.
+</Aside>
+
+Deixe a TV aberta no navegador e peça autorização com um `clientid` novo:
+
+```bash
+CLIENTID=$(uuidgen | tr A-Z a-z)
+curl -s "http://localhost:44642/tv3/authorize?clientid=$CLIENTID&display-name=Meu%20programa"
+```
+
+Responda **Sim** na TV. O `curl` devolve o refresh token:
+
+```json
+{"refreshToken":"KGwK5lEmoX9aaUlrYugwTQ"}
+```
+
+Troque-o por um access token e chame uma API:
+
+```bash
+curl -s "http://localhost:44642/tv3/token?clientid=$CLIENTID&refresh-token=<refresh token>"
+curl -s -H "Authorization: Bearer <access token>" http://localhost:44642/tv3/current-service
+```
+
+Com um serviço aberto na TV, a resposta diz qual é:
+
+```json
+{"serviceContextId":"urn:tv30:service:webmedia","transportStreamId":"…","originalNetworkId":"…"}
+```
+
+## Cliente em outro aparelho
+
+<SequenceDiagram {...nonLocalPairing} />
+
+O pareamento usa criptografia, e por isso o exemplo é um programa:
+[`docs/exemplos/cliente-nao-local.mjs`](https://github.com/multisens/TV30/blob/main/docs/exemplos/cliente-nao-local.mjs),
+em Node.js 18 ou mais novo, sem dependências. Ele faz o pareamento por PIN e chama uma API por
+HTTPS. Rode-o com a TV aberta, de preferência num serviço:
+
+```bash
+node docs/exemplos/cliente-nao-local.mjs            # ou o IP da TV, de outro aparelho
+```
+
+Responda **Sim** na TV e digite no terminal o PIN que ela mostra:
+
+```text
+TV encontrada: TV 3.0 Receiver
+  HTTP:  http://localhost:44642
+  HTTPS: https://localhost:44643
+Pedindo autorização: responda "sim" na tela da TV.
+Digite o PIN que aparece na TV: 7103
+Pareado. Guarde para os próximos acessos:
+  clientid:      8cb4f242-d72b-4384-9124-efc9a3a7df6c
+  refresh token: LaYcKA-AAsiS6B7jtcSmjQ
+Serviço corrente (GET /tv3/current-service, por HTTPS):
+200 {"serviceContextId":"urn:tv30:service:webmedia", …}
+```
+
+Três pontos do programa valem para qualquer linguagem:
+
+- **O segredo não passa pela rede.** Cada lado gera um par de chaves ECDH (curva P-256) e manda só a
+  parte pública. O PIN, calculado do segredo, é a prova de que os dois chegaram ao mesmo valor.
+- **A primeira resposta do `/tv3/token` vem cifrada**, com `Content-Type: application/octet-stream`.
+  O programa a decifra com o segredo (AES-128 ECB).
+- **O certificado da TV é o que veio no pareamento.** Ele é gerado pelo próprio testbed e nenhum
+  navegador ou sistema o reconhece. O cliente confia nele, e só nele, qualquer que seja o nome do
+  host: é o que a norma manda fazer com o certificado de um receptor.
+
+**Pareamento por QR code.** Com `pm=qrcode`, o pedido não leva chave, e a TV mostra um QR code. A
+chave está no próprio QR code: o segredo são os primeiros 16 bytes do SHA-256 dela. O resto é igual.
+É o caminho de um aplicativo de celular, que lê o QR code com a câmera.
+
+## Nas próximas vezes
+
+O cliente não pede autorização de novo. Ele guarda o `clientid` e o refresh token, e a cada acesso
+pede um access token:
+
+```bash
+curl -sk "https://localhost:44643/tv3/token?clientid=<clientid>&refresh-token=<refresh token>"
+```
+
+- O cliente não local faz isso por **HTTPS**, na 44643. Por HTTP, a TV responde o erro 106.
+- Cada resposta traz um **refresh token novo**, que substitui o anterior. Guarde sempre o último.
+- Quem perde o refresh token começa de novo, com outro `clientid` e outra autorização do espectador.
+
+<Aside type="note">
+As APIs de perfis (Users API) pedem, além do access token, um **bind-token**, emitido pela emissora
+para o serviço. Sem ele, a resposta é o erro 104. Os detalhes estão em
+[Borda e credenciais](../borda-credenciais/).
+</Aside>
+
+## Quando dá errado
+
+| Erro | Quando | O que fazer |
+|---|---|---|
+| 101 | O `clientid` já foi usado, autorizado ou recusado; ou o refresh token não é desse cliente | Use outro `clientid`, ou o último refresh token |
+| 102 | O espectador respondeu Não, ou o pop-up expirou; ou a resposta ao desafio está errada | Peça de novo, com outro `clientid` |
+| 103 | A TV está mostrando o pedido de outro cliente | Tente de novo em alguns segundos |
+| 105 | Falta um parâmetro obrigatório | Confira `clientid`, `display-name` e, no pareamento, `key` ou `challenge-response` |
+| 106 | O cliente não local chamou por HTTP uma API que pede HTTPS | Use o endereço HTTPS do manifesto |
+| 107 | Falta o access token, ou ele venceu, ou o cliente foi bloqueado | Peça outro token com o refresh token |
+
+## Para seguir
+
+<CardGrid>
+    <LinkCard title="APIs dos WebServices" description="Todas as rotas, os erros de cada uma e o que o testbed faz em cada caso." href="../apis-tv3ws/" />
+    <LinkCard title="Borda e credenciais" description="Como a TV decide cada requisição: superfície, classe do cliente e tokens." href="../borda-credenciais/" />
+    <LinkCard title="Descoberta SSDP" description="Como a TV se anuncia na rede e o que fazer quando o aparelho não a encontra." href="../ssdp/" />
+</CardGrid>

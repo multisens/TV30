@@ -12,9 +12,9 @@ function page(slug: string): string {
 }
 ---
 
-<div class="sf-diagram not-content" data-detail-diagram data-screen-flow>
-    <div class="sf-toolbar">
-        <button type="button" class="sf-play" aria-pressed="false">Percorrer o fluxo</button>
+<div class="sf-diagram not-content" data-detail-diagram data-walk-diagram>
+    <div class="dg-toolbar">
+        <button type="button" class="dg-play" aria-pressed="false" data-play-label="Percorrer o fluxo">Percorrer o fluxo</button>
     </div>
     <ol class="sf-track">
         <li class="sf-step">
@@ -133,4 +133,4 @@ function page(slug: string): string {
     </aside>
 </div>
 
-<script src="../scripts/screen-flow.ts"></script>
+<script src="../scripts/walk-diagram.ts"></script>

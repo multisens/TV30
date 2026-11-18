@@ -42,6 +42,7 @@ export default defineConfig({
                     label: 'Use',
                     items: [
                         'subir-e-passear',
+                        'apis-de-outro-aparelho',
                     ],
                 },
                 {

@@ -17,24 +17,6 @@
     cursor: pointer;
 }
 
-.sf-toolbar {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 0.6rem;
-}
-
-.sf-play {
-    padding: 0.3rem 0.9rem;
-    border: 1px solid var(--sf-flow);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--sf-text);
-}
-
-.sf-play[aria-pressed="true"] {
-    background: color-mix(in srgb, var(--sf-flow) 25%, transparent);
-}
-
 /* Track: screens joined by moving links */
 
 .sf-track {

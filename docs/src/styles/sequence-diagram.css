@@ -1,0 +1,278 @@
+/* Sequence diagram: actors in columns, messages in rows
+   (sequence-diagram component). */
+
+.sq-diagram {
+    --sq-border: var(--sl-color-gray-5);
+    --sq-text: var(--sl-color-white);
+    --sq-muted: var(--sl-color-gray-3);
+    --sq-lifeline: var(--sl-color-gray-5);
+    --sq-http: var(--sl-color-gray-2);
+    --sq-https: #10b981;
+    --sq-cipher: var(--tv30-app);
+    --sq-internal: var(--tv30-platform);
+    --sq-person: var(--tv30-notice);
+    color: var(--sq-text);
+    font-size: var(--sl-text-sm);
+    line-height: 1.35;
+}
+
+/* Columns: the same grid for the actors and for each message row */
+
+.sq-actors,
+.sq-row {
+    display: grid;
+    grid-template-columns: repeat(var(--sq-columns), minmax(0, 1fr));
+}
+
+.sq-cols-3 {
+    --sq-columns: 3;
+}
+
+.sq-cols-4 {
+    --sq-columns: 4;
+}
+
+.sq-cols-5 {
+    --sq-columns: 5;
+}
+
+.sq-actors,
+.sq-messages {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.sq-actors > li,
+.sq-messages > li {
+    margin: 0;
+}
+
+.sq-actor {
+    margin: 0 0.2rem;
+    padding: 0.4rem 0.3rem;
+    border: 1px solid var(--sq-border);
+    border-radius: 0.4rem;
+    background: var(--sl-color-gray-6);
+    font-weight: 600;
+    text-align: center;
+}
+
+/* Lifelines: one vertical line in the middle of each column */
+
+.sq-messages {
+    padding: 0.4rem 0;
+    background-repeat: no-repeat;
+}
+
+.sq-cols-3 .sq-messages {
+    background-image:
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline)),
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline)),
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline));
+    background-size: 1px 100%;
+    background-position: 16.667% 0, 50% 0, 83.333% 0;
+}
+
+.sq-cols-4 .sq-messages {
+    background-image:
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline)),
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline)),
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline)),
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline));
+    background-size: 1px 100%;
+    background-position: 12.5% 0, 37.5% 0, 62.5% 0, 87.5% 0;
+}
+
+.sq-cols-5 .sq-messages {
+    background-image:
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline)),
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline)),
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline)),
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline)),
+        linear-gradient(var(--sq-lifeline), var(--sq-lifeline));
+    background-size: 1px 100%;
+    background-position: 10% 0, 30% 0, 50% 0, 70% 0, 90% 0;
+}
+
+/* A message: label over an arrow from the middle of one column to the
+   middle of another */
+
+.sq-msg {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0;
+    padding: 0.35rem 0 0.55rem;
+    border: 0;
+    border-radius: 0.3rem;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.sq-msg:hover,
+.sq-msg.is-selected {
+    background: color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+}
+
+.sq-msg:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+}
+
+.sq-start-1 {
+    grid-column-start: 1;
+}
+
+.sq-start-2 {
+    grid-column-start: 2;
+}
+
+.sq-start-3 {
+    grid-column-start: 3;
+}
+
+.sq-start-4 {
+    grid-column-start: 4;
+}
+
+.sq-start-5 {
+    grid-column-start: 5;
+}
+
+.sq-label {
+    padding: 0 0.4rem;
+    font-size: var(--sl-text-xs);
+    text-align: center;
+}
+
+.sq-number {
+    margin-right: 0.3rem;
+    color: var(--sq-muted);
+    font-weight: 600;
+}
+
+.sq-arrow {
+    position: absolute;
+    bottom: 0.3rem;
+    height: 2px;
+    background: var(--sq-color);
+}
+
+.sq-arrow::after {
+    content: "";
+    position: absolute;
+    top: -4px;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+}
+
+.sq-right .sq-arrow::after {
+    right: -1px;
+    border-left: 8px solid var(--sq-color);
+}
+
+.sq-left .sq-arrow::after {
+    left: -1px;
+    border-right: 8px solid var(--sq-color);
+}
+
+/* The arrow joins the middles of the first and last columns it spans */
+
+.sq-span-2 {
+    grid-column-end: span 2;
+}
+
+.sq-span-2 .sq-arrow {
+    right: 25%;
+    left: 25%;
+}
+
+.sq-span-3 {
+    grid-column-end: span 3;
+}
+
+.sq-span-3 .sq-arrow {
+    right: 16.667%;
+    left: 16.667%;
+}
+
+.sq-span-4 {
+    grid-column-end: span 4;
+}
+
+.sq-span-4 .sq-arrow {
+    right: 12.5%;
+    left: 12.5%;
+}
+
+.sq-span-5 {
+    grid-column-end: span 5;
+}
+
+.sq-span-5 .sq-arrow {
+    right: 10%;
+    left: 10%;
+}
+
+/* An action on one lifeline: a box instead of an arrow */
+
+.sq-self .sq-label {
+    margin-bottom: -0.2rem;
+    padding: 0.2rem 0.4rem;
+    border: 1px solid var(--sq-color);
+    border-radius: 0.3rem;
+    background: var(--sl-color-bg);
+}
+
+.sq-self .sq-arrow {
+    display: none;
+}
+
+/* Channels */
+
+.sq-http {
+    --sq-color: var(--sq-http);
+}
+
+.sq-https {
+    --sq-color: var(--sq-https);
+}
+
+.sq-cipher {
+    --sq-color: var(--sq-cipher);
+}
+
+.sq-internal {
+    --sq-color: var(--sq-internal);
+}
+
+.sq-person {
+    --sq-color: var(--sq-person);
+}
+
+.sq-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 1rem;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    color: var(--sq-muted);
+    font-size: var(--sl-text-xs);
+    list-style: none;
+}
+
+.sq-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+}
+
+.sq-swatch {
+    width: 1.2rem;
+    height: 2px;
+    background: var(--sq-color);
+}

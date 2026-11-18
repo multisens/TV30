@@ -1,18 +1,22 @@
-// Walk-through of the screen flow diagram: the play button selects each
-// screen in order; a click on a screen stops the walk.
+// Walk-through of the diagrams with steps: the play button selects each step
+// in order; a click on a step stops the walk.
 import { showBlock } from './detail-diagram';
 
 const STEP_INTERVAL_MS = 2600;
-const PLAY_LABEL = 'Percorrer o fluxo';
 const STOP_LABEL = 'Parar';
 
-function initFlow(root: HTMLElement): void {
-    const playButton = root.querySelector<HTMLButtonElement>('.sf-play');
+function initWalk(root: HTMLElement): void {
+    const playButton = root.querySelector<HTMLButtonElement>('.dg-play');
     const steps = Array.from(root.querySelectorAll<HTMLElement>('[data-step]'));
     if (!playButton || steps.length === 0) {
-        throw new Error('screen flow: play button or steps missing');
+        throw new Error('walk diagram: play button or steps missing');
     }
     const button = playButton;
+    const playLabelValue = button.dataset.playLabel;
+    if (!playLabelValue) {
+        throw new Error('walk diagram: play button without data-play-label');
+    }
+    const playLabel = playLabelValue;
 
     let timer: number | undefined;
     let index = 0;
@@ -20,7 +24,7 @@ function initFlow(root: HTMLElement): void {
     function stop(): void {
         window.clearInterval(timer);
         timer = undefined;
-        button.textContent = PLAY_LABEL;
+        button.textContent = playLabel;
         button.setAttribute('aria-pressed', 'false');
     }
 
@@ -58,6 +62,6 @@ function initFlow(root: HTMLElement): void {
     });
 }
 
-document.querySelectorAll<HTMLElement>('[data-screen-flow]').forEach((root) => {
-    initFlow(root);
+document.querySelectorAll<HTMLElement>('[data-walk-diagram]').forEach((root) => {
+    initWalk(root);
 });

@@ -1,0 +1,119 @@
+---
+// Sequence diagram: actors in columns and messages in rows. A click on a
+// message shows its description; the play button walks through the messages
+// in order.
+import '../styles/diagram-detail.css';
+import '../styles/sequence-diagram.css';
+
+type Channel = 'http' | 'https' | 'cipher' | 'internal' | 'person';
+
+interface Actor {
+    id: string;
+    label: string;
+}
+
+interface Message {
+    id: string;
+    from: string;
+    to: string;
+    label: string;
+    title: string;
+    detail: string;
+    channel: Channel;
+}
+
+interface Props {
+    actors: Actor[];
+    messages: Message[];
+}
+
+const MIN_ACTORS = 3;
+const MAX_ACTORS = 5;
+const PLAY_LABEL = 'Percorrer a sequência';
+
+const CHANNEL_LABELS: Record<Channel, string> = {
+    http: 'HTTP',
+    https: 'HTTPS',
+    cipher: 'cifrado com a chave do pareamento',
+    internal: 'dentro da plataforma',
+    person: 'gesto de quem usa',
+};
+
+const { actors, messages } = Astro.props;
+if (actors.length < MIN_ACTORS || actors.length > MAX_ACTORS) {
+    throw new Error(`sequence diagram: ${actors.length} actors, expected ${MIN_ACTORS} to ${MAX_ACTORS}`);
+}
+
+function columnOf(actorId: string): number {
+    const index = actors.findIndex((actor) => actor.id === actorId);
+    if (index < 0) {
+        throw new Error(`sequence diagram: unknown actor ${actorId}`);
+    }
+    return index + 1;
+}
+
+function classesOf(message: Message): string {
+    const from = columnOf(message.from);
+    const to = columnOf(message.to);
+    const first = Math.min(from, to);
+    const span = Math.abs(to - from) + 1;
+    let direction = 'sq-self';
+    if (to > from) {
+        direction = 'sq-right';
+    } else if (to < from) {
+        direction = 'sq-left';
+    }
+    return `sq-msg sq-start-${first} sq-span-${span} ${direction} sq-${message.channel}`;
+}
+
+const usedChannels = (Object.keys(CHANNEL_LABELS) as Channel[]).filter((channel) => {
+    return messages.some((message) => message.channel === channel);
+});
+---
+
+<div class="sq-diagram not-content" data-detail-diagram data-walk-diagram>
+    <div class="dg-toolbar">
+        <button type="button" class="dg-play" aria-pressed="false" data-play-label={PLAY_LABEL}>{PLAY_LABEL}</button>
+    </div>
+    <div class={`sq-body sq-cols-${actors.length}`}>
+        <ol class="sq-actors">
+            {actors.map((actor) => (
+                <li class="sq-actor">{actor.label}</li>
+            ))}
+        </ol>
+        <ol class="sq-messages">
+            {messages.map((message, index) => (
+                <li class="sq-row">
+                    <button type="button" class={classesOf(message)} data-node={message.id} data-step>
+                        <span class="sq-label">
+                            <span class="sq-number">{index + 1}</span>
+                            {message.label}
+                        </span>
+                        <span class="sq-arrow" aria-hidden="true"></span>
+                    </button>
+                </li>
+            ))}
+        </ol>
+    </div>
+    <ul class="sq-legend">
+        {usedChannels.map((channel) => (
+            <li class={`sq-key sq-${channel}`}>
+                <span class="sq-swatch" aria-hidden="true"></span>
+                {CHANNEL_LABELS[channel]}
+            </li>
+        ))}
+    </ul>
+    <aside class="dg-detail" aria-live="polite">
+        <p class="dg-hint" data-detail="hint">
+            Clique numa mensagem para ver o que ela leva, ou percorra a sequência.
+        </p>
+        {messages.map((message, index) => (
+            <div data-detail={message.id} hidden>
+                <p class="dg-detail-title">{index + 1}. {message.title}</p>
+                <p set:html={message.detail}></p>
+            </div>
+        ))}
+    </aside>
+</div>
+
+<script src="../scripts/walk-diagram.ts"></script>

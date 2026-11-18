@@ -1,4 +1,5 @@
-/* Detail panel shared by the diagrams (scripts/detail-diagram.ts). */
+/* Detail panel and play button shared by the diagrams
+   (scripts/detail-diagram.ts, scripts/walk-diagram.ts). */
 
 .dg-detail {
     display: flex;
@@ -34,4 +35,25 @@
 
 .dg-detail-title {
     font-weight: 600;
+}
+
+.dg-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.6rem;
+}
+
+.dg-play {
+    margin: 0;
+    padding: 0.3rem 0.9rem;
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sl-color-white);
+    font: inherit;
+    cursor: pointer;
+}
+
+.dg-play[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--sl-color-accent) 25%, transparent);
 }
