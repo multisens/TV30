@@ -27,11 +27,11 @@ function page(slug: string): string {
             <span class="ov-link-label">sinal simulado</span>
         </div>
         <div class="ov-column ov-zone-receiver">
-            <button type="button" class="ov-column-title ov-title-button" data-node="aop">
+            <button type="button" class="ov-column-title ov-title-button" data-node="aop-shell">
                 Receptor · TV 3.0 AoP
             </button>
             <button type="button" class="ov-node ov-zone-platform" data-node="shell">
-                <span class="ov-node-title">Casca da plataforma · aop</span>
+                <span class="ov-node-title">Casca da plataforma · aop-shell</span>
                 <span class="ov-chip">perfis</span>
                 <span class="ov-chip">catálogo de aplicações</span>
                 <span class="ov-chip">camadas de vídeo e gráficos</span>
@@ -85,20 +85,20 @@ function page(slug: string): string {
             </p>
             <a href={page('arquitetura')}>Arquitetura</a>
         </div>
-        <div data-detail="aop" hidden>
+        <div data-detail="aop-shell" hidden>
             <p class="dg-detail-title">TV 3.0 AoP</p>
             <p>
                 A TV 3.0 Application-oriented Platform (ABNT NBR 25608, Seção 6) é a plataforma de software
                 do receptor que atende às aplicações: telas, perfis, catálogo, ciclo de vida das aplicações e
-                WebServices. No testbed, ela está dividida em módulos: a casca (<code>aop</code>), os
+                WebServices. No testbed, ela está dividida em módulos: a casca (<code>aop-shell</code>), os
                 WebServices (<code>tv3ws</code>) e a infraestrutura que os liga.
             </p>
             <a href={page('escopo')}>Escopo, limites e decisões</a>
         </div>
         <div data-detail="shell" hidden>
-            <p class="dg-detail-title">Casca da plataforma (aop)</p>
+            <p class="dg-detail-title">Casca da plataforma (aop-shell)</p>
             <p>
-                O módulo <code>aop</code> é a aplicação-casca da plataforma. Ele monta o que o espectador vê:
+                O módulo <code>aop-shell</code> é a aplicação-casca da plataforma. Ele monta o que o espectador vê:
                 a escolha de perfil, o catálogo de aplicações, a aplicação de entrada de cada serviço e as
                 camadas de vídeo e de gráficos, onde roda a aplicação da emissora. Também recebe a
                 sinalização dos serviços. Apesar do nome, não é a AoP inteira.

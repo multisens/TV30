@@ -109,13 +109,13 @@ const blocks: Block[] = [
         id: 'shell',
         kind: 'node',
         tone: 'platform',
-        title: 'Casca · aop',
+        title: 'Casca · aop-shell',
         subtitle: 'perfis, catálogo, camadas',
         x: 265,
         y: 205,
         width: 155,
         height: 66,
-        detailTitle: 'Casca da plataforma (aop)',
+        detailTitle: 'Casca da plataforma (aop-shell)',
         detail: 'Na porta 8080: as telas (perfis, catálogo, Bootstrap Application), as camadas de vídeo, '
             + 'de gráficos e de interface e o nome de host próprio de cada aplicação de emissora, cuja '
             + 'origem ela grava na lista de origens associadas enquanto a aplicação roda. Recebe a '
@@ -182,7 +182,7 @@ const blocks: Block[] = [
         y: 315,
         width: 695,
         height: 30,
-        detailTitle: 'Mensageria: broker MQTT (mosquitto)',
+        detailTitle: 'Mensageria: broker MQTT (mqtt-broker)',
         detail: 'Na porta 1883. Um plugin confere cada publicação contra o esquema declarado do tópico; '
             + 'não há controle de acesso a tópicos. As mensagens retidas (sinalização e estado) '
             + 'sobrevivem a um reinício do broker.',

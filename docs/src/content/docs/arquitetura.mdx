@@ -30,9 +30,9 @@ bcast não sobem.
 |---|---|---|
 | `edgegateway` | 44642 (HTTP), 44643 (HTTPS); documentação das rotas na 8085, em porta escolhida pelo Docker | a borda: confere as credenciais e encaminha ao `tv3ws` |
 | `tv3ws` | 45000 a 45199 (WebSockets dos dispositivos remotos) | os TV 3.0 WebServices; as portas das APIs ficam só na rede do Docker |
-| `aop` | 8080 (`AOP_PUBLIC_PORT`) | a casca: a página da TV, as aplicações de emissora e o `/mqtt` da página |
+| `aop-shell` | 8080 (`AOP_PUBLIC_PORT`) | a casca: a página da TV, as aplicações de emissora e o `/mqtt` da página |
 | `bcast` | 8081, em porta escolhida pelo Docker (`BCAST_PUBLISH` fixa) | a emissora simulada |
-| `mqtt-broker` (serviço `mosquitto`) | 1883; WebSocket na 9001, em porta escolhida pelo Docker (`MQTT_WS_PUBLISH` fixa) | o broker, com o validador de esquema |
+| `mqtt-broker` | 1883; WebSocket na 9001, em porta escolhida pelo Docker (`MQTT_WS_PUBLISH` fixa) | o broker, com o validador de esquema |
 | `redis` | 6379, só em `127.0.0.1`; inspeção na 18081, em porta escolhida pelo Docker | o armazenamento |
 | `tv30-preflight` | — | confere DNS e portas e para a subida se a 44642 estiver ocupada |
 | `tv30-userfiles-seed` | — | copia para `./user-files` os arquivos de exemplo que faltam |
@@ -51,9 +51,9 @@ Se um processo de dentro da borda ou do Redis cai, o container inteiro cai, e o 
 | Serviço | Espera |
 |---|---|
 | `edgegateway` | `tv30-preflight` e `tv30-tls-init` terminarem sem erro; `redis` saudável |
-| `tv3ws` | `redis` saudável; `mosquitto` iniciado; `tv30-userfiles-seed` e `tv30-tls-init` terminarem sem erro |
-| `aop` | `mosquitto`, `redis` e `tv30-userfiles-seed` iniciados |
-| `bcast` | `mosquitto` iniciado |
+| `tv3ws` | `redis` saudável; `mqtt-broker` iniciado; `tv30-userfiles-seed` e `tv30-tls-init` terminarem sem erro |
+| `aop-shell` | `mqtt-broker`, `redis` e `tv30-userfiles-seed` iniciados |
+| `bcast` | `mqtt-broker` iniciado |
 
 O `redis` fica saudável depois de carregar as funções de escrita e aplicar a carga inicial
 ([Modelo de dados Redis](../modelo-redis/)). O compose da raiz inclui o `infra/docker-compose.yml`, que
@@ -63,7 +63,7 @@ não sobe sozinho: a borda depende do `tv30-preflight`, que só existe na raiz.
 
 | Pasta | Repositório | O que tem |
 |---|---|---|
-| `aop/` | [multisens/AOP](https://github.com/multisens/AOP) | a casca da plataforma, em Node.js |
+| `aop-shell/` | [multisens/aop-shell](https://github.com/multisens/aop-shell) | a casca da plataforma, em Node.js |
 | `tv3ws/` | [multisens/TV3WS](https://github.com/multisens/TV3WS) | os TV 3.0 WebServices, em TypeScript |
 | `infra/` | [multisens/Infra](https://github.com/multisens/Infra) | a borda, o broker com o plugin, o Redis e os Dockerfiles |
 | `bcast/` | [multisens/BcastService](https://github.com/multisens/BcastService) | a [emissora simulada](../emissora-simulada/), em TypeScript |
@@ -75,7 +75,7 @@ Como clonar e atualizar os submódulos está em [Instalação](../instalacao/#su
 Cada submódulo tem um workflow, disparado a cada push na `main`, que:
 
 1. constrói e publica a imagem no Docker Hub, com as tags `<hash do commit>` e `latest` (o infra
-   publica três: `tv30-mosquitto`, `tv30-edgegateway` e `tv30-redis`);
+   publica três: `tv30-mqtt-broker`, `tv30-edgegateway` e `tv30-redis`);
 2. só se o passo anterior der certo, atualiza o ponteiro do submódulo neste repositório.
 
 As imagens saem só para `amd64`. Num Mac com Apple Silicon, ou num clone com commits ainda não

@@ -33,7 +33,7 @@ cp .env.example .env
 O `.env` é obrigatório: sem ele, a TV não sobe e ficam de pé só o banco e a borda. Na primeira vez,
 o Docker baixa as imagens, o que leva alguns minutos.
 
-Para conferir, rode `./tv30 status`. Os containers `aop`, `tv3ws`, `bcast`, `edgegateway`,
+Para conferir, rode `./tv30 status`. Os containers `aop-shell`, `tv3ws`, `bcast`, `edgegateway`,
 `mqtt-broker` e `redis` devem estar de pé, e o anunciante SSDP, rodando.
 
 <Aside type="note" title="Sem vídeo, por enquanto">
@@ -103,7 +103,7 @@ As telas estão em inglês. Navegue com as setas e confirme com Enter.
 |---|---|
 | As APIs, com a documentação de cada rota | `docker port edgegateway 8085` dá a porta do Swagger |
 | O banco, numa interface web | `docker port redis 18081` dá a porta do Redis Commander; usuário `admin`, senha `tv30-redis-admin` |
-| O que cada peça registra | `docker compose logs -f aop` (ou `tv3ws`, `bcast`) |
+| O que cada peça registra | `docker compose logs -f aop-shell` (ou `tv3ws`, `bcast`) |
 
 ## Desligar
 

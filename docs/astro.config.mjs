@@ -14,6 +14,7 @@ export default defineConfig({
         '/apis-tv3ws': '/TV30/tv3ws/',
         '/mqtt-topicos': '/TV30/mensageria/',
         '/broker-mqtt': '/TV30/mensageria/',
+        '/aop': '/TV30/aop-shell/',
         '/ssdp': '/TV30/instalacao/#descoberta-na-rede',
         '/mapas-componentes': '/TV30/estender-com-componente/#como-um-componente-conversa',
     },
@@ -78,7 +79,7 @@ export default defineConfig({
                             label: 'Componentes',
                             items: [
                                 'tv3ws',
-                                'aop',
+                                'aop-shell',
                             ],
                         },
                     ],

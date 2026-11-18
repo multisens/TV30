@@ -10,8 +10,8 @@ sem seção é do testbed.
 
 | Termo | O que é |
 |---|---|
-| **AoP** | Na norma, a *TV 3.0 Application-oriented Platform*, a plataforma inteira do receptor (3.40). No testbed, `aop` é o nome do componente da casca ([A AoP em 5 minutos](../aop-em-5-minutos/)) |
-| **Casca** | O componente `aop`: a página da TV, com as camadas, e as telas da plataforma ([aop](../aop/)) |
+| **AoP** | Na norma, a *TV 3.0 Application-oriented Platform*, a plataforma inteira do receptor (3.40). No testbed, `aop-shell` é o nome do componente da casca ([A AoP em 5 minutos](../aop-em-5-minutos/)) |
+| **Casca** | O componente `aop-shell`: a página da TV, com as camadas, e as telas da plataforma ([aop-shell](../aop-shell/)) |
 | **tv3ws** | O componente dos TV 3.0 WebServices (Anexo C) ([tv3ws](../tv3ws/)) |
 | **bcast** | A emissora simulada, fora do receptor ([Emissora simulada](../emissora-simulada/)) |
 | **Borda** | O container por onde entram as chamadas às APIs, que confere a credencial e a versão ([Borda e credenciais](../borda-credenciais/)) |
@@ -46,10 +46,10 @@ sem seção é do testbed.
 | **BAMT e BAM** | A tabela da LLS com um *Bootstrap Application Manifest* por serviço (8.4.4) |
 | **BALD** | A sinalização das aplicações de emissora de um serviço (10.1) |
 | **Bootstrap Application** | A aplicação inicial de um serviço, que o testbed chama de aplicação de abertura (3.13) |
-| **Aplicação de emissora** | A aplicação associada ao contexto de um serviço, na camada de gráficos (3.14) ([aop](../aop/#aplicações-de-emissora)) |
+| **Aplicação de emissora** | A aplicação associada ao contexto de um serviço, na camada de gráficos (3.14) ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
 | **Camadas** | Vídeo, gráficos e interface da plataforma, com os avisos por cima ([A AoP em 5 minutos](../aop-em-5-minutos/#as-camadas-da-tela)) |
-| **Pop-ups** | O sim ou não da autorização, o QR code e o PIN do pareamento e o aviso de atributos da emissora ([aop](../aop/#pop-ups)) |
-| **Ponte de eventos** | O `aop-bridge.js`, que a aplicação de emissora inclui para receber as teclas e os eventos do vídeo ([aop](../aop/#aplicações-de-emissora)) |
+| **Pop-ups** | O sim ou não da autorização, o QR code e o PIN do pareamento e o aviso de atributos da emissora ([aop-shell](../aop-shell/#pop-ups)) |
+| **Ponte de eventos** | O `aop-bridge.js`, que a aplicação de emissora inclui para receber as teclas e os eventos do vídeo ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
 | **Dispositivo remoto** e ***handle*** | Um aparelho da rede registrado para executar parte de uma aplicação (C.6.15). O *handle* identifica o registro ([tv3ws](../tv3ws/)) |
 | **SSDP** e **`/manifest`** | A descoberta do receptor na rede e o endereço que devolve as URLs das APIs (C.3.4) ([Descoberta na rede](../instalacao/#descoberta-na-rede)) |
 | **Esquema na escrita** | O formato declarado de cada tópico e de cada família de chave, conferido na publicação e na gravação ([Mensageria (MQTT)](../mensageria/#esquema-das-mensagens), [Modelo de dados Redis](../modelo-redis/#o-esquema-na-escrita)) |

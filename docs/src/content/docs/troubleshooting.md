@@ -52,6 +52,8 @@ sudo systemctl restart docker.socket docker.service
 | A porta é recusada de vez em quando e está livre logo depois | No Linux e no WSL2, a 44642, a 44643 e a faixa 45000–45199 ficam dentro da faixa de portas que o sistema sorteia para as conexões de saída | Suba de novo. Para tirá-las do sorteio, há `net.ipv4.ip_local_reserved_ports=44642-44643,44652-44655,45000-45199`, uma configuração do kernel da máquina, e não só do testbed |
 | A subida diz que a 44642 está ocupada com a stack de pé | Um processo fora do Docker está na 44642 | `sudo ss -ltnp \| grep 44642` |
 | A subida avisa que o container `tv3ws-ssdp` está de pé | Sobra de uma versão antiga: seria um segundo anunciante | `docker rm -f tv3ws-ssdp` |
+| `The container name "/mqtt-broker" is already in use`, ou a 8080 ocupada pelo container `aop` | Sobra de uma versão anterior à renomeação dos serviços `mosquitto` para `mqtt-broker` e `aop` para `aop-shell`: os containers antigos ficam de pé, fora do projeto | `docker rm -f mqtt-broker aop` e suba de novo |
+| Depois de `git pull`, a pasta `aop/` continua na raiz, e `aop-shell/` está vazia | O submódulo mudou de pasta | `git submodule sync && git submodule update --init aop-shell`; confira que `aop/` não tem trabalho seu e apague a pasta |
 
 ### O Redis não fica saudável, e o tv3ws ou a borda não sobem
 
@@ -72,7 +74,7 @@ As imagens publicadas são só `amd64`. Construa antes de subir: `docker compose
 ### `exec /entrypoint.sh: no such file or directory`
 
 O script foi commitado com CRLF, e o `#!/bin/sh\r` não vale. Converta com `dos2unix <arquivo>` e
-reconstrua a imagem. A raiz e o `infra/` já têm `*.sh text eol=lf` no `.gitattributes`; o `aop`, o
+reconstrua a imagem. A raiz e o `infra/` já têm `*.sh text eol=lf` no `.gitattributes`; o `aop-shell`, o
 `bcast` e o `tv3ws` não têm, e um script novo de container num deles precisa da mesma linha. Arquivo
 commitado antes da regra só muda com `git add --renormalize .` e um commit.
 
@@ -116,7 +118,7 @@ função, a chave, o campo e o motivo. O serviço responde 404 `{"error":200}`, 
 - **`ERR Function not found`:** o Redis está sem a biblioteca. `docker compose build redis` e
   `docker compose up -d redis`.
 - **Na criação de perfil, `deve ser UUID` ou `SVG em linha nao serve`:** a imagem da casca está
-  desatualizada. `docker compose build aop redis`.
+  desatualizada. `docker compose build aop-shell redis`.
 
 ### Auditoria com achados
 
@@ -134,7 +136,7 @@ Cada achado é `[chave, família, motivo]`, e o esperado é a lista vazia.
 
 ### `O limite de 5 perfis foi atingido`
 
-O sexto perfil é recusado (10.3.3). Remova um perfil no seletor ([aop](../aop/#perfis)), ou volte à
+O sexto perfil é recusado (10.3.3). Remova um perfil no seletor ([aop-shell](../aop-shell/#perfis)), ou volte à
 carga inicial com `docker compose down -v`.
 
 ## Casca e aplicações de emissora
@@ -145,19 +147,19 @@ Para ver a aplicação em execução: `docker exec redis redis-cli HGETALL origi
 
 | Sintoma | Causa | O que fazer |
 |---|---|---|
-| Não carrega com a TV aberta de outra máquina | `*.apps.localhost` só resolve na máquina de quem abre a página | `APPS_DOMAIN` com um domínio resolvível na rede, com `*.<domínio>` apontando para a máquina da casca, e `docker compose up -d aop` |
+| Não carrega com a TV aberta de outra máquina | `*.apps.localhost` só resolve na máquina de quem abre a página | `APPS_DOMAIN` com um domínio resolvível na rede, com `*.<domínio>` apontando para a máquina da casca, e `docker compose up -d aop-shell` |
 | Não carrega com a casca publicada em outra porta | A origem da aplicação usa `AOP_PUBLIC_PORT` | Mude a porta pelo `AOP_PUBLIC_PORT`, que troca as duas juntas |
 | `nenhuma aplicacao em execucao em <host>` (404) | A aplicação foi encerrada ou trocada, e a página antiga ficou aberta | Abra a aplicação de novo pelo catálogo |
-| `Bad Gateway: aplicacao fora do ar` (502) | A casca não alcança o bcast | `docker logs aop` mostra `falha no proxy`; confira o bcast, ou o `BCAST_HOSTNAME` com módulos no host ([Desenvolvimento com serviço no host](../dev-local/#bcast_hostname)) |
+| `Bad Gateway: aplicacao fora do ar` (502) | A casca não alcança o bcast | `docker logs aop-shell` mostra `falha no proxy`; confira o bcast, ou o `BCAST_HOSTNAME` com módulos no host ([Desenvolvimento com serviço no host](../dev-local/#bcast_hostname)) |
 | A casca não sobe: `APPS_DOMAIN invalido` ou `AOP_PUBLIC_PORT invalida` | Valor fora do formato | Corrija o `.env` |
-| Abre, mas não recebe teclas, `timeupdate` nem `stream_event` | A aplicação não inclui a ponte | `<script src="js/aop-bridge.js"></script>` na aplicação ([aop](../aop/#aplicações-de-emissora)) |
+| Abre, mas não recebe teclas, `timeupdate` nem `stream_event` | A aplicação não inclui a ponte | `<script src="js/aop-bridge.js"></script>` na aplicação ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
 | As chamadas da aplicação às APIs recebem 107, ou 106 nas rotas só do cliente local associado | A origem dela saiu de `origins:associated`: a aplicação foi encerrada ou trocada, e a página ficou aberta | Abra a aplicação pelo catálogo e pela tela cheia |
 
 ### A página da TV não conecta no MQTT (`/mqtt`)
 
 | Sintoma | Causa | O que fazer |
 |---|---|---|
-| `broker MQTT fora do alcance` (502) | A casca não alcança o broker: ele está parado, ou, com a casca no host, `MQTT_WS_PORT` não é a porta publicada da 9001 | `docker logs aop` mostra `[mqtt-ws] falha no repasse`. Com a casca no host: `MQTT_WS_PORT=$(docker compose port mosquitto 9001 \| sed 's/.*://')` |
+| `broker MQTT fora do alcance` (502) | A casca não alcança o broker: ele está parado, ou, com a casca no host, `MQTT_WS_PORT` não é a porta publicada da 9001 | `docker logs aop-shell` mostra `[mqtt-ws] falha no repasse`. Com a casca no host: `MQTT_WS_PORT=$(docker compose port mqtt-broker 9001 \| sed 's/.*://')` |
 | `MQTT por WebSocket so no host do AoP` (404) | A página foi aberta no host de uma aplicação | Abra a TV em `http://localhost:8080` |
 | `upgrade WebSocket so em /mqtt` (404) | WebSocket em outro caminho | Use `/mqtt` |
 | A casca não sobe: `MQTT_WS_PORT invalida` ou `MQTT_HOST invalido para o MQTT por WebSocket` | Porta fora de 1 a 65535, ou `MQTT_HOST` com porta ou caminho | `MQTT_HOST` é só o nome ou o IP do broker |
@@ -251,7 +253,7 @@ docker exec redis redis-cli FCALL_RO tv30_audit 0            # vazio = ok
 docker exec mqtt-broker mosquitto_sub -t '#' -v
 
 # Logs
-docker logs aop --tail 50
+docker logs aop-shell --tail 50
 docker logs tv3ws --tail 50
 docker logs mqtt-broker --tail 50
 ```

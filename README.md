@@ -47,9 +47,9 @@ O `./tv30 up` faz o `docker compose up -d` e sobe o anunciante da descoberta SSD
 >
 > O `tv3ws/.env` é opcional.
 
-> **Importante: não rode `docker compose` em `infra/`.** O `infra/` é submodule, e o compose dele já entra pelo `include:` do `docker-compose.yml` da raiz. Subido de dentro de `infra/`, o compose não vê os serviços `aop`, `tv3ws` e `bcast`.
+> **Importante: não rode `docker compose` em `infra/`.** O `infra/` é submodule, e o compose dele já entra pelo `include:` do `docker-compose.yml` da raiz. Subido de dentro de `infra/`, o compose não vê os serviços `aop-shell`, `tv3ws` e `bcast`.
 
-> **Importante: sem `.env` na raiz, os serviços principais ficam de fora sem aviso.** O `aop`, o `tv3ws`, o `bcast`, o `mosquitto` e o `sysctl-init` têm `profiles` no compose. Sem `COMPOSE_PROFILES=mqtt,linux`, que vem no `.env.example`, só sobe a infra. Comece sempre com `cp .env.example .env`.
+> **Importante: sem `.env` na raiz, os serviços principais ficam de fora sem aviso.** O `aop-shell`, o `tv3ws`, o `bcast`, o `mqtt-broker` e o `sysctl-init` têm `profiles` no compose. Sem `COMPOSE_PROFILES=mqtt,linux`, que vem no `.env.example`, só sobe a infra. Comece sempre com `cp .env.example .env`.
 
 ---
 

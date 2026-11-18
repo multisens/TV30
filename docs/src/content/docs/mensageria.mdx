@@ -6,7 +6,7 @@ description: O broker MQTT do testbed - como se conectar, os tópicos, a retenç
 import NameTree from '../../components/name-tree.astro';
 import { mqttTopics } from '../../data/mqtt-topics.ts';
 
-A **mensageria** é o broker Mosquitto do container `mqtt-broker` (serviço `mosquitto`). Por ela passa
+A **mensageria** é o broker Mosquitto do serviço `mqtt-broker`. Por ela passa
 o que dispara comportamento: a sinalização da emissora simulada, as trocas de usuário e de serviço, as
 camadas da tela e os pop-ups. O que precisa ser consultado a qualquer momento fica no Redis
 ([Modelo de dados Redis](../modelo-redis/)); um dado com as duas naturezas vive nos dois.
@@ -22,7 +22,7 @@ Ele não controla o acesso a tópicos: qualquer cliente assina e publica em qual
 | um serviço em container, na rede do Docker | `mqtt://mosquitto:1883` |
 | um processo no computador | `mqtt://localhost:1883` |
 | a página da TV, no navegador | `ws://<host da página>/mqtt`: a casca repassa a conexão ao WebSocket do broker |
-| um cliente WebSocket de fora, para depurar | a 9001 do broker, em porta escolhida pelo Docker (`docker compose port mosquitto 9001`); `MQTT_WS_PUBLISH=<porta>:9001` no `.env` da raiz a fixa |
+| um cliente WebSocket de fora, para depurar | a 9001 do broker, em porta escolhida pelo Docker (`docker compose port mqtt-broker 9001`); `MQTT_WS_PUBLISH=<porta>:9001` no `.env` da raiz a fixa |
 
 - O `/mqtt` só existe no host da casca: a aplicação de emissora, servida no host dela, não alcança o
   broker.
@@ -33,7 +33,7 @@ Ele não controla o acesso a tópicos: qualquer cliente assina e publica em qual
 Cada ramo junta os tópicos de mesmo prefixo, e cada nome mostra se o tópico fica retido, se não tem
 esquema e se ainda não tem publicador no testbed. O `<sid>` é o `globalServiceId` do serviço. O que a
 emissora simulada publica está em [Emissora simulada](../emissora-simulada/), e como a TV reveza os
-pop-ups, em [aop](../aop/#pop-ups).
+pop-ups, em [aop-shell](../aop-shell/#pop-ups).
 
 <NameTree id="mqtt-topics" tree={mqttTopics} label="Os tópicos MQTT" />
 
@@ -101,8 +101,8 @@ A publicação recusada sai no log do broker (`Validation failed for topic <tóp
    imagem no build: `docker compose restart` não basta.
 
    ```bash
-   docker compose --profile mqtt build mosquitto
-   docker compose --profile mqtt up -d mosquitto
+   docker compose --profile mqtt build mqtt-broker
+   docker compose --profile mqtt up -d mqtt-broker
    ```
 
 3. Confira no log que o arquivo carregou:

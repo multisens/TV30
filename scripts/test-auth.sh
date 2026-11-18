@@ -177,7 +177,7 @@ app_state() {
 
 # cs_publish <sid>: publishes aop/currentService retained in place of the
 # platform (empty deletes the retained message; the broker delivers "" to the
-# subscribers, as in unsetCurrentService of aop) and waits for tv3ws to
+# subscribers, as in unsetCurrentService of aop-shell) and waits for tv3ws to
 # mirror the value in session:current-service-id, a sign that its service in
 # use (core.app.sid) changed.
 cs_publish() {
@@ -200,7 +200,7 @@ ANUNCIO_PELA_LLS=0; LLS_RETIDO=0; ANUNCIO_FCALL=0; TESTE_ANUNCIADOS=""
 ICON_JSON='<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"/>'
 anuncia() {
   local s i ok n=0 bamt=""
-  if [ "$(docker inspect -f '{{.State.Running}}' aop 2>/dev/null)" = true ]; then
+  if [ "$(docker inspect -f '{{.State.Running}}' aop-shell 2>/dev/null)" = true ]; then
     if [ $# -gt 0 ]; then
       for s in "$@"; do
         n=$((n+1))

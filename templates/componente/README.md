@@ -15,7 +15,7 @@ Quem cria um componente novo precisa saber como montar o compose dele e como rod
 Para conferir o template de ponta a ponta, rode `scripts/test-template.sh` com a stack de pé. O teste copia esta pasta para um diretório temporário, troca o nome do componente, sobe o exemplo e confere:
 
 - que o container entrou só na `ginga_net`;
-- que o exemplo falou com o `redis` e com o `mosquitto` pelo nome do serviço: uma mensagem de ping por MQTT volta com o valor que o teste gravou no Redis;
+- que o exemplo falou com o `redis` e com o `mqtt-broker` pelo nome do serviço: uma mensagem de ping por MQTT volta com o valor que o teste gravou no Redis;
 - que o `/health` responde pela porta publicada;
 - a regra morre-inteiro: matar o processo do componente derruba o container, e o `restart` o traz de volta respondendo.
 
@@ -24,7 +24,7 @@ No fim, o teste remove o container, a imagem e a chave de teste.
 ## Como usar
 
 1. Copie a pasta para o lugar do componente e troque `meu-componente`, a porta `8090` e as variáveis.
-2. Suba a stack da raiz antes (`docker compose up -d`). É ela que cria a rede `ginga_net`, os serviços `redis` e `mosquitto` e a borda.
+2. Suba a stack da raiz antes (`docker compose up -d`). É ela que cria a rede `ginga_net`, os serviços `redis` e `mqtt-broker` e a borda.
 3. Suba o componente:
 
    ```bash
@@ -42,7 +42,7 @@ Se o componente for passar a fazer parte da stack, cole o bloco do serviço no `
 | Regra | Por quê |
 |---|---|
 | Entra na `ginga_net` **externa** | A rede é criada pela infra (`infra/docker-compose.yml`). O componente se junta a ela em vez de criar outra. |
-| MQTT e Redis **pelo nome do serviço**: `MQTT_HOST=mosquitto`, `REDIS_HOST=redis` | Dentro do container, `localhost` é o próprio container. |
+| MQTT e Redis **pelo nome do serviço**: `MQTT_HOST=mqtt-broker`, `REDIS_HOST=redis` | Dentro do container, `localhost` é o próprio container. |
 | `extra_hosts: host.docker.internal:host-gateway` | Faz `host.docker.internal` resolver também em Linux, para alcançar um processo rodando no host. Sem uso, é inócuo. |
 | `restart: unless-stopped` e **morre-inteiro** | Se um processo do componente cair, o container inteiro cai e o Docker religa. Nenhuma parte morre em silêncio. Com mais de um processo, use um supervisor no modelo de `infra/edgegateway/entrypoint.sh`. |
 | `init: true` | O init mínimo do Docker fica como PID 1 e o processo do componente como filho. O `SIGTERM` do `docker stop` chega ao processo (o Node como PID 1 o ignoraria e esperaria o `SIGKILL`). Se o processo morrer, o init sai junto, e o container cai como a regra anterior exige. |
@@ -59,7 +59,7 @@ Enquanto desenvolve, rode o processo direto no host e deixe a infra em container
 | Destino | Do host | De dentro de um container |
 |---|---|---|
 | Redis | `127.0.0.1:6379` | `redis:6379` |
-| MQTT | `127.0.0.1:1883` | `mosquitto:1883` |
+| MQTT | `127.0.0.1:1883` | `mqtt-broker:1883` |
 | Borda (superfície interna) | `127.0.0.1:44642` | `edgegateway:44642` |
 | Processo no host | — | `host.docker.internal:<porta>` (requer o `extra_hosts`) |
 

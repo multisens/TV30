@@ -3,7 +3,7 @@
 # (templates/componente): copies the folder, renames the component (step 1 of
 # the README of the template), starts the example with the compose of the
 # template and checks the network (only ginga_net), restart and init, redis
-# and mosquitto by service name (an MQTT ping that comes back with the value
+# and mqtt-broker by service name (an MQTT ping that comes back with the value
 # written to Redis), /health on the published port and the whole-container
 # exit (a kill of node brings the container down and the restart brings it
 # back). Runs against the stack already up and does not change it; at the
@@ -138,8 +138,8 @@ echo; echo "-- Redis e broker pelo nome do servico --"
 LOGS=$(docker logs "$NAME" 2>&1)
 if grep -q 'redis redis:6379 PING -> PONG' <<<"$LOGS"; then pass "log do exemplo: redis redis:6379 PING -> PONG"
 else fail "log sem 'redis redis:6379 PING -> PONG': $(head -c 300 <<<"$LOGS" | tr '\n' ' ')"; fi
-if grep -q "mqtt mosquitto:1883 conectado" <<<"$LOGS"; then pass "log do exemplo: mqtt mosquitto:1883 conectado"
-else fail "log sem 'mqtt mosquitto:1883 conectado': $(head -c 300 <<<"$LOGS" | tr '\n' ' ')"; fi
+if grep -q "mqtt mqtt-broker:1883 conectado" <<<"$LOGS"; then pass "log do exemplo: mqtt mqtt-broker:1883 conectado"
+else fail "log sem 'mqtt mqtt-broker:1883 conectado': $(head -c 300 <<<"$LOGS" | tr '\n' ' ')"; fi
 
 # Ping through the broker; the example answers with the value of the key read
 # from Redis.

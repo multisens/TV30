@@ -33,18 +33,18 @@ err()    { echo -e "    ${c_red}[ERRO]${c_off} $*"; }
 # (TV30 applications) name|context dir|dockerfile relative to ROOT
 declare -a APPS=(
     "tv30-tv3ws|tv3ws|infra/dockerfiles/tv3ws.Dockerfile"
-    "tv30-aop|aop|infra/dockerfiles/aop.Dockerfile"
+    "tv30-aop-shell|aop-shell|infra/dockerfiles/aop-shell.Dockerfile"
     "tv30-bcast|bcast|infra/dockerfiles/bcast.Dockerfile"
 )
 
 # (infrastructure) name|context relative to ROOT|dockerfile relative to ROOT
 declare -a INFRA=(
-    "tv30-mosquitto|infra/mqtt-broker|infra/mqtt-broker/infra/Dockerfile"
+    "tv30-mqtt-broker|infra/mqtt-broker|infra/mqtt-broker/infra/Dockerfile"
     "tv30-edgegateway|infra/edgegateway|infra/edgegateway/Dockerfile"
     "tv30-redis|infra|infra/redis/Dockerfile"
 )
 
-# tv30-aop and tv30-tv3ws use additional contexts (user-files template and
+# tv30-aop-shell and tv30-tv3ws use additional contexts (user-files template and
 # shared entrypoint). The other applications use a plain build.
 if [ "$NO_BUILD" != "--no-build" ]; then
     step "Buildando ${#APPS[@]} apps + ${#INFRA[@]} infra customs..."
@@ -52,7 +52,7 @@ if [ "$NO_BUILD" != "--no-build" ]; then
         IFS='|' read -r name ctx df <<< "$entry"
         echo
         echo "  -> ${NS}/${name}:${TAG}"
-        if [ "$name" = "tv30-aop" ] || [ "$name" = "tv30-tv3ws" ]; then
+        if [ "$name" = "tv30-aop-shell" ] || [ "$name" = "tv30-tv3ws" ]; then
             docker build -t "${NS}/${name}:${TAG}" \
                 -f "${ROOT}/${df}" \
                 --build-context tv30-data="${ROOT}/infra/user-files-template" \

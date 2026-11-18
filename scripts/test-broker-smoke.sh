@@ -21,7 +21,7 @@ docker exec mqtt-broker mosquitto_pub -t 'sensor/room1/temperature' -m '{"value"
 echo "== AoP: GET / e /profile/create =="
 docker run --rm --network ginga_net alpine:3 sh -c '
   for path in / /profile/create; do
-    code=$(wget -q -S -O /dev/null "http://aop:8080$path" 2>&1 \
+    code=$(wget -q -S -O /dev/null "http://aop-shell:8080$path" 2>&1 \
       | awk "/^  HTTP\\//{c=\$2} END{print c}")
     echo "GET $path -> $code"
   done'

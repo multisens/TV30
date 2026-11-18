@@ -14,13 +14,13 @@ O testbed tem dois tipos de teste:
 | Mudou | Rode |
 |---|---|
 | tv3ws | `npm test` e `npx tsc --noEmit` no `tv3ws`; nas APIs ou nas credenciais, também `test-auth.sh`; nos dispositivos remotos, `test-remote-device-v100.sh` |
-| Casca (aop) | `npm test` no `aop` |
+| Casca (aop-shell) | `npm test` no `aop-shell` |
 | bcast | `npx tsc --noEmit` no `bcast`; na parada, `test-bcast-shutdown.sh` |
 | Rotas da borda (`routes.json`) | `node --test generate.test.js` e `test-auth.sh` |
 | Plugin de credenciais da borda | os testes Go do `plugin/` e `test-auth.sh` |
 | Anunciante da descoberta | os testes Go do `ssdp/` |
 | Esquema ou funções do Redis | `bash infra/redis/test/run.sh all` e `test-edge-redis.sh` |
-| Plugin do broker ou esquema de tópico | `docker compose build mosquitto`, os dois testes do plugin e `test-broker-smoke.sh` |
+| Plugin do broker ou esquema de tópico | `docker compose build mqtt-broker`, os dois testes do plugin e `test-broker-smoke.sh` |
 | Modelo de componente | `test-template.sh` |
 | Compose, subida, ou a conversa entre módulos | `test-dev-host.sh` e `test-virgin-up.sh` |
 
@@ -32,7 +32,7 @@ Para testar o código do clone, e não as imagens publicadas, suba a stack com
 | Teste | Stack | Tempo |
 |---|---|---|
 | tv3ws: `npm test`, `npx tsc --noEmit` | não | de 25 a 38 s, 7 s |
-| aop: `npm test` | não | de 7 a 11 s |
+| aop-shell: `npm test` | não | de 7 a 11 s |
 | bcast: `npx tsc --noEmit` | não | 8 s |
 | borda: `node --test generate.test.js` | não | 1 s |
 | borda e anunciante: testes Go | não (Docker) | 15 s e 7 s |
@@ -53,7 +53,7 @@ Na pasta de cada módulo, depois do `npm ci`. Dublês fazem o papel do Redis, do
 
 ```bash
 cd tv3ws && npm test && npx tsc --noEmit   # os 17 arquivos de test/
-cd aop && npm test
+cd aop-shell && npm test
 cd bcast && npx tsc --noEmit               # o bcast não tem teste de unidade
 ```
 
@@ -96,7 +96,7 @@ bash infra/redis/test/run.sh all   # ou um modo: static, functions, contract, im
 
 ### Broker
 
-Os testes de unidade do plugin rodam no build da imagem: `docker compose build mosquitto` falha se
+Os testes de unidade do plugin rodam no build da imagem: `docker compose build mqtt-broker` falha se
 um deles falhar. Os de integração sobem um broker descartável:
 
 ```bash

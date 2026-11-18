@@ -42,7 +42,7 @@ problema já apareceu, comece por [Solução de problemas](../troubleshooting/).
   direta; quem confere o formato são as funções do esquema
   ([Modelo de dados Redis](../modelo-redis/#o-esquema-na-escrita)).
 - **O `avatar` do perfil é o nome de um arquivo, e não o desenho**
-  ([aop](../aop/#perfis)).
+  ([aop-shell](../aop-shell/#perfis)).
 - **`user:{id}:consent` é a visibilidade do perfil por serviço**, e não o consentimento do Privacy
   Manager (8.8), que o testbed não implementa ([Modelo de dados Redis](../modelo-redis/)).
 
@@ -56,8 +56,8 @@ problema já apareceu, comece por [Solução de problemas](../troubleshooting/).
 ## Aplicações de emissora
 
 - **A aplicação sem `aop-bridge.js` não recebe teclas.** Ela roda em origem própria, e a casca lhe
-  entrega a tecla por `postMessage` ([aop](../aop/#aplicações-de-emissora)).
+  entrega a tecla por `postMessage` ([aop-shell](../aop-shell/#aplicações-de-emissora)).
 - **Com o QR code, o PIN ou um aviso na tela, a tecla segue para a aplicação.** Só o pop-up de sim
-  ou não toma as teclas ([aop](../aop/#pop-ups)).
+  ou não toma as teclas ([aop-shell](../aop-shell/#pop-ups)).
 - **Aplicações NCL não são lançadas.** A casca lança só as `TV30-Ginga-HTML5`
-  ([aop](../aop/#aplicações-de-emissora)).
+  ([aop-shell](../aop-shell/#aplicações-de-emissora)).

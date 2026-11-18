@@ -5,7 +5,7 @@
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
-docker compose up -d bcast mosquitto >/dev/null 2>&1
+docker compose up -d bcast mqtt-broker >/dev/null 2>&1
 sleep 6
 echo "== retidos ANTES do stop =="
 docker exec mqtt-broker mosquitto_sub -t 'tlm/#' -v --retained-only -W 2 2>/dev/null | cut -c1-60

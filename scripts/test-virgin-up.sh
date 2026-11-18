@@ -3,7 +3,7 @@
 # user-files) and brings the stack up with a single command. It brings the
 # stack down and up from scratch; at the end (trap EXIT) it restores
 # tv3ws/.env and the original content of ./user-files and recreates tv3ws
-# and aop. If the restore fails, the path of the backup (mktemp) is printed.
+# and aop-shell. If the restore fails, the path of the backup (mktemp) is printed.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -30,9 +30,9 @@ restore() {
   fi
   if [ "$ok" = 1 ]; then
     if [ "$HAD_ENV$HAD_UF" != 00 ] && [ "$(docker inspect -f '{{.State.Running}}' tv3ws 2>/dev/null)" = true ]; then
-      docker compose up -d --force-recreate --no-deps tv3ws aop >/dev/null 2>&1 \
-        && echo "[test] tv3ws e aop recriados com os dados originais" \
-        || echo "[test] ATENCAO: recrie tv3ws e aop (docker compose up -d --force-recreate tv3ws aop)"
+      docker compose up -d --force-recreate --no-deps tv3ws aop-shell >/dev/null 2>&1 \
+        && echo "[test] tv3ws e aop-shell recriados com os dados originais" \
+        || echo "[test] ATENCAO: recrie tv3ws e aop-shell (docker compose up -d --force-recreate tv3ws aop-shell)"
     fi
     rm -rf "$BAK"
   fi

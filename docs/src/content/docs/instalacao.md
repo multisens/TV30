@@ -15,7 +15,7 @@ outro e o que se pode configurar.
   ([Como testar](../como-testar/), [Desenvolvimento com serviço no host](../dev-local/)).
 
 :::caution[Sem o `.env`, o receptor não sobe]
-O `aop`, o `tv3ws`, o `bcast` e o broker só sobem com os perfis `mqtt` e `linux` do compose. O
+O `aop-shell`, o `tv3ws`, o `bcast` e o broker só sobem com os perfis `mqtt` e `linux` do compose. O
 `.env.example` já os liga (`COMPOSE_PROFILES=mqtt,linux`): copie-o para `.env` antes de subir. Sem
 eles, sobem só o Redis e a borda.
 :::
@@ -89,7 +89,7 @@ anuncia; as outras saem numa porta escolhida pelo Docker, que muda quando o cont
 | APIs, superfície externa (HTTPS) | 44643 | `EDGE_EXT_PUBLISH`; outra porta pede também `EDGE_HTTPS_PORT` igual, senão o `/manifest` anuncia a 44643 |
 | WebSockets dos dispositivos remotos | 45000–45199 | — |
 | Broker MQTT | 1883 | — |
-| Broker MQTT por WebSocket | escolhida pelo Docker | `docker compose port mosquitto 9001`; `MQTT_WS_PUBLISH` fixa |
+| Broker MQTT por WebSocket | escolhida pelo Docker | `docker compose port mqtt-broker 9001`; `MQTT_WS_PUBLISH` fixa |
 | Redis | 6379, só em `127.0.0.1` | sem senha |
 | Redis Commander | escolhida pelo Docker | `docker port redis 18081`; login `admin`, senha `tv30-redis-admin` |
 | Documentação Swagger das APIs | escolhida pelo Docker | `docker port edgegateway 8085` |
@@ -223,7 +223,7 @@ porque o navegador não manda UDP.
 git clone --recurse-submodules https://github.com/multisens/TV30.git
 git submodule status                 # o estado de cada um
 git submodule update --remote        # todos para o último commit
-git submodule update --remote aop    # só um
+git submodule update --remote aop-shell    # só um
 ```
 
 Se `git submodule status` mostra `-` na frente de um submódulo, ou se o clone dele pede chave SSH, a

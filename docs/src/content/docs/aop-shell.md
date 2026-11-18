@@ -1,9 +1,9 @@
 ---
-title: aop
-description: O componente aop, a casca da plataforma - o que implementa, como recebe as chamadas, o que troca com o resto do testbed e o que ele define onde a norma deixa em aberto.
+title: aop-shell
+description: O componente aop-shell, a casca da plataforma - o que implementa, como recebe as chamadas, o que troca com o resto do testbed e o que ele define onde a norma deixa em aberto.
 ---
 
-O `aop` é a casca da plataforma: a página da TV, com as camadas de exibição e os avisos, e as telas
+O `aop-shell` é a casca da plataforma: a página da TV, com as camadas de exibição e os avisos, e as telas
 que a plataforma mostra nelas, que são o seletor e o gestor de perfis, o catálogo de aplicações e a
 aplicação de abertura de cada serviço. Ele também lê a LLS e lança a aplicação da emissora. As
 camadas e o caminho do espectador estão em [A AoP em 5 minutos](../aop-em-5-minutos/); quais
@@ -81,4 +81,4 @@ casca define como eles se revezam na tela:
 
 - Rodar a casca fora do Docker, com `npm run dev`:
   [Desenvolvimento com serviço no host](../dev-local/#casca-aop-no-host).
-- Os testes de unidade (`npm test`, em `aop/`): [Como testar](../como-testar/).
+- Os testes de unidade (`npm test`, em `aop-shell/`): [Como testar](../como-testar/).

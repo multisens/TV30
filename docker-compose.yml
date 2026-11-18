@@ -86,7 +86,7 @@ services:
       # WebSockets is published.
       - "45000-45199:45000-45199"
     environment:
-      MQTT_HOST: mosquitto
+      MQTT_HOST: mqtt-broker
       HTTP_PORT: 44652
       HTTPS_PORT: 44653
       # Every interface inside the container.
@@ -132,7 +132,7 @@ services:
       # redis is healthy only after the initial load (key seed:done).
       redis:
         condition: service_healthy
-      mosquitto:
+      mqtt-broker:
         condition: service_started
       userfiles-seed:
         condition: service_completed_successfully
@@ -140,16 +140,16 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  aop:
+  aop-shell:
     profiles: ["linux"]
-    image: ${DOCKERHUB_NS:-tv30}/tv30-aop:${IMAGE_TAG:-dev}
+    image: ${DOCKERHUB_NS:-tv30}/tv30-aop-shell:${IMAGE_TAG:-dev}
     build:
-      context: ./aop
-      dockerfile: ../infra/dockerfiles/aop.Dockerfile
+      context: ./aop-shell
+      dockerfile: ../infra/dockerfiles/aop-shell.Dockerfile
       additional_contexts:
         tv30-data:    ./infra/user-files-template
         tv30-scripts: ./infra/dockerfiles
-    container_name: aop
+    container_name: aop-shell
     networks: [ginga_net]
     extra_hosts:
       # host.docker.internal on Linux, for a bcast on the host.
@@ -166,15 +166,15 @@ services:
       # the machine of whoever opens the page.
       APPS_DOMAIN: ${APPS_DOMAIN:-apps.localhost}
       AOP_PUBLIC_PORT: ${AOP_PUBLIC_PORT:-8080}
-      MQTT_HOST: mosquitto
-      # Internal port of mosquitto on ginga_net, the target of /mqtt.
+      MQTT_HOST: mqtt-broker
+      # Internal port of mqtt-broker on ginga_net, the target of /mqtt.
       MQTT_WS_PORT: "9001"
       USER_DATA_PATH: /user-files
       REDIS_HOST: redis
     volumes:
       - ./user-files:/user-files
     depends_on:
-      - mosquitto
+      - mqtt-broker
       - redis
       - userfiles-seed
     restart: unless-stopped
@@ -193,7 +193,7 @@ services:
       - "${BCAST_PUBLISH:-8081}"
     environment:
       PORT: 8081
-      MQTT_HOST: mosquitto
+      MQTT_HOST: mqtt-broker
       # Host of bcastEntryPackageUrl in the BALD.
       BCAST_HOSTNAME: ${BCAST_HOSTNAME:-bcast}
       # Fixed ids: every restart publishes again on the same topic.
@@ -209,5 +209,5 @@ services:
       # here.
       - ./bcast/public:/app/public:ro
     depends_on:
-      - mosquitto
+      - mqtt-broker
     restart: unless-stopped

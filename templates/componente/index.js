@@ -10,7 +10,7 @@ const http = require('http');
 const crypto = require('crypto');
 
 const NOME = process.env.COMPONENTE_NOME || 'meu-componente';
-const MQTT_HOST = process.env.MQTT_HOST || 'mosquitto';
+const MQTT_HOST = process.env.MQTT_HOST || 'mqtt-broker';
 const MQTT_PORT = Number(process.env.MQTT_PORT || 1883);
 const REDIS_HOST = process.env.REDIS_HOST || 'redis';
 const REDIS_PORT = Number(process.env.REDIS_PORT || 6379);

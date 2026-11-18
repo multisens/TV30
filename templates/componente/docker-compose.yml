@@ -38,7 +38,7 @@ services:
     environment:
       # Inside ginga_net the services find each other by service name, never by
       # localhost (localhost is the container itself).
-      MQTT_HOST: mosquitto
+      MQTT_HOST: mqtt-broker
       MQTT_PORT: 1883
       REDIS_HOST: redis
       REDIS_PORT: 6379

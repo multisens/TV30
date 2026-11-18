@@ -17,7 +17,7 @@ export const examplePing = {
             label: 'assina …/exemplo/ping',
             title: 'O componente assina o tópico',
             detail: 'Ao subir, o componente se conecta ao broker pelo nome do serviço '
-                + '(<code>mosquitto</code>) e assina só o tópico que lhe interessa: '
+                + '(<code>mqtt-broker</code>) e assina só o tópico que lhe interessa: '
                 + '<code>tv30/&lt;nome&gt;/exemplo/ping</code>.',
             channel: 'mqtt',
         },

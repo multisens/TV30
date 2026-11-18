@@ -42,7 +42,7 @@ P="--profile mqtt --profile linux"
 
 ```bash
 docker compose $P stop tv3ws
-EDGE_VARIANT=windows docker compose $P up -d redis mosquitto edgegateway userfiles-seed aop bcast
+EDGE_VARIANT=windows docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed aop-shell bcast
 cd tv3ws && npm ci
 MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
 HTTP_PORT=44654 HTTPS_PORT=44655 \
@@ -59,14 +59,14 @@ npm run dev
 - `TV30_TLS_DIR` liga o HTTPS na 44655. Sem ele, a 44643 da borda fica sem destino, e o ponto de
   entrada do dispositivo remoto sai em `ws://`.
 
-### Casca (aop) no host
+### Casca (aop-shell) no host
 
 ```bash
-docker compose $P stop aop
+docker compose $P stop aop-shell
 EDGE_VARIANT=linux BCAST_HOSTNAME=localhost BCAST_PUBLISH=8081:8081 \
-  docker compose $P up -d redis mosquitto edgegateway userfiles-seed tv3ws bcast
-WS=$(docker compose $P port mosquitto 9001 | sed 's/.*://')
-cd aop && npm ci
+  docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed tv3ws bcast
+WS=$(docker compose $P port mqtt-broker 9001 | sed 's/.*://')
+cd aop-shell && npm ci
 PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$WS" REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
 USER_DATA_PATH="$PWD/../user-files" npm run dev
 ```
@@ -81,7 +81,7 @@ USER_DATA_PATH="$PWD/../user-files" npm run dev
 
 ```bash
 docker compose $P stop bcast
-EDGE_VARIANT=linux docker compose $P up -d redis mosquitto edgegateway userfiles-seed tv3ws aop
+EDGE_VARIANT=linux docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed tv3ws aop-shell
 cd bcast && npm ci
 PORT=8081 MQTT_HOST=127.0.0.1 BCAST_HOSTNAME=host.docker.internal \
 BSID=tv30-default WEBMEDIA_SID=urn:tv30:service:webmedia \
@@ -97,8 +97,8 @@ broker.
 Só a infraestrutura em containers, com a borda em `windows`:
 
 ```bash
-docker compose $P stop tv3ws aop bcast
-EDGE_VARIANT=windows docker compose $P up -d redis mosquitto edgegateway userfiles-seed
+docker compose $P stop tv3ws aop-shell bcast
+EDGE_VARIANT=windows docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed
 ```
 
 Depois, um terminal para cada módulo, nesta ordem:
@@ -139,7 +139,7 @@ módulo está no ar.
 | Módulo | Obrigatórias | Também no host |
 |---|---|---|
 | tv3ws | `MQTT_HOST`, `REDIS_HOST`, `JWT_SECRET`, `JWT_ISSUER`, `USER_THUMBS`, `HTTP_PORT`, `HTTPS_PORT`, `WS_PORT_MIN`, `WS_PORT_MAX`, `LISTEN_ATTEMPTS`, `MAX_REGISTRATIONS`, `PING_INTERVAL_MS` | `SERVER_URL`, sem a qual os endereços de dispositivo remoto saem com `undefined`. `WS_PORT_MIN` e `WS_PORT_MAX` na faixa 45000–45199, que não colide com as outras portas |
-| aop | `MQTT_HOST`, `USER_DATA_PATH`, `REDIS_HOST` | `PORT` (8080) e `MQTT_WS_PORT`. `MQTT_HOST` é só o nome ou IP do broker, sem porta |
+| aop-shell | `MQTT_HOST`, `USER_DATA_PATH`, `REDIS_HOST` | `PORT` (8080) e `MQTT_WS_PORT`. `MQTT_HOST` é só o nome ou IP do broker, sem porta |
 | bcast | `MQTT_HOST`, `BCAST_HOSTNAME` | `BSID` e os `*_SID` do compose |
 
 Os três módulos também leem um `.env` na própria pasta. A variável definida no shell vence.
@@ -174,7 +174,7 @@ com o broker e com quem depende dele.
 
 - **Windows fora do WSL não é coberto.** Rode o módulo dentro do WSL. Para a casca no Windows, com a
   stack no WSL, fixe a porta do broker: `MQTT_WS_PUBLISH=9003:9001` no `.env` da raiz e
-  `MQTT_WS_PORT=9003` no `aop/.env`. A 9003 evita a 9001 e a 9002, que o Hyper-V ocupa em algumas
+  `MQTT_WS_PORT=9003` no `aop-shell/.env`. A 9003 evita a 9001 e a 9002, que o Hyper-V ocupa em algumas
   máquinas.
 - **Docker Desktop** não foi testado.
 - **Aplicações de emissora só na própria máquina.** Elas abrem em `*.apps.localhost`, que só resolve

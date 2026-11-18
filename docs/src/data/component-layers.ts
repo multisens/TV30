@@ -60,13 +60,13 @@ const blocks: Block[] = [
         id: 'shell',
         kind: 'node',
         tone: 'platform',
-        title: 'Casca da plataforma · aop',
+        title: 'Casca da plataforma · aop-shell',
         subtitle: 'camadas de vídeo, gráficos e interface',
         x: 160,
         y: 150,
         width: 360,
         height: 70,
-        detailTitle: 'Casca da plataforma (aop)',
+        detailTitle: 'Casca da plataforma (aop-shell)',
         detail: 'Monta a tela: as camadas de vídeo, de gráficos e de interface da plataforma, cada uma '
             + 'um quadro que mostra uma URL. Assina na mensageria o que mostrar em cada camada e guarda '
             + 'no Redis os perfis. É por ela que algo visual chega ao espectador.',
@@ -145,15 +145,15 @@ const blocks: Block[] = [
         id: 'broker',
         kind: 'bus',
         tone: 'mqtt',
-        title: 'Mensageria · broker MQTT (mosquitto)',
+        title: 'Mensageria · broker MQTT (mqtt-broker)',
         titleX: 380,
         x: 150,
         y: 395,
         width: 820,
         height: 30,
-        detailTitle: 'Mensageria: broker MQTT (mosquitto)',
+        detailTitle: 'Mensageria: broker MQTT (mqtt-broker)',
         detail: 'Avisa que algo aconteceu: quem quer saber assina o tópico, e quem publica não sabe quem '
-            + 'assina. Os componentes o alcançam pelo nome <code>mosquitto</code>, na porta 1883. Um '
+            + 'assina. Os componentes o alcançam pelo nome <code>mqtt-broker</code>, na porta 1883. Um '
             + 'plugin confere cada publicação contra o esquema declarado do tópico.',
     },
     {
