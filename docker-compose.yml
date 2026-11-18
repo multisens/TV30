@@ -211,3 +211,23 @@ services:
     depends_on:
       - mqtt-broker
     restart: unless-stopped
+
+  # Broadcaster side simulator: live streams of the declared services. The
+  # host port is fixed because players reach the MPD BaseURL and the
+  # playlists through it.
+  bcast-sim:
+    profiles: ["linux"]
+    image: ${DOCKERHUB_NS:-tv30}/tv30-bcast-sim:${IMAGE_TAG:-dev}
+    build:
+      context: ./bcast-sim
+    container_name: bcast-sim
+    networks: [ginga_net]
+    ports:
+      - "${LIVE_PUBLIC_PORT:-8082}:8082"
+    environment:
+      PORT: 8082
+      SERVICES_DIR: /servicos
+      LIVE_BASE_URL: http://localhost:${LIVE_PUBLIC_PORT:-8082}/live/
+    volumes:
+      - ./bcast-sim/example/servicos:/servicos:ro
+    restart: unless-stopped

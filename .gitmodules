@@ -10,3 +10,6 @@
 [submodule "tv3ws"]
 	path = tv3ws
 	url = https://github.com/multisens/TV3WS.git
+[submodule "bcast-sim"]
+	path = bcast-sim
+	url = https://github.com/multisens/bcast-sim.git
