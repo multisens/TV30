@@ -179,39 +179,6 @@ services:
       - userfiles-seed
     restart: unless-stopped
 
-  bcast:
-    profiles: ["linux"]
-    image: ${DOCKERHUB_NS:-tv30}/tv30-bcast:${IMAGE_TAG:-dev}
-    build:
-      context: ./bcast
-      dockerfile: ../infra/dockerfiles/bcast.Dockerfile
-    container_name: bcast
-    networks: [ginga_net]
-    ports:
-      # A host port chosen by Docker by default (docker compose port bcast
-      # 8081); BCAST_PUBLISH=8081:8081 fixes it.
-      - "${BCAST_PUBLISH:-8081}"
-    environment:
-      PORT: 8081
-      MQTT_HOST: mqtt-broker
-      # Host of bcastEntryPackageUrl in the BALD.
-      BCAST_HOSTNAME: ${BCAST_HOSTNAME:-bcast}
-      # Fixed ids: every restart publishes again on the same topic.
-      BSID:           tv30-default
-      WEBMEDIA_SID:   urn:tv30:service:webmedia
-      UFF_SID:        urn:tv30:service:uff
-      EDUPLAY_SID:    urn:tv30:service:eduplay
-      # Paths on the remote device of the webmedia demo (.env.example).
-      WEBMEDIA_REMOTE_MEDIA_PATH:     ${WEBMEDIA_REMOTE_MEDIA_PATH:-}
-      WEBMEDIA_REMOTE_USERFILES_PATH: ${WEBMEDIA_REMOTE_USERFILES_PATH:-}
-    volumes:
-      # public/ (media) is outside the image (.dockerignore) and is served from
-      # here.
-      - ./bcast/public:/app/public:ro
-    depends_on:
-      - mqtt-broker
-    restart: unless-stopped
-
   # Broadcaster side simulator: live streams of the declared services. The
   # host port is fixed because players reach the MPD BaseURL and the
   # playlists through it.
@@ -233,4 +200,21 @@ services:
       PUBLIC_SERVICES_BASE_URL: http://localhost:${LIVE_PUBLIC_PORT:-8082}/services/
     volumes:
       - ./bcast-sim/example:/emission:ro
+    restart: unless-stopped
+
+  # Common Core of the platform: acquires the transport layer signaling the
+  # broadcaster side serves and publishes it on retained topics.
+  aop-cc:
+    profiles: ["linux"]
+    image: ${DOCKERHUB_NS:-tv30}/tv30-aop-cc:${IMAGE_TAG:-dev}
+    build:
+      context: ./aop-cc
+    container_name: aop-cc
+    networks: [ginga_net]
+    environment:
+      MQTT_HOST: mqtt-broker
+      SIGNALING_BASE_URL: http://bcast-sim:8082/signaling/
+    depends_on:
+      - mqtt-broker
+      - bcast-sim
     restart: unless-stopped

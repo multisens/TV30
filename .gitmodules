@@ -13,3 +13,6 @@
 [submodule "bcast-sim"]
 	path = bcast-sim
 	url = https://github.com/multisens/bcast-sim.git
+[submodule "aop-cc"]
+	path = aop-cc
+	url = https://github.com/multisens/aop-cc.git
