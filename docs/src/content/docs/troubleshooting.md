@@ -321,7 +321,7 @@ A 44643 (superfície externa) fala TLS com o certificado autoassinado do recepto
 
 ## `errors/<client_id>`: `INVALID_JSON` num payload que parece JSON, ou mensagem com `"truncated":true`
 
-O plugin do broker lê o payload inteiro e monta a mensagem de erro sempre como JSON válido ([Broker MQTT](../broker-mqtt/)).
+O plugin do broker lê o payload inteiro e monta a mensagem de erro sempre como JSON válido ([Mensageria (MQTT)](../mensageria/)).
 
 - **`INVALID_JSON` num payload que começa como JSON:** o plugin só aceita exatamente um texto JSON. Sobra depois do valor (`{"value":1}lixo`, `{"a":1}{"b":2}`), NUL em qualquer posição (um terminador de string C contado no comprimento, por exemplo), comentário, aspas simples e vírgula sobrando dão `INVALID_JSON`; espaço, tab, CR e LF em volta do valor passam. Mande só o JSON.
 - **Texto recusado num tópico de string** (`aop/currentUser`, `aop/currentService` e as camadas `rxgui`, `graphics` e `video/url`): o payload que não é texto JSON vale inteiro como string; o que é JSON (`42`, `true`, `{"id":"x"}`) vale como esse valor e falha no `type`.

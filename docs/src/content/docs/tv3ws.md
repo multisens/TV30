@@ -29,7 +29,7 @@ exige, está na documentação que a borda gera (`docker port edgegateway 8085`)
 | mensageria | o serviço e o usuário correntes, os serviços anunciados, o estado e o diretório da aplicação de emissora, o cliente bloqueado | os pedidos de autorização, de pareamento e o aviso de atributos, que a TV mostra; o usuário corrente, quando uma aplicação o troca; os dispositivos remotos registrados |
 | armazenamento | os perfis e a visibilidade de cada um | atributos da emissora, clientes autorizados e bloqueados, sessão (serviço e usuário correntes) e dispositivos remotos registrados |
 
-Os tópicos estão em [Tópicos MQTT](../mqtt-topicos/), e as famílias de chave, em
+Os tópicos estão em [Mensageria (MQTT)](../mensageria/), e as famílias de chave, em
 [Modelo de dados Redis](../modelo-redis/).
 
 ## Versões

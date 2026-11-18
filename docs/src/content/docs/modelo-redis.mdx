@@ -1,0 +1,134 @@
+---
+title: Modelo de dados Redis
+description: O armazenamento do testbed - as famílias de chave e seus donos, o esquema conferido na escrita, a auditoria e como inspecionar.
+---
+
+import NameTree from '../../components/name-tree.astro';
+import { redisKeys } from '../../data/redis-keys.ts';
+
+O **Redis** é o armazenamento único do testbed: guarda o estado que algum componente precisa consultar
+a qualquer momento, como os perfis, a sessão e as credenciais. O que só dispara comportamento passa
+pela [mensageria](../mensageria/); um dado com as duas naturezas vive nos dois, e algumas chaves de
+sessão espelham um tópico retido.
+
+Cada família de chave tem um dono, que define o formato dela, e toda escrita do código passa por uma
+função do próprio Redis que confere o esquema ([O esquema na escrita](#o-esquema-na-escrita)).
+
+## Acesso e inspeção
+
+- **Porta:** 6379, publicada só em `127.0.0.1`, sem senha nem ACL. Os serviços em container usam
+  `redis:6379`; um serviço no computador, `127.0.0.1:6379`
+  ([Desenvolvimento com serviço no host](../dev-local/)).
+- **Interface de inspeção:** o Redis Commander, na 18081 do container, em porta escolhida pelo Docker
+  (`docker compose port redis 18081`). Usuário `admin` e senha `tv30-redis-admin`, trocáveis por
+  `REDIS_COMMANDER_USER` e `REDIS_COMMANDER_PASSWORD` no `.env` da raiz. A senha vale só para a
+  interface.
+- **Pelo terminal:** `docker exec redis redis-cli <comando>`, por exemplo
+  `docker exec redis redis-cli SMEMBERS users:index`.
+
+Gravar pelo Commander ou pelo `redis-cli` (`SET`, `HSET`...) não passa pelo esquema: para gravar como
+o serviço grava, use a função ([Gravar à mão](#gravar-à-mão)).
+
+## As famílias de chave
+
+Cada ramo junta as chaves de mesmo prefixo, e cada nome mostra o tipo e se a chave fica fora do
+esquema, gravada direto.
+
+<NameTree id="redis-keys" tree={redisKeys} label="As famílias de chave do Redis" />
+
+- Os ids de perfil são UUID, e o `{scid}` e os ids de serviço são o `globalServiceId` do BAM.
+- O esquema completo de cada família, campo a campo, está em `infra/redis/schema.json`.
+
+## O esquema na escrita
+
+As famílias do esquema só são gravadas por funções de uma biblioteca do próprio Redis, `tv30`. Cada
+função grava uma operação, confere o esquema e grava de forma atômica, inclusive as regras entre chaves
+(um perfil e a visibilidade dele, um cliente autorizado e o registro dele).
+
+Dado fora do esquema volta como erro `TV30SCHEMA`, com a função, a chave, o campo e o motivo, e nada é
+gravado:
+
+```
+TV30SCHEMA tv30_profile_write: user:0b6e3c1a-7f2d-4e8b-9a5c-3d1f2e4a6b8c field parentalControl: must be "true" or "false" (got "False")
+```
+
+Para o serviço, a recusa é defeito de quem grava. A rota HTTP responde `{"error":200}`, com a mensagem
+no `description` e no log; um tratador de mensagem MQTT só registra no log.
+
+### As funções
+
+As funções se chamam com `numkeys` 0: elas montam o nome da chave pelos argumentos.
+
+| Função | Argumentos | Quem chama |
+|---|---|---|
+| `tv30_session_user`, `tv30_session_service_id` | `<id ou vazio>` | `tv3ws` |
+| `tv30_session_service` | `<campo> <valor> ...` | `tv3ws` |
+| `tv30_profile_write` | `<id> <n> <serviço 1..n> <campo> <valor> ...` | casca, carga inicial |
+| `tv30_profile_last_access` | `<id> <ms>` | casca |
+| `tv30_profile_remove` | `<id>` | casca |
+| `tv30_broadcaster_attributes` | `<id> <scid> <campo> <valor> ...`; valor vazio apaga o campo | `tv3ws` |
+| `tv30_client_write`, `tv30_client_authorize` | `<id> <campo> <valor> ...` | `tv3ws` |
+| `tv30_client_block`, `tv30_client_add_authorized` | `<id>` | `tv3ws` |
+| `tv30_origin_register`, `tv30_origin_remove`, `tv30_origins_clear` | `<origem> <serviço>`, `<origem>`, nada | casca |
+| `tv30_announced_services` | `[<serviço> ...]`; nenhum, nenhum serviço | casca |
+| `tv30_bind_register`, `tv30_bind_remove` | `<serviceId> <entrada JSON>` | borda |
+| `tv30_v100_remote_device_write`, `tv30_v100_remote_device_remove`, `tv30_v100_remote_devices_clear` | `<handle> <campo> <valor> ...`, `<handle>`, nada | `tv3ws` |
+| `tv30_audit` (só leitura) | nada | testes e desenvolvedor |
+| `tv30_version` (só leitura) | nada | desenvolvedor |
+
+O efeito e o retorno de cada uma estão em `functions` no `infra/redis/schema.json`.
+
+### Gravar à mão
+
+```bash
+docker exec redis redis-cli FCALL tv30_session_service_id 0 urn:tv30:service:users-test
+docker exec redis redis-cli FCALL tv30_client_block 0 <clientid>
+docker exec redis redis-cli FCALL_RO tv30_version 0
+```
+
+### Auditoria
+
+```bash
+docker exec redis redis-cli FCALL_RO tv30_audit 0
+```
+
+A auditoria só lê. Ela devolve um `[chave, família, motivo]` por problema: chave de prefixo do esquema
+sem família, tipo errado, campo fora da regra, conjunto acima do teto, regra entre chaves quebrada.
+**Vazia, está tudo no esquema.** O que entrou por fora das funções aparece aqui.
+
+Para voltar ao estado inicial, `docker compose down -v` apaga os volumes: os perfis criados e as
+mensagens retidas do broker. A outra saída é corrigir ou apagar as chaves apontadas.
+
+### Acrescentar ou mudar
+
+- **Uma regra ou uma família nova:** edite `infra/redis/schema.json`. A família nova declara o dono
+  (`owner`); com mais de um escritor, cada um e a operação dele (`writers`).
+- **Uma operação de escrita nova:** escreva a função em `infra/redis/functions.lua` e acrescente o nome
+  em `WRITE_FUNCTIONS`, no fim do arquivo, e em `functions`, no `schema.json`. O serviço a chama pelo
+  adaptador dele: um teste falha se o serviço gravar direto numa família do esquema.
+
+Depois, rode os testes e reconstrua o Redis, na raiz do TV30:
+
+```bash
+bash infra/redis/test/run.sh all
+docker compose build redis
+docker compose up -d redis
+```
+
+O build também carrega a biblioteca, aplica a carga inicial e exige a auditoria vazia: um esquema que
+recuse a carga inicial não vira imagem.
+
+## A partida do container
+
+1. Sobe o `redis-server`, com persistência em disco.
+2. Carrega a biblioteca de funções, **a cada partida**: vale a versão da imagem, e não a que ficou no
+   volume. Sem a biblioteca, o container encerra, com o erro no log.
+3. Só no volume vazio, aplica a carga inicial: os perfis de exemplo, pelas mesmas funções.
+4. Sobe o Commander. O container fica saudável depois da biblioteca e da carga.
+
+Se o `redis-server` ou o Commander cai, o container inteiro cai, e o Docker o sobe de novo.
+
+## Quando o Redis falha
+
+O `tv3ws` e a casca esperam até 1,5 s por comando e reconectam sozinhos; a borda espera 500 ms. A
+falha, inclusive a recusa de esquema, dá `{"error":200}` na rota que dependia dele.

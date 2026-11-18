@@ -12,6 +12,8 @@ export default defineConfig({
         '/nao-implementado': '/TV30/escopo/#fora-do-escopo',
         '/mapa-unidades': '/TV30/escopo/#o-escopo-no-mapa',
         '/apis-tv3ws': '/TV30/tv3ws/',
+        '/mqtt-topicos': '/TV30/mensageria/',
+        '/broker-mqtt': '/TV30/mensageria/',
     },
     integrations: [
         starlight({
@@ -28,6 +30,8 @@ export default defineConfig({
             customCss: ['./src/styles/site.css'],
             components: {
                 Footer: './src/components/footer.astro',
+                PageSidebar: './src/components/page-sidebar.astro',
+                TwoColumnContent: './src/components/two-column-content.astro',
             },
             sidebar: [
                 { label: 'Início', slug: 'index' },
@@ -66,8 +70,7 @@ export default defineConfig({
                                 'emissora-simulada',
                                 'borda-credenciais',
                                 'modelo-redis',
-                                'mqtt-topicos',
-                                'broker-mqtt',
+                                'mensageria',
                                 'mapas-componentes',
                             ],
                         },

@@ -1,0 +1,54 @@
+---
+// One level of the name tree (name-tree.astro): a leaf for each name, a
+// branch for each prefix shared by more than one name.
+import type { NameTree, TreeNode } from '../data/name-tree.ts';
+
+interface Props {
+    id: string;
+    tree: NameTree;
+    nodes: TreeNode[];
+    depth: number;
+}
+
+const { id, tree, nodes, depth } = Astro.props;
+
+function countLeaves(node: TreeNode): number {
+    const own = node.entry ? 1 : 0;
+    return node.children.reduce((total, child) => total + countLeaves(child), own);
+}
+
+function nodeIdOf(node: TreeNode): string {
+    if (!node.entry) {
+        throw new Error(`name tree: leaf without entry ${node.label}`);
+    }
+    return `${id}-${tree.entries.indexOf(node.entry)}`;
+}
+---
+
+<ul class="nt-list">
+    {nodes.map((node) => (
+        <Fragment>
+            {node.entry && (
+                <li class="nt-item">
+                    <button type="button" class="nt-leaf" data-node={nodeIdOf(node)} aria-label={node.entry.name}>
+                        <span class="nt-name">{node.label}</span>
+                        {node.entry.badges.map((badge) => (
+                            <span class="nt-badge">{badge}</span>
+                        ))}
+                    </button>
+                </li>
+            )}
+            {node.children.length > 0 && (
+                <li class="nt-item">
+                    <details class="nt-branch" open={depth === 0}>
+                        <summary>
+                            <span class="nt-name">{node.label}{tree.separator}</span>
+                            <span class="nt-count">{countLeaves(node) - (node.entry ? 1 : 0)}</span>
+                        </summary>
+                        <Astro.self id={id} tree={tree} nodes={node.children} depth={depth + 1} />
+                    </details>
+                </li>
+            )}
+        </Fragment>
+    ))}
+</ul>

@@ -109,9 +109,9 @@ passa sem conferência, e um erro de formato vira falha difícil de achar em out
 
 | Para | Faça | Detalhes |
 |---|---|---|
-| Publicar num tópico novo | Declare o esquema do tópico em `infra/mqtt-broker/plugin/config/schemas.json` e reconstrua o broker. Mensagem fora do esquema é recusada e não chega a quem assina | [Broker MQTT](../broker-mqtt/#acrescentar-ou-mudar-um-esquema) |
-| Assinar um tópico que já existe | Consulte o tópico e o formato da mensagem | [Tópicos MQTT](../mqtt-topicos/) |
-| Guardar um dado novo no Redis | Declare a família de chaves em `infra/redis/schema.json`, com o componente como dono, e grave por uma função do Redis, que confere o formato. Cada chave tem um dono só | [Modelo de dados Redis](../modelo-redis/#esquema-nas-escritas-funções-do-redis-e-auditoria) |
+| Publicar num tópico novo | Declare o esquema do tópico em `infra/mqtt-broker/plugin/config/schemas.json` e reconstrua o broker. Mensagem fora do esquema é recusada e não chega a quem assina | [Mensageria (MQTT)](../mensageria/#acrescentar-ou-mudar-um-esquema) |
+| Assinar um tópico que já existe | Consulte o tópico e o formato da mensagem | [Mensageria (MQTT)](../mensageria/) |
+| Guardar um dado novo no Redis | Declare a família de chaves em `infra/redis/schema.json`, com o componente como dono, e grave por uma função do Redis, que confere o formato. Cada chave tem um dono só | [Modelo de dados Redis](../modelo-redis/#o-esquema-na-escrita) |
 | Atender uma API da norma | Hoje a borda entrega todas as rotas ao `tv3ws`: uma API nova entra nele, com a rota declarada em `infra/edgegateway/routes.json`. Quem confere as credenciais é a borda, e não o serviço | [Borda e credenciais](../borda-credenciais/) |
 
 ## Desenvolver sem reconstruir a imagem
@@ -137,6 +137,6 @@ docker compose --env-file .env -f ~/meu-componente/docker-compose.yml down --rmi
 
 <CardGrid>
     <LinkCard title="Arquitetura" description="Os módulos, os containers e o caminho de cada mensagem." href="../arquitetura/" />
-    <LinkCard title="Tópicos MQTT" description="Quem publica e quem assina cada tópico do testbed." href="../mqtt-topicos/" />
+    <LinkCard title="Mensageria (MQTT)" description="Quem publica e quem assina cada tópico, e o esquema de cada mensagem." href="../mensageria/" />
     <LinkCard title="Modelo de dados Redis" description="As famílias de chaves, os donos e as funções de escrita." href="../modelo-redis/" />
 </CardGrid>

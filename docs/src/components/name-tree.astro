@@ -1,0 +1,52 @@
+---
+// Name tree: the names of a list (topics, keys) split into branches that the
+// reader opens; a click on a leaf shows its facts in the detail panel.
+import '../styles/diagram-detail.css';
+import '../styles/name-tree.css';
+import NameTreeNodes from './name-tree-nodes.astro';
+import { buildTree, type NameTree } from '../data/name-tree.ts';
+
+interface Props {
+    id: string;
+    tree: NameTree;
+    label: string;
+}
+
+const { id, tree, label } = Astro.props;
+const nodes = buildTree(tree);
+---
+
+<div class="nt-tree not-content" data-detail-diagram data-name-tree>
+    <div class="nt-toolbar">
+        <button type="button" class="nt-action" data-tree-action="open">Abrir todos</button>
+        <button type="button" class="nt-action" data-tree-action="close">Fechar todos</button>
+    </div>
+    <div class="nt-layout">
+        <nav class="nt-list-wrap" aria-label={label}>
+            <NameTreeNodes id={id} tree={tree} nodes={nodes} depth={0} />
+        </nav>
+        <aside class="dg-detail nt-detail" aria-live="polite">
+            <p class="dg-hint" data-detail="hint">
+                Abra os ramos e clique num nome para ver o que ele guarda e quem o usa.
+            </p>
+            {tree.entries.map((entry, index) => (
+                <div data-detail={`${id}-${index}`} hidden>
+                    <p class="dg-detail-title">
+                        <code>{entry.name}</code>
+                    </p>
+                    <p set:html={entry.detail}></p>
+                    <dl class="nt-facts">
+                        {entry.facts.map((fact) => (
+                            <div>
+                                <dt>{fact.label}</dt>
+                                <dd set:html={fact.value}></dd>
+                            </div>
+                        ))}
+                    </dl>
+                </div>
+            ))}
+        </aside>
+    </div>
+</div>
+
+<script src="../scripts/name-tree.ts"></script>

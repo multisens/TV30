@@ -1,0 +1,7 @@
+---
+// "On this page" always as the dropdown above the content, at every width,
+// in place of the right column (two-column-content.astro).
+import MobileTableOfContents from '@astrojs/starlight/components/MobileTableOfContents.astro';
+---
+
+{Astro.locals.starlightRoute.toc && <MobileTableOfContents />}

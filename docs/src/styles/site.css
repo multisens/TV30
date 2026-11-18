@@ -62,3 +62,26 @@
     --tv30-channel-websocket: #d946ef;
     --tv30-channel-discovery: #f97316;
 }
+
+/* Page width: one content column, wider than the Starlight default, with
+   "On this page" as the dropdown above it at every width
+   (components/page-sidebar.astro, components/two-column-content.astro). */
+
+:root {
+    --sl-content-width: 60rem;
+}
+
+:root[data-has-toc] {
+    --sl-mobile-toc-height: 3rem;
+}
+
+/* A heading reached by a link stops below the "On this page" dropdown, at
+   every width. */
+
+html[data-has-toc] {
+    scroll-padding-top: calc(1.5rem + var(--sl-nav-height) + var(--sl-mobile-toc-height));
+}
+
+.tv30-main-pane {
+    isolation: isolate;
+}

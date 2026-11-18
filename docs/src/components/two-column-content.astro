@@ -1,0 +1,15 @@
+---
+// The page content in one column, with the "On this page" dropdown above it
+// (page-sidebar.astro) instead of a right column.
+---
+
+<div class="tv30-one-column">
+    {Astro.locals.starlightRoute.toc && (
+        <aside class="print:hidden">
+            <slot name="right-sidebar" />
+        </aside>
+    )}
+    <div class="tv30-main-pane">
+        <slot />
+    </div>
+</div>

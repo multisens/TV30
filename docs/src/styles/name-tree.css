@@ -1,0 +1,172 @@
+/* Name tree (components/name-tree.astro): the branches on the left, the
+   detail panel on the right; below the tree, on a narrow column. */
+
+.nt-tree {
+    container-type: inline-size;
+    margin-block: 1rem;
+}
+
+.nt-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+}
+
+.nt-action {
+    margin: 0;
+    padding: 0.25rem 0.8rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--sl-color-white);
+    font: inherit;
+    font-size: var(--sl-text-xs);
+    cursor: pointer;
+}
+
+.nt-action:hover {
+    border-color: var(--sl-color-accent);
+}
+
+.nt-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.nt-list-wrap {
+    min-width: 0;
+    font-size: var(--sl-text-sm);
+}
+
+.nt-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.nt-list .nt-list {
+    margin-inline-start: 0.55rem;
+    padding-inline-start: 0.8rem;
+    border-inline-start: 1px solid var(--sl-color-gray-5);
+}
+
+.nt-item {
+    margin: 0;
+}
+
+.nt-branch > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.3rem;
+    border-radius: 0.3rem;
+    color: var(--sl-color-white);
+    cursor: pointer;
+    list-style: none;
+}
+
+.nt-branch > summary::-webkit-details-marker {
+    display: none;
+}
+
+.nt-branch > summary::before {
+    content: '▸';
+    display: inline-block;
+    width: 0.8rem;
+    color: var(--sl-color-gray-3);
+    transition: transform 0.15s;
+}
+
+.nt-branch[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.nt-branch > summary:hover,
+.nt-leaf:hover {
+    background: var(--sl-color-gray-6);
+}
+
+.nt-name {
+    font-family: var(--__sl-font-mono);
+    font-size: var(--sl-text-xs);
+    overflow-wrap: anywhere;
+}
+
+.nt-count {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+}
+
+.nt-leaf {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    width: 100%;
+    margin: 0;
+    padding: 0.2rem 0.3rem 0.2rem 1.5rem;
+    border: 0;
+    border-radius: 0.3rem;
+    background: transparent;
+    color: var(--sl-color-white);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+.nt-leaf.is-selected {
+    background: color-mix(in srgb, var(--sl-color-accent) 22%, transparent);
+}
+
+.nt-badge {
+    padding: 0 0.4rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 999px;
+    color: var(--sl-color-gray-2);
+    font-size: 0.7rem;
+    line-height: 1.4;
+}
+
+.nt-detail {
+    position: sticky;
+    bottom: 0;
+    max-height: 45vh;
+    margin-top: 0;
+    overflow-y: auto;
+    background: var(--sl-color-bg);
+}
+
+.nt-facts {
+    display: grid;
+    gap: 0.3rem;
+    margin: 0;
+}
+
+.nt-facts > div {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 0.5rem;
+}
+
+.nt-facts dt {
+    color: var(--sl-color-gray-3);
+}
+
+.nt-facts dd {
+    margin: 0;
+}
+
+@container (min-width: 40rem) {
+    .nt-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: start;
+    }
+
+    .nt-detail {
+        top: calc(var(--sl-nav-height) + var(--sl-mobile-toc-height) + 1rem);
+        bottom: auto;
+        max-height: calc(100vh - var(--sl-nav-height) - var(--sl-mobile-toc-height) - 2rem);
+    }
+}

@@ -269,4 +269,4 @@ bash scripts/test-virgin-up.sh
 
 Ficam fora de `scripts/`:
 - **`infra/mqtt-broker/plugin/tests/test_errors_json.sh` e `test_all_validations.sh`:** os testes de integração do plugin do broker, num broker descartável (seção *Broker*, acima).
-- **`infra/mqtt-broker/brokertimetest/`:** medição do tempo de resposta do broker com vários clientes em paralelo, pelos tópicos de teste de latência que o plugin responde ([Broker MQTT](../broker-mqtt/#teste-de-latência)).
+- **`infra/mqtt-broker/brokertimetest/`:** medição do tempo de resposta do broker com vários clientes em paralelo, pelos tópicos de teste de latência que o plugin responde ([Mensageria (MQTT)](../mensageria/#teste-de-latência)).
