@@ -61,7 +61,7 @@ Publicadores, consumidores e flag de retenção conferidos nas chamadas `publish
 
 O `scripts/test-auth.sh` lê a abertura do pop-up direto do broker (primeira mensagem do tópico) e não depende do prazo.
 
-**O aviso da C.6.14.5** (`aop/display/layers/popup/info`). O tv3ws o publica, sem retenção, logo depois de gravar atributos de emissora com alguma mudança ([APIs do tv3ws](../apis-tv3ws/)). Na página da TV (`aop/public/js/popup.js`, tipo `info`):
+**O aviso da C.6.14.5** (`aop/display/layers/popup/info`). O tv3ws o publica, sem retenção, logo depois de gravar atributos de emissora com alguma mudança ([tv3ws](../tv3ws/#o-que-o-tv3ws-define)). Na página da TV (`aop/public/js/popup.js`, tipo `info`):
 - o texto entra escapado no HTML, como o do sim/não (ele traz o apelido do perfil e o nome do serviço), sem botões, e as teclas seguem para a página;
 - o aviso fecha sozinho no `timeout` da mensagem; prazo ausente, zero, negativo ou que não é número vale 5 s, e o `{"close":true}` não o fecha;
 - ele nunca tira da tela outro pop-up: com um sim/não, QR code, PIN ou outro aviso aberto, espera numa fila e aparece quando a camada fica livre. Com 3 avisos já esperando, o novo é descartado, com registro no console. Um aviso na tela que um sim/não, QR code ou PIN substitui volta para o começo da fila e aparece inteiro depois;

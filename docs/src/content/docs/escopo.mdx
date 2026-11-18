@@ -165,7 +165,7 @@ Comportamentos das APIs implementadas que não seguem a norma.
 | Uma borda com duas superfícies, a interna (44642, HTTP) e a externa (44643, HTTPS) | A C.3.4 define as duas URLs base; concentrar a validação de credencial e a negociação de versão num ponto de entrada por superfície | [Borda e credenciais](../borda-credenciais/) |
 | Credenciais validadas só na borda (plugin `tv30-auth`); o tv3ws não confere credencial | Um ponto de validação; as portas do tv3ws não são publicadas | [Borda e credenciais](../borda-credenciais/) |
 | TLS da 44643 terminado na borda | A borda precisa ler os cabeçalhos para validar a credencial | [Borda e credenciais](../borda-credenciais/) |
-| Versões de API registradas no `routes.json` e negociadas na borda | Uma declaração só das versões de cada rota; o caminho interno `/v<X.Y>` é do testbed | [APIs do tv3ws](../apis-tv3ws/) |
+| Versões de API registradas no `routes.json` e negociadas na borda | Uma declaração só das versões de cada rota; o caminho interno `/v<X.Y>` é do testbed | [Borda e credenciais](../borda-credenciais/#acrescentar-ou-mudar-uma-rota) |
 | Avatar como nome de arquivo do diretório de miniaturas | A Tabela 7 pede *file path* no `avatar`. As telas do AoP embutem o arquivo, sem rota própria: uma rota do AoP entregaria o avatar sem a restrição da Tabela C.75, e um SVG aberto como documento na origem do AoP rodaria o script dele | [Modelo de dados Redis](../modelo-redis/) |
 | Id do perfil em UUID estrito | A Tabela 7 pede "UUID string" no `id` | [Modelo de dados Redis](../modelo-redis/) |
 | Portas fixas só as necessárias | A norma fixa só a 44642 (C.3.4); as demais fixas são as que se digitam ou que o `/manifest` anuncia | [Instalação](../instalacao/) |

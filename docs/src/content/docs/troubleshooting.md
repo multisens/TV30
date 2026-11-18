@@ -304,7 +304,7 @@ A TV atende uma autorização de cada vez. Enquanto houver na tela o sim/não de
 
 ## O QR code ou o PIN do pareamento some antes da hora, ou fica na tela
 
-O pop-up do QR code e o do PIN ficam na tela até o fim do pareamento (C.4.3.2 e C.4.3.3), o `GET /tv3/token` com a resposta ao desafio aceita. Nessa hora o tv3ws publica `{"close":true}` no mesmo tópico, e a camada gráfica fecha o pop-up. O pop-up também tem uma trava de 120 s, escolhida pelo projeto ([APIs do tv3ws](../apis-tv3ws/)).
+O pop-up do QR code e o do PIN ficam na tela até o fim do pareamento (C.4.3.2 e C.4.3.3), o `GET /tv3/token` com a resposta ao desafio aceita. Nessa hora o tv3ws publica `{"close":true}` no mesmo tópico, e a camada gráfica fecha o pop-up. O pop-up também tem uma trava de 120 s, escolhida pelo projeto ([tv3ws](../tv3ws/#o-que-o-tv3ws-define)).
 
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|

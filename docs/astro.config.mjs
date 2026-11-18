@@ -11,6 +11,7 @@ export default defineConfig({
         '/decisoes': '/TV30/escopo/#decisões-do-projeto',
         '/nao-implementado': '/TV30/escopo/#fora-do-escopo',
         '/mapa-unidades': '/TV30/escopo/#o-escopo-no-mapa',
+        '/apis-tv3ws': '/TV30/tv3ws/',
     },
     integrations: [
         starlight({
@@ -63,12 +64,17 @@ export default defineConfig({
                             items: [
                                 'arquitetura',
                                 'emissora-simulada',
-                                'apis-tv3ws',
                                 'borda-credenciais',
                                 'modelo-redis',
                                 'mqtt-topicos',
                                 'broker-mqtt',
                                 'mapas-componentes',
+                            ],
+                        },
+                        {
+                            label: 'Componentes',
+                            items: [
+                                'tv3ws',
                             ],
                         },
                     ],
