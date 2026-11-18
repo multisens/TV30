@@ -41,8 +41,8 @@ bcast não sobem.
 
 Para saber a porta de host que o Docker escolheu, use `docker compose port <serviço> <porta>`, por
 exemplo `docker compose port bcast 8081`. Como fixar ou trocar as portas está em
-[Instalação](../instalacao/#portas). O anunciante SSDP não é container: roda no computador, e o
-`./tv30 up` o sobe ([Descoberta SSDP](../ssdp/)).
+[Instalação](../instalacao/#portas-e-endereços). O anunciante SSDP não é container: roda no computador, e o
+`./tv30 up` o sobe ([Descoberta na rede](../instalacao/#descoberta-na-rede)).
 
 Se um processo de dentro da borda ou do Redis cai, o container inteiro cai, e o Docker o sobe de novo.
 

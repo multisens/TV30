@@ -1,210 +1,234 @@
 ---
 title: Instalação
+description: Pré-requisitos, cada sistema operacional, portas, variáveis do .env, HTTPS, descoberta na rede e submódulos.
 ---
 
+Os comandos para subir e o que experimentar depois estão em
+[Subir e passear pela TV](../subir-e-passear/). Esta página traz o que muda de um sistema para
+outro e o que se pode configurar.
 
 ## Pré-requisitos
 
-- **Docker + Docker Compose v2**
-- **Git** com suporte a submódulos. Os quatro submódulos vêm por HTTPS, sem chave SSH no GitHub (ver [Submódulos](#submódulos))
-- **Node.js**, só para rodar os testes de unidade ou um módulo fora do Docker ([Como testar](../como-testar/), [Desenvolvimento com serviço no host](../dev-local/))
+- **Docker** com **Docker Compose v2**.
+- **Git**. Os quatro submódulos vêm por HTTPS, sem chave SSH ([Submódulos](#submódulos)).
+- **Node.js**, só para rodar os testes de unidade ou um módulo fora do Docker
+  ([Como testar](../como-testar/), [Desenvolvimento com serviço no host](../dev-local/)).
 
----
+:::caution[Sem o `.env`, o receptor não sobe]
+O `aop`, o `tv3ws`, o `bcast` e o broker só sobem com os perfis `mqtt` e `linux` do compose. O
+`.env.example` já os liga (`COMPOSE_PROFILES=mqtt,linux`): copie-o para `.env` antes de subir. Sem
+eles, sobem só o Redis e a borda.
+:::
 
-## Linux nativo
+## Linux
 
-Os comandos para subir e o que experimentar depois estão em
-[Subir e passear pela TV](../subir-e-passear/). O `./tv30 up` faz `docker compose up -d` e sobe o
-anunciante SSDP; só `docker compose up -d` também funciona, sem a descoberta SSDP.
-
-> **Importante:** sem o `.env` (ou sem `COMPOSE_PROFILES=mqtt,linux` definido de alguma forma), o receptor não sobe. O `aop`, o `tv3ws`, o `bcast` e o `sysctl-init` têm `profiles: ["linux"]`, e o `mosquitto` tem `["mqtt"]` (`docker-compose.yml` e `infra/docker-compose.yml`); sem o perfil ativo, eles ficam fora do `up`. Sobem só o `redis`, a borda (`edgegateway`) e as tarefas `tv30-preflight`, `tv30-userfiles-seed` e `tv30-tls-init`.
-
-### Imagens publicadas ou código do clone
-
-Com o `.env.example`, o compose usa as imagens publicadas no Docker Hub (`DOCKERHUB_NS=labmultisens`, `IMAGE_TAG=latest`). O CI de cada submódulo constrói e publica a imagem dele a cada push na `main`, com as tags `latest` e o hash do commit. A `latest` pode, portanto, estar atrás do código do seu clone, com commits ainda não enviados ou enviados depois da última publicação.
-
-- Para rodar o código do clone: `docker compose up -d --build`, ou `docker compose build <serviço>` e depois `docker compose up -d`.
-- Sem `DOCKERHUB_NS` e `IMAGE_TAG` no `.env`, os nomes padrão do compose são `tv30/tv30-<módulo>:dev` (aop, tv3ws e bcast) e `tv30/tv30-<componente>:latest` (borda, broker e Redis). Sem a imagem no registro, o compose a constrói a partir do código, pela seção `build` de cada serviço.
-
-### O que não vem no clone
-
-- **Os segmentos de vídeo do bcast.** Os `.ts`, `.m3u8` e `.mp4` de `bcast/public/` estão no `bcast/.gitignore`; das pastas `bcast/public/hls/<nome>/`, o repositório só traz o `events.json`. Os segmentos são preparados fora da stack, a partir de um vídeo, com `bcast/scripts/ffmpeg-hls.sh` ou `ffmpeg-dash.sh` (precisam de FFmpeg). A `bcast/public/` é montada no container (`docker-compose.yml`), e o que estiver nela é servido sem rebuild.
-
-### Certificado e descoberta
-
-Duas coisas acontecem sozinhas na subida:
-
-- **Certificado do receptor.** O serviço `tls-init` gera em `.tv30/tls` um certificado autoassinado, usado no TLS da 44643, no HTTPS interno do tv3ws, no `serverCert` do pareamento e no `wss://` do ponto de entrada do dispositivo remoto ([HTTPS](#https)).
-- **Descoberta SSDP (C.3.4).** O `./tv30 up` compila e sobe, no host e fora do Docker, o anunciante de `infra/edgegateway/ssdp/`, com o IP da máquina detectado. Libere a UDP 1900 e a TCP 44642 no firewall. Arranjo e permissões em [Descoberta SSDP](../ssdp/).
-
----
+`./tv30 up` sobe a stack (`docker compose up -d`) e o anunciante da
+[descoberta na rede](#descoberta-na-rede). Só `docker compose up -d` também funciona, sem a
+descoberta.
 
 ## macOS
 
-O Docker roda numa VM (Docker Desktop, Colima ou outro); o anunciante SSDP roda fora dela, pelo `./tv30 up`, como no Linux. Em Apple Silicon, as imagens do Docker Hub são `amd64`, e a borda não roda emulada: construa as imagens com `docker compose build` antes do `./tv30 up` (a borda escolhe o Go pela arquitetura, `infra/edgegateway/Dockerfile`). O terminal precisa da permissão de Rede Local para o anúncio sair (Ajustes > Privacidade e Segurança > Rede Local).
+O Docker roda numa VM (Docker Desktop, Colima ou outro). O anunciante roda fora dela, pelo
+`./tv30 up`, como no Linux.
 
----
+- **Apple Silicon:** as imagens do Docker Hub são `amd64`, e a borda não roda emulada. Rode
+  `docker compose build` antes do primeiro `./tv30 up`.
+- O terminal precisa da permissão de **Rede Local** (Ajustes > Privacidade e Segurança > Rede Local)
+  para o anúncio sair.
 
-## Windows + WSL2
+## Windows com WSL2
 
-### Configuração do WSL2
+1. Em `%USERPROFILE%\.wslconfig`:
 
-Edite `~/.wslconfig` no Windows (use o caminho `%USERPROFILE%\.wslconfig`):
+   ```ini
+   [wsl2]
+   networkingMode=NAT
+   localhostForwarding=true
+   vmIdleTimeout=86400000
+   ```
 
-```ini
-[wsl2]
-networkingMode=NAT
-localhostForwarding=true
-vmIdleTimeout=86400000
-```
+   **Não use** `networkingMode=mirrored`: com o Docker, o Windows deixa de alcançar as portas dos
+   containers.
 
-**Importante:** **não use** `networkingMode=mirrored`. Mirrored + Docker tem problemas conhecidos de NAT/iptables que impedem o host de alcançar as portas dos containers.
+2. `wsl --shutdown` e reabra a distribuição.
 
-Depois de editar:
+3. Dentro do WSL, na raiz do clone:
 
-```powershell
-wsl --shutdown
-```
+   ```bash
+   cp .env.example .env
+   docker compose up -d
+   ```
 
-E reabra a distribuição.
+4. Confira, no PowerShell, que a 8080 está em `Listen`:
 
-### Verificação
+   ```powershell
+   Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 8080 }
+   ```
 
-```powershell
-Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 8080 }
-```
+O anúncio na rede não sai de dentro do WSL2: o anunciante tem de rodar no Windows, com
+`.\tv30.ps1 up` no PowerShell, na raiz do clone. Sem `docker` no PowerShell, o script usa o do WSL.
+Não foi medido se outro aparelho da rede alcança as portas que o Docker do WSL2 publica: em NAT, o
+WSL2 só as repassa ao `localhost` do Windows.
 
-Com a stack de pé, deve mostrar a porta 8080 em `127.0.0.1` (e em `::1`), com estado `Listen`.
+## Imagens publicadas ou código do clone
 
-### Subindo a stack
+- Com o `.env.example`, o compose usa as imagens publicadas no Docker Hub (`DOCKERHUB_NS`,
+  `IMAGE_TAG=latest`). A `latest` é o último build da `main` de cada submódulo e pode estar atrás do
+  seu clone.
+- Para rodar o código do clone: `docker compose up -d --build`.
 
-Dentro do WSL:
+## Portas e endereços
 
-```bash
-cd /mnt/d/Proj_CEFET/TV30  # ou onde clonou
-cp .env.example .env       # ativa profiles "linux" e "mqtt"
-docker compose up -d
-```
+A norma fixa só a 44642 (C.3.4). As demais portas fixas são as que se digitam ou que o `/manifest`
+anuncia; as outras saem numa porta escolhida pelo Docker, que muda quando o container é recriado.
 
-Nenhuma porta precisa mudar no Windows: a página da TV conecta no MQTT pelo próprio AoP (`ws://localhost:8080/mqtt`), e a 9001 do Mosquitto sai numa porta que o Docker escolhe (ver [Portas](#portas)). Para quem roda o AoP fora do Docker no Windows, há uma opção, que não é regra, para fixá-la em 9003: [Desenvolvimento com serviço no host](../dev-local/#aop-fora-do-docker-no-windows-opção).
-
-> **Descoberta SSDP no Windows:** de dentro do WSL2, o anúncio não sai da máquina. O anunciante tem de rodar no Windows: `.\tv30.ps1 up`, no PowerShell, na raiz do clone. Sem `docker` no PowerShell, o script chama o do WSL (`wsl docker compose`). Não medido no Windows: se outro aparelho da rede recebe o anúncio ([Descoberta SSDP](../ssdp/)) e alcança as portas que o Docker do WSL2 publica (44642, 44643), que o WSL2 em NAT só repassa ao `localhost` do Windows.
-
----
-
-## Endereços depois de subir
-
-| O quê | Onde |
-|---|---|
-| AoP (interface do receptor) | `http://localhost:8080` (`AOP_PUBLIC_PORT`) |
-| APIs, superfície interna | `http://localhost:44642` (por exemplo, `/health` e `/manifest`) |
-| APIs, superfície externa | `https://localhost:44643`, com o certificado autoassinado do receptor (`curl -k`, ou confie em `.tv30/tls/cert.pem`) |
-| Documentação Swagger das duas superfícies | porta dinâmica: `docker port edgegateway 8085` |
-| bcast (apps de emissora e mídia, direto) | porta dinâmica: `docker compose port bcast 8081` |
-| Redis Commander | porta dinâmica: `docker port redis 18081`; pede login (usuário `admin` e senha `tv30-redis-admin` por padrão; `REDIS_COMMANDER_USER` e `REDIS_COMMANDER_PASSWORD` no `.env` da raiz). A conexão com o banco (6379) segue sem senha |
-
-`docker compose ps` mostra as portas de todos os serviços; as fixas e as dinâmicas estão em [Portas](#portas).
-
----
-
-## Configurações via `.env`
-
-O `.env` da raiz (cópia do `.env.example`, que explica cada variável) controla os padrões da stack. O `.env` não vai para o repositório (`.gitignore`). As variáveis, com o valor do `.env.example`:
-
-| Variável | Valor no `.env.example` | Para quê |
+| O quê | Porta no host | Para achar ou mudar |
 |---|---|---|
-| `COMPOSE_PROFILES` | `mqtt,linux` | Liga o broker, o AoP, o tv3ws, o bcast e o `sysctl-init`. Sem ela, o receptor não sobe |
-| `DOCKERHUB_NS`, `IMAGE_TAG` | `labmultisens`, `latest` | Nome e tag das imagens (ver *Imagens publicadas ou código do clone*, acima) |
-| `EDGE_EXT_PUBLISH` | comentada (padrão `44643:44643`) | O que vai em `ports` para a superfície externa da borda. O padrão a fixa na 44643 do host; só o número (`44643`) a põe numa porta escolhida pelo Docker, que o `/manifest` não anuncia (ver [Portas](#portas)) |
-| `BCAST_PUBLISH`, `MQTT_WS_PUBLISH` | comentadas (padrões `8081` e `9001`) | O que vai em `ports` para o bcast e o WebSocket do Mosquitto. Só o número (o padrão) = a porta do container numa porta de host escolhida pelo Docker; `host:container` fixa (ver [Portas](#portas)) |
-| `AOP_PUBLIC_PORT` | comentada (padrão `8080`) | Porta do AoP no host, fixa, e das origens das aplicações de emissora; por ela passa também o MQTT por WebSocket da página da TV (`/mqtt`) |
-| `APPS_DOMAIN` | comentada (padrão `apps.localhost`) | Domínio dos hosts próprios das aplicações de emissora. `*.localhost` só resolve para a própria máquina de quem abre a tela do AoP |
-| `EDGE_VARIANT` | `linux` | Onde a borda procura o tv3ws: `linux` (container) ou `windows` (o tv3ws no host; [Desenvolvimento com serviço no host](../dev-local/)) |
-| `JWT_SECRET`, `JWT_ISSUER` | comentadas | Segredo e emissor do access token, o mesmo valor para o tv3ws e a borda. Sem elas, valem os padrões de desenvolvimento do compose; troque fora do laboratório |
-| `AUTH_ENFORCE` | comentada (padrão `enforce`) | `enforce` recusa a credencial inválida; `warn`, opção transitória, só avisa nas recusas de credencial (104, 107, 108) ([Borda e credenciais](../borda-credenciais/)) |
-| `REDIS_COMMANDER_USER`, `REDIS_COMMANDER_PASSWORD` | comentadas (padrões `admin` e `tv30-redis-admin`) | Login da interface do redis-commander. A conexão com o banco (6379) segue sem senha |
-| `SERVER_URL` | `localhost` | Host que aparelhos externos usam para abrir os WebSockets de remote-device; numa rede de verdade, o IP desta máquina |
-| `TV3WS_WS_TLS` | comentada (padrão: `wss://`) | `false` = ponto de entrada do dispositivo remoto (registro, C.6.15.2) em `ws://`. O ponto de entrada local sai sempre em `ws://`, e não no `wss://` da Tabela C.80 ([Escopo, limites e decisões](../escopo/#onde-o-testbed-difere-da-norma)) |
-| `SSDP_ENABLED`, `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Liga o anunciante (padrão `true`), fixa o host do anúncio e do `/manifest` (sobreposição; sem ele, o IP detectado) e força a interface |
-| `WEBMEDIA_REMOTE_MEDIA_PATH`, `WEBMEDIA_REMOTE_USERFILES_PATH` | comentadas | Caminhos no dispositivo remoto do demo webmedia |
+| Tela do receptor (AoP) e aplicações de emissora | 8080 | `AOP_PUBLIC_PORT`. As aplicações abrem em `http://<app>.apps.localhost:8080/graphicsAppProxy/...`, e o MQTT da página da TV passa por `/mqtt` |
+| APIs, superfície interna (HTTP) | 44642 | fixa pela norma |
+| APIs, superfície externa (HTTPS) | 44643 | `EDGE_EXT_PUBLISH`; outra porta pede também `EDGE_HTTPS_PORT` igual, senão o `/manifest` anuncia a 44643 |
+| WebSockets dos dispositivos remotos | 45000–45199 | — |
+| Broker MQTT | 1883 | — |
+| Broker MQTT por WebSocket | escolhida pelo Docker | `docker compose port mosquitto 9001`; `MQTT_WS_PUBLISH` fixa |
+| Redis | 6379, só em `127.0.0.1` | sem senha |
+| Redis Commander | escolhida pelo Docker | `docker port redis 18081`; login `admin`, senha `tv30-redis-admin` |
+| Documentação Swagger das APIs | escolhida pelo Docker | `docker port edgegateway 8085` |
+| bcast (aplicações e mídia, direto) | escolhida pelo Docker | `docker compose port bcast 8081`; `BCAST_PUBLISH` fixa |
+| Anunciante da descoberta | UDP 1900 | fora do Docker |
 
-### Portas
+`docker compose ps` mostra todas. Para fixar uma porta escolhida pelo Docker, defina a variável no
+`.env` como `host:container` (por exemplo, `BCAST_PUBLISH=8081:8081`) e recrie o serviço
+(`docker compose up -d bcast`).
 
-A norma só fixa a 44642 (C.3.4); as demais portas fixas são decisão do projeto.
+Na subida, a stack avisa quando a 1883, a 6379, a 44643 ou a 8080 já estão ocupadas no host, e não
+sobe se a 44642 estiver.
 
-| Serviço | Porta no host | Observação |
+## Variáveis do `.env`
+
+O `.env` da raiz é uma cópia do `.env.example`, que comenta cada variável. As que vêm comentadas
+valem o padrão entre parênteses.
+
+| Variável | Valor | Para quê |
 |---|---|---|
-| AoP (UI do receptor) | 8080, fixa (`AOP_PUBLIC_PORT`) | http://localhost:8080; o MQTT da página da TV passa por `/mqtt` |
-| Aplicações de emissora | 8080, fixa | `http://<app>.apps.localhost:8080/graphicsAppProxy/...` |
-| edgegateway, superfície interna | 44642, fixa (C.3.4) | HTTP |
-| edgegateway, superfície externa | 44643, fixa por padrão (`EDGE_EXT_PUBLISH`) | HTTPS |
-| edgegateway, documentação | escolhida pelo Docker | Swagger UI: `docker port edgegateway 8085` |
-| tv3ws | — | não publicado no host: os clientes entram pela borda |
-| tv3ws, WebSockets de remote-device | 45000–45199, fixas | `wss://SERVER_URL:<porta>`, devolvida no registro; o ponto de entrada local, `ws://SERVER_URL:<porta>` (a Tabela C.80 pede `wss://`: [Escopo, limites e decisões](../escopo/#onde-o-testbed-difere-da-norma)) |
-| Anunciante SSDP, no host | UDP 1900 | subido pelo `./tv30 up` |
-| bcast | escolhida pelo Docker (`BCAST_PUBLISH`) | `docker compose port bcast 8081` |
-| Mosquitto | 1883, fixa | MQTT por TCP |
-| Mosquitto, WebSocket | escolhida pelo Docker (`MQTT_WS_PUBLISH`) | `docker compose port mosquitto 9001` |
-| Redis | 6379, fixa, só em `127.0.0.1` | sem senha |
-| Redis Commander | escolhida pelo Docker | `docker port redis 18081`; login em `REDIS_COMMANDER_USER` e `REDIS_COMMANDER_PASSWORD` |
+| `COMPOSE_PROFILES` | `mqtt,linux` | Liga o broker, o AoP, o tv3ws e o bcast |
+| `DOCKERHUB_NS`, `IMAGE_TAG` | `labmultisens`, `latest` | Nome e tag das imagens |
+| `EDGE_EXT_PUBLISH`, `BCAST_PUBLISH`, `MQTT_WS_PUBLISH` | comentadas | A porta de host da superfície externa, do bcast e do WebSocket do broker ([Portas e endereços](#portas-e-endereços)) |
+| `AOP_PUBLIC_PORT` | comentada (`8080`) | A porta da tela do receptor e das origens das aplicações de emissora |
+| `APPS_DOMAIN` | comentada (`apps.localhost`) | O domínio dos hosts das aplicações. `*.localhost` só resolve na máquina de quem abre a tela; com a tela aberta de outra máquina, use um domínio resolvível na rede |
+| `EDGE_VARIANT` | `linux` | Onde a borda procura o tv3ws: `linux` (container) ou `windows` (no host; [Desenvolvimento com serviço no host](../dev-local/)) |
+| `JWT_SECRET`, `JWT_ISSUER` | comentadas | Segredo e emissor do access token, os mesmos para o tv3ws e a borda. Troque fora do laboratório |
+| `AUTH_ENFORCE` | comentada (`enforce`) | `warn` só avisa nas recusas de credencial ([Borda e credenciais](../borda-credenciais/)) |
+| `REDIS_COMMANDER_USER`, `REDIS_COMMANDER_PASSWORD` | comentadas (`admin`, `tv30-redis-admin`) | Login do Redis Commander |
+| `SERVER_URL` | `localhost` | O host que os aparelhos da rede usam para abrir os WebSockets dos dispositivos remotos: numa rede de verdade, o IP desta máquina |
+| `TV3WS_WS_TLS` | comentada | `false` abre o ponto de entrada do dispositivo remoto em `ws://`, e não em `wss://` |
+| `SSDP_ENABLED`, `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Descoberta na rede: `false` não sobe o anunciante; fixa o host anunciado, em vez do IP detectado; força a interface |
+| `WEBMEDIA_REMOTE_MEDIA_PATH`, `WEBMEDIA_REMOTE_USERFILES_PATH` | comentadas | Caminhos no dispositivo remoto do exemplo webmedia |
 
-Para achar a porta de host de uma delas, na raiz do clone: `docker compose port <serviço> <porta do container>`, por exemplo `docker compose port bcast 8081` ou `docker compose port mosquitto 9001`; ou `docker compose ps`, que mostra todas. Para fixar uma delas, defina no `.env` `BCAST_PUBLISH` ou `MQTT_WS_PUBLISH` como `host:container` (por exemplo, `BCAST_PUBLISH=8081:8081`) e recrie o serviço (`docker compose up -d <serviço>`).
+## HTTPS
 
-A 44643 fica fixa porque o `/manifest` do tv3ws anuncia o `Server-SecureBaseURL` em `<host>:<EDGE_HTTPS_PORT>`, com padrão 44643 (`secureBaseURL`, em `tv3ws/src/ssdp-config.ts`), e não sabe a porta de host que o Docker escolheria. O `EDGE_EXT_PUBLISH` (padrão `44643:44643`, `infra/docker-compose.yml`) muda isso: outra porta de host fixa (por exemplo, `EDGE_EXT_PUBLISH=44743:44643`) pede também `EDGE_HTTPS_PORT=44743` no `.env` da raiz, que o tv3ws lê pelo `env_file`, senão o `/manifest` anuncia a 44643; só o número (`EDGE_EXT_PUBLISH=44643`) põe a 44643 numa porta escolhida pelo Docker (`docker compose port edgegateway 44643`), que o `/manifest` não anuncia. Quanto às portas, o `tv30-preflight` avisa, sem bloquear, quando a 1883, a 6379, a 44643 ou a do AoP já estão ocupadas no host, e só para a subida quando a 44642 está ocupada por outro processo (`scripts/preflight.sh`).
+Na primeira subida, a stack gera em `.tv30/tls` um certificado autoassinado do receptor. Ele serve à
+superfície externa (44643), ao pareamento do cliente não local e ao `wss://` do ponto de entrada do
+dispositivo remoto.
 
----
-
-### HTTPS
-
-A superfície externa da borda (44643) fala HTTPS, com o certificado autoassinado gerado na primeira subida em `.tv30/tls`. O mesmo certificado serve ao HTTPS interno do tv3ws, ao pareamento do cliente não local (`serverCert`) e ao ponto de entrada WebSocket do dispositivo remoto (`wss://`); o ponto de entrada local sai sempre em `ws://`.
-
-- **Cliente de teste:** `curl -k https://localhost:44643/...`, ou confie no `.tv30/tls/cert.pem`. O `subjectAltName` cobre só `localhost` e `127.0.0.1`.
-- **Dispositivo remoto que não confia no certificado:** confie nele, ou use `TV3WS_WS_TLS=false`, que abre o ponto de entrada do dispositivo remoto em `ws://`.
+- **Cliente de teste:** `curl -k https://localhost:44643/...`, ou confie em `.tv30/tls/cert.pem`. O
+  certificado vale só para `localhost` e `127.0.0.1`.
+- **Dispositivo remoto que não confia no certificado:** confie nele, ou use `TV3WS_WS_TLS=false`.
 - **Trocar o certificado:** ponha `cert.pem` e `key.pem` em `.tv30/tls` e recrie a stack.
-- **tv3ws no host (`npm run dev`):** `TV30_TLS_DIR=../.tv30/tls`.
 
----
+## Descoberta na rede
+
+O receptor se anuncia na rede local por SSDP (ABNT NBR 25608, C.3.4), e um aparelho da rede o acha
+sem saber o IP. Sem o anúncio, o aparelho ainda chega ao receptor pelo IP:
+`http://<IP>:44642/manifest`.
+
+O anunciante roda **no computador, fora do Docker**, nos três sistemas: de dentro de um container, o
+anúncio só sai em Linux nativo. Ele anuncia o IP da interface da rota padrão e acompanha a troca de
+rede.
+
+| Comando | O que faz |
+|---|---|
+| `./tv30 up` | Sobe a stack e o anunciante, que é compilado na primeira vez e quando o código muda |
+| `./tv30 down` | Encerra o anunciante, que se despede da rede, e derruba a stack |
+| `./tv30 status` | Diz se o anunciante está de pé |
+| `./tv30 logs` | Mostra o log do anunciante |
+
+No Windows, `.\tv30.ps1`, com os mesmos comandos.
+
+### Firewall
+
+- Libere a UDP 1900 e a TCP 44642, e a 44643 para o cliente não local.
+- **macOS:** aceite o pedido de conexões na primeira execução, e dê ao terminal a permissão de Rede
+  Local. Sem ela, o log mostra `no route to host`, e o anunciante fica esperando a rede.
+- **Windows:** aceite o pedido do Windows Defender em "redes privadas", com a rede como Privada. O
+  serviço "Descoberta SSDP" do Windows (`SSDPSRV`) também usa a UDP 1900; se o anunciante não
+  conseguir abri-la, o erro aparece em `.\tv30.ps1 logs`.
+- Nenhum container pode publicar a UDP 1900: o log mostraria `address already in use`.
+
+### Verificar
+
+Verifique de **outro aparelho da mesma rede**, e não da máquina do testbed.
+
+| Verificação | Passa quando |
+|---|---|
+| Com o testbed de pé, o cliente abaixo por 30 s | Aparece um `ssdp:alive` a cada 10 s e uma RESPOSTA, com o `LOCATION` no IP da máquina na rede (não `127.0.0.1` nem um IP do Docker) |
+| `curl -i` no `LOCATION` | 200, com `Server-BaseURL` e `Server-SecureBaseURL` no mesmo host do `LOCATION` |
+| `./tv30 down` com o cliente rodando | Aparece um `ssdp:byebye` antes de o anúncio parar |
+
+Cliente de teste, em Python 3 sem dependências: `python3 ssdp-client.py [segundos]`.
+
+```python
+import select
+import socket
+import struct
+import sys
+import time
+
+GROUP = '239.255.255.250'
+PORT = 1900
+ST = 'urn:schemas-sbtvd-org:service:TV3.0WebServices:1'
+SEARCH = (f'M-SEARCH * HTTP/1.1\r\nHOST: {GROUP}:{PORT}\r\nMAN: "ssdp:discover"\r\n'
+          f'MX: 2\r\nST: {ST}\r\n\r\n').encode()
+
+duration = float(sys.argv[1]) if len(sys.argv) > 1 else 30
+listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind(('', PORT))
+membership = struct.pack('4sl', socket.inet_aton(GROUP), socket.INADDR_ANY)
+listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
+searcher = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+searcher.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+
+end = time.time() + duration
+next_search = 0
+while time.time() < end:
+    if time.time() >= next_search:
+        searcher.sendto(SEARCH, (GROUP, PORT))
+        next_search = time.time() + 5
+    for sock in select.select([listener, searcher], [], [], 0.5)[0]:
+        data, origin = sock.recvfrom(4096)
+        text = data.decode(errors='replace')
+        if ST in text and not text.startswith('M-SEARCH'):
+            kind = 'RESPOSTA' if sock is searcher else text.split(' ', 1)[0]
+            lines = [line for line in text.split('\r\n')
+                     if line.upper().startswith(('LOCATION', 'NTS'))]
+            print(time.strftime('%H:%M:%S'), kind, origin[0], *lines)
+```
+
+Um aplicativo de descoberta SSDP/UPnP no celular também serve. Uma página no navegador não serve,
+porque o navegador não manda UDP.
 
 ## Submódulos
 
-### Clone inicial
-
 ```bash
 git clone --recurse-submodules https://github.com/multisens/TV30.git
+git submodule status                 # o estado de cada um
+git submodule update --remote        # todos para o último commit
+git submodule update --remote aop    # só um
 ```
 
-> **Submódulo sem inicializar ou com URL desatualizada** (`git submodule status` mostra `-` na frente, ou o clone de um submódulo pede chave SSH): o `git pull` traz o `.gitmodules`, mas a URL gravada no `.git/config` não muda sozinha. Corrija com
->
-> ```bash
-> git submodule sync --recursive && git submodule update --init --recursive
-> ```
->
-> ou clone de novo.
-
-### Atualizar todos para o último commit
+Se `git submodule status` mostra `-` na frente de um submódulo, ou se o clone dele pede chave SSH, a
+URL gravada ficou desatualizada:
 
 ```bash
-git submodule update --remote
+git submodule sync --recursive && git submodule update --init --recursive
 ```
-
-### Atualizar apenas um
-
-```bash
-git submodule update --remote aop
-```
-
-### Status
-
-```bash
-git submodule status
-```
-
----
-
-## Próximos passos
-
-- [Desenvolvimento com serviço no host](../dev-local/): a infraestrutura em containers e um módulo com `npm run dev`
-- [Como testar](../como-testar/): os testes de unidade e as suítes de `scripts/`
-- [Glossário](../glossario/): os termos do código e da norma
-- [Modelo de dados Redis](../modelo-redis/): as chaves, e como o gestor de perfis do AoP cria um perfil (o primeiro teste à mão: criar um perfil pelo formulário do AoP e ver as chaves no Redis)
-- [Solução de problemas](../troubleshooting/): caso algo dê errado

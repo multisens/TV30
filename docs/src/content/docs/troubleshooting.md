@@ -75,7 +75,7 @@ nativo na 44642: confira com `sudo ss -ltnp | grep 44642`.
 
 ## Descoberta SSDP: o anunciante não sobe ou não anuncia
 
-O anunciante roda no host, fora do Docker, subido pelo `./tv30 up` (no Windows, `.\tv30.ps1 up`), com pid e log em `.tv30/` ([Descoberta SSDP](../ssdp/)). `./tv30 status` diz se ele está de pé, e `./tv30 logs` mostra o log (`.tv30/ssdp.log`). Sem ele, o cliente ainda chega ao receptor pelo IP: `http://<IP>:44642/manifest`.
+O anunciante roda no host, fora do Docker, subido pelo `./tv30 up` (no Windows, `.\tv30.ps1 up`), com pid e log em `.tv30/` ([Descoberta na rede](../instalacao/#descoberta-na-rede)). `./tv30 status` diz se ele está de pé, e `./tv30 logs` mostra o log (`.tv30/ssdp.log`). Sem ele, o cliente ainda chega ao receptor pelo IP: `http://<IP>:44642/manifest`.
 
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
@@ -171,7 +171,7 @@ E mantenha um processo leve rodando no WSL (qualquer terminal aberto).
 
 ### AoP fora do Docker no Windows: porta do WebSocket do Mosquitto
 
-O AoP rodando no Windows, fora do Docker (caso que o `scripts/test-dev-host.sh` não cobre; [Limites](../dev-local/#limites)), repassa o `/mqtt` da página da TV para `ws://${MQTT_HOST}:${MQTT_WS_PORT}`, e o `MQTT_WS_PORT` tem de ser a porta de host da 9001 do Mosquitto (`aop/src/mqtt-ws.js`). Por padrão, essa porta é escolhida pelo Docker e muda quando o container é recriado. Uma opção, e não regra, é fixá-la na 9003, que evita a 9001 e a 9002, ocupadas pelo Hyper-V em algumas máquinas (detalhe em [Desenvolvimento com serviço no host](../dev-local/#aop-fora-do-docker-no-windows-opção)):
+O AoP rodando no Windows, fora do Docker (caso que o `scripts/test-dev-host.sh` não cobre; [Limites](../dev-local/#limites)), repassa o `/mqtt` da página da TV para `ws://${MQTT_HOST}:${MQTT_WS_PORT}`, e o `MQTT_WS_PORT` tem de ser a porta de host da 9001 do Mosquitto (`aop/src/mqtt-ws.js`). Por padrão, essa porta é escolhida pelo Docker e muda quando o container é recriado. Uma opção, e não regra, é fixá-la na 9003, que evita a 9001 e a 9002, ocupadas pelo Hyper-V em algumas máquinas (detalhe em [Desenvolvimento com serviço no host](../dev-local/#limites)):
 
 - no `.env` da raiz: `MQTT_WS_PUBLISH=9003:9001`, e `docker compose up -d mosquitto`;
 - no `aop/.env`: `MQTT_WS_PORT=9003`.

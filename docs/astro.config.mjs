@@ -14,6 +14,7 @@ export default defineConfig({
         '/apis-tv3ws': '/TV30/tv3ws/',
         '/mqtt-topicos': '/TV30/mensageria/',
         '/broker-mqtt': '/TV30/mensageria/',
+        '/ssdp': '/TV30/instalacao/#descoberta-na-rede',
     },
     integrations: [
         starlight({
@@ -58,7 +59,6 @@ export default defineConfig({
                             label: 'Operar',
                             items: [
                                 'instalacao',
-                                'ssdp',
                                 'dev-local',
                                 'como-testar',
                             ],
