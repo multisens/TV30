@@ -54,7 +54,7 @@ norma estão em [Escopo, limites e decisões](../escopo/#onde-o-testbed-difere-d
 | autorização (C.6.1.2) | o pop-up de sim ou não dura 10 s, e o tempo esgotado conta como recusa e bloqueia o cliente; o QR code e o PIN ficam na tela até o fim do pareamento ou por 120 s, no máximo; o 103 também vale enquanto a TV mostra o QR code ou o PIN de outro pedido |
 | access token (C.6.1.3) | vale 24 h; enquanto vale, o `/tv3/token` devolve o mesmo token; o refresh token muda a cada chamada |
 | serviço corrente (C.6.3.1) | sai sem `serviceName` e sem `serviceId`, que o testbed ainda não recebe |
-| arquivos da aplicação (C.6.4.7) | a listagem de diretório sai por ordem de nome, com os links simbólicos pelo destino; logo depois de uma troca de aplicação, até o receptor saber o diretório da nova, a resposta é 305 |
+| arquivos da aplicação (C.6.4.7) | vale qualquer `appId` da BALD do serviço sintonizado, e não só o da aplicação em execução; a árvore são os arquivos do contexto da aplicação na S-TSID, recebidos ou não, com o tamanho declarado nela, mais as partes do pacote de entrada já recebido; o conteúdo vem pela comporta, e o arquivo ainda não recebido responde 305; a listagem sai por ordem de nome; sem serviço sintonizado, 300 |
 | atributos da emissora (C.6.14.5) | até 20 MB por perfil; quando algum valor muda, a TV mostra por 5 s "A emissora `<serviço>` atualizou os dados do perfil `<apelido>`", sem pedir confirmação |
 | avatar (C.6.14.6) | o `path` é o valor do campo `avatar` do perfil, como a C.6.14.2 o devolve |
 | dispositivos remotos (C.6.15) | cada registro abre um WebSocket numa porta da faixa 45000 a 45199; o ponto de entrada do dispositivo remoto sai em `wss://`, com o certificado do receptor |

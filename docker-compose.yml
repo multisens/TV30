@@ -108,6 +108,11 @@ services:
       PING_INTERVAL_MS: 15000
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # Object proxy of aop-cc, inside the network, and the domain of the
+      # application origins (ctx-<h>.<APPS_DOMAIN>): the files of ABNT NBR
+      # 25608, C.6.4.7.
+      OBJECT_PROXY_URL: http://aop-cc:8081/
+      APPS_DOMAIN: ${APPS_DOMAIN:-apps.localhost}
       USER_THUMBS:    /user-files/thumbs
       # Development default; set it in the root .env or the shell. `environment`
       # prevails over env_file, so a JWT_SECRET in tv3ws/.env has no effect.

@@ -178,23 +178,6 @@ export const mqttTopics: NameTree = {
                 + '<code>tv3ws</code> libera os recursos do cliente.',
         }),
         topic({
-            name: 'aop/<sid>/currentApp',
-            publisher: NONE,
-            subscriber: '<code>tv3ws</code>',
-            retained: 'sim',
-            schema: true,
-            carries: 'O <code>appId</code> da aplicação corrente do serviço <code>&lt;sid&gt;</code>. '
-                + 'Vazio encerra a aplicação e apaga o retido.',
-        }),
-        topic({
-            name: 'aop/<sid>/<appId>/path',
-            publisher: NONE,
-            subscriber: '<code>tv3ws</code>',
-            retained: 'sim',
-            schema: true,
-            carries: 'A pasta da aplicação, que a C.6.4.7 lê.',
-        }),
-        topic({
             name: 'aop/<sid>/<appId>/doc/…',
             publisher: '<code>tv3ws</code>',
             subscriber: '<code>tv3ws</code>',

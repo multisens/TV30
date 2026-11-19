@@ -3,6 +3,8 @@ import type { TreeEntry, NameTree } from './name-tree.ts';
 
 const OUT_OF_SCHEMA = 'fora do esquema';
 const DIRECT_WRITE = 'nenhuma: escrita direta, fora do esquema';
+const NO_WRITER = 'sem escritor';
+const DECLARED_ONLY = 'nenhuma: família só declarada, sem escritor no testbed';
 const NONE = '—';
 
 interface KeyFacts {
@@ -10,20 +12,24 @@ interface KeyFacts {
     type: string;
     writer: string;
     reader: string;
-    // Empty for a key outside the schema.
+    // Empty for a key outside the schema or only declared.
     functions: string[];
+    // In the schema, with its owner outside the testbed.
+    declaredOnly?: boolean;
     holds: string;
 }
 
 function family(facts: KeyFacts): TreeEntry {
     const badges = [facts.type];
     const inSchema = facts.functions.length > 0;
-    if (!inSchema) {
+    let functions = facts.functions.map((name) => `<code>${name}</code>`).join(', ');
+    if (facts.declaredOnly === true) {
+        badges.push(NO_WRITER);
+        functions = DECLARED_ONLY;
+    } else if (!inSchema) {
         badges.push(OUT_OF_SCHEMA);
+        functions = DIRECT_WRITE;
     }
-    const functions = inSchema
-        ? facts.functions.map((name) => `<code>${name}</code>`).join(', ')
-        : DIRECT_WRITE;
     return {
         name: facts.name,
         badges,
@@ -66,6 +72,27 @@ export const redisKeys: NameTree = {
             functions: ['tv30_session_service'],
             holds: 'Os cinco campos do serviço corrente (Tabela C.8), regravados a cada troca de '
                 + 'serviço.',
+        }),
+        family({
+            name: 'session:current-app',
+            type: 'HASH',
+            writer: '<code>aop-cc</code> (gerente de ciclo de vida)',
+            reader: '<code>tv3ws</code>, na identidade do cliente local associado',
+            functions: ['tv30_current_app'],
+            holds: 'A aplicação de emissora em execução na camada de gráficos: '
+                + '<code>serviceContextId</code>, <code>appId</code> e <code>origin</code>. Regravada a '
+                + 'cada lançamento e apagada no fim; ausente, a Bootstrap Application ou nenhum serviço.',
+        }),
+        family({
+            name: 'app:doc-nodes:{serviceContextId}',
+            type: 'HASH',
+            writer: 'o formatador Ginga-NCL, que não existe no testbed',
+            reader: '<code>tv3ws</code>, quando a aplicação entra',
+            functions: [],
+            declaredOnly: true,
+            holds: 'Os nós do documento de cada aplicação do contexto, por <code>appId</code>: uma '
+                + 'lista JSON de <code>{id, type, mimeType, device}</code>. O <code>tv3ws</code> associa '
+                + 'cada nó ao dispositivo remoto que o apresenta.',
         }),
         family({
             name: 'users:index',
