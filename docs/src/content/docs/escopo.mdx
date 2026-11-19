@@ -107,11 +107,11 @@ trabalho definido.
 |---|---|---|
 | Sinalização de transporte | A emissora servir a sinalização e a plataforma buscá-la: SLT, USBD, S-TSID, MPD e PRRD não existem, e a BAMT e a BALD chegam pela mensageria. **Planejado** | 7.2 |
 | Vídeo em DASH | Só há HLS. **Planejado** | 7.3 |
-| Entrega de arquivos pelo ar e cache por serviço | A entrega por carrossel e o Application Context Cache. **Planejado** | 7.3, 7.5 |
+| Cache por serviço | Os Filter Codes na admissão: o conjunto de códigos ativos é de `tv3ws-nrt-filters`, fora do escopo, e vazio não restringe. Os dados privados ficam fora da memória total e do descarte | 7.5, 10.3.3 |
 | Área privativa da aplicação | O Private Base Manager | 7.11 |
 | Privacidade e consentimento | O Privacy Manager. O item "Data Privacy settings" do catálogo não tem função; a visibilidade de cada perfil por serviço existe, mas não é o consentimento da 8.8 | 8.8 |
 | Access Panel | O painel chamado durante o programa | 8.9 |
-| Ciclo de vida das aplicações | O gerente, no `aop-cc`, segue `AUTOSTART`, `PRESENT`, `DESTROY`, `KILL` e `STORED_REMOVE`; `STORED_AUTOSTART` espera o Application Context Cache. Ficam de fora o mecanismo de failsafe, a pausa e a retomada | 6 |
+| Ciclo de vida das aplicações | O gerente, no `aop-cc`, segue os sete valores de `controlCode`; `STORED_AUTOSTART` só abre com a aplicação completa no Application Context Cache. Ficam de fora o mecanismo de failsafe, a pausa e a retomada | 6 |
 | Efeitos sensoriais | O registro único de renderizadores e o renderizador local. Hoje só os dispositivos remotos da classe `sensory-effect` são renderizadores | 7.8, 9.3 |
 | Controle remoto | O mapa de funções das teclas | 10.6, B.5 |
 | Memória | O descarte por último acesso quando a quota da área privativa enche | 10.3 |
