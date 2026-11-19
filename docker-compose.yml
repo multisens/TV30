@@ -203,7 +203,9 @@ services:
     restart: unless-stopped
 
   # Common Core of the platform: acquires the transport layer signaling the
-  # broadcaster side serves and publishes it on retained topics.
+  # broadcaster side serves and publishes it on retained topics; its object
+  # proxy serves, on OBJECT_PROXY_PORT, the signaling channel of each service
+  # with a carousel.
   aop-cc:
     profiles: ["linux"]
     image: ${DOCKERHUB_NS:-tv30}/tv30-aop-cc:${IMAGE_TAG:-dev}
@@ -214,6 +216,7 @@ services:
     environment:
       MQTT_HOST: mqtt-broker
       SIGNALING_BASE_URL: http://bcast-sim:8082/signaling/
+      OBJECT_PROXY_PORT: 8081
     depends_on:
       - mqtt-broker
       - bcast-sim
