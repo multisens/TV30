@@ -73,7 +73,7 @@ export const mqttTopics: NameTree = {
         topic({
             name: 'aop/services',
             publisher: 'casca',
-            subscriber: '<code>tv3ws</code>',
+            subscriber: NONE,
             retained: 'sim',
             schema: true,
             carries: 'Os serviços anunciados na LLS, um '
