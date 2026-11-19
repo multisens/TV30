@@ -218,6 +218,7 @@ services:
     networks: [ginga_net]
     environment:
       MQTT_HOST: mqtt-broker
+      REDIS_HOST: redis
       SIGNALING_BASE_URL: http://bcast-sim:8082/signaling/
       OBJECT_PROXY_PORT: 8081
       OBJECT_PROXY_PUBLIC_PORT: ${OBJECT_PROXY_PUBLIC_PORT:-8081}
@@ -225,6 +226,10 @@ services:
     ports:
       - "${OBJECT_PROXY_PUBLIC_PORT:-8081}:8081"
     depends_on:
-      - mqtt-broker
-      - bcast-sim
+      redis:
+        condition: service_healthy
+      mqtt-broker:
+        condition: service_started
+      bcast-sim:
+        condition: service_started
     restart: unless-stopped

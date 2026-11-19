@@ -143,7 +143,8 @@ carga inicial com `docker compose down -v`.
 
 ### A aplicação não abre, ou abre e não responde
 
-Para ver a aplicação em execução: `docker exec redis redis-cli HGETALL origins:associated`.
+Para ver a aplicação em execução: `docker exec redis redis-cli HGETALL session:current-app`; para
+ver o que o gerente de ciclo de vida decidiu: `docker logs aop-cc`.
 
 | Sintoma | Causa | O que fazer |
 |---|---|---|
@@ -153,7 +154,7 @@ Para ver a aplicação em execução: `docker exec redis redis-cli HGETALL origi
 | `Bad Gateway: aplicacao fora do ar` (502) | A casca não alcança o bcast | `docker logs aop-shell` mostra `falha no proxy`; confira o bcast, ou o `BCAST_HOSTNAME` com módulos no host ([Desenvolvimento com serviço no host](../dev-local/#bcast_hostname)) |
 | A casca não sobe: `APPS_DOMAIN invalido` ou `AOP_PUBLIC_PORT invalida` | Valor fora do formato | Corrija o `.env` |
 | Abre, mas não recebe teclas, `timeupdate` nem `stream_event` | A aplicação não inclui a ponte | `<script src="js/aop-bridge.js"></script>` na aplicação ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
-| As chamadas da aplicação às APIs recebem 107, ou 106 nas rotas só do cliente local associado | A origem dela saiu de `origins:associated`: a aplicação foi encerrada ou trocada, e a página ficou aberta | Abra a aplicação pelo catálogo e pela tela cheia |
+| As chamadas da aplicação às APIs recebem 107, ou 106 nas rotas só do cliente local associado | A origem dela saiu de `origins:associated`: a aplicação foi encerrada ou trocada, e a página ficou aberta | Abra o serviço pelo catálogo |
 
 ### A página da TV não conecta no MQTT (`/mqtt`)
 

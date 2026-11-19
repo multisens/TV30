@@ -111,7 +111,7 @@ trabalho definido.
 | Área privativa da aplicação | O Private Base Manager | 7.11 |
 | Privacidade e consentimento | O Privacy Manager. O item "Data Privacy settings" do catálogo não tem função; a visibilidade de cada perfil por serviço existe, mas não é o consentimento da 8.8 | 8.8 |
 | Access Panel | O painel chamado durante o programa | 8.9 |
-| Ciclo de vida das aplicações | Como componente próprio. Só as aplicações marcadas para começar sozinhas (`AUTOSTART`) são lançadas | 6 |
+| Ciclo de vida das aplicações | O gerente, no `aop-cc`, segue `AUTOSTART`, `PRESENT`, `DESTROY`, `KILL` e `STORED_REMOVE`; `STORED_AUTOSTART` espera o Application Context Cache. Ficam de fora o mecanismo de failsafe, a pausa e a retomada | 6 |
 | Efeitos sensoriais | O registro único de renderizadores e o renderizador local. Hoje só os dispositivos remotos da classe `sensory-effect` são renderizadores | 7.8, 9.3 |
 | Controle remoto | O mapa de funções das teclas | 10.6, B.5 |
 | Memória | O descarte por último acesso quando a quota da área privativa enche | 10.3 |
@@ -132,7 +132,7 @@ Comportamentos implementados que não seguem a norma.
 | C.6.14.3 | Sem perfil corrente (entre a remoção do perfil corrente e a escolha de outro), responde 200 `{"id":""}`, caso que a norma não define |
 | C.6.15.5 | O cliente não local recebe o erro 106, e não o 107 que a Tabela C.80 lista para ele |
 | C.6.15.5 | O ponto de entrada local sai em `ws://`, e não em `wss://` |
-| 10.6.3, Tabela 11 | Back (Esc) e Menu não chegam à aplicação de emissora: em tela cheia, a casca os toma e encerra a aplicação. Pela norma, as duas funções são da aplicação ativa |
+| 10.6.3, Tabela 11 | Back (Esc) e Menu não chegam à aplicação de emissora: a casca os toma e pede ao gerente de ciclo de vida que encerre a aplicação. Pela norma, as duas funções são da aplicação ativa |
 | B.5.1, B.5.2 | A aplicação de emissora só recebe as teclas se incluir a ponte `aop-bridge.js`; a que espera o `KeyboardEvent` no documento, como a norma descreve, não recebe nenhuma |
 | 8.4.4, 10.1 | O manifesto da Bootstrap Application e a BALD trafegam em JSON, e não no formato XML da norma; o manifesto não tem todos os campos da Tabela 6 e tem o campo extra `initialMediaURLs` |
 

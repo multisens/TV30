@@ -62,17 +62,21 @@ casca define como eles se revezam na tela:
 
 ### Aplicações de emissora
 
-- **Lançamento:** em tela cheia, a casca lança da BALD as aplicações `TV30-Ginga-HTML5` com
-  `controlCode` `AUTOSTART` ou sem ele. As NCL ficam de fora.
-- **Origem própria:** o host de cada aplicação vem do `appId`, com o que não é letra nem número
-  trocado por `-` (`urn:tv30:app:users-test` vira `urn-tv30-app-users-test`). A casca grava a origem
-  em `origins:associated` ao lançar e a apaga ao encerrar. Na partida, limpa a lista.
+- **Lançamento:** quem decide é o gerente de ciclo de vida, no `aop-cc`, pelo `controlCode` da BALD
+  do serviço sintonizado, sem esperar a tela cheia. A casca assina
+  `aop/application-lifecycle-manager/graphics-application`: com uma aplicação, fecha a aplicação de
+  abertura, põe o vídeo em tela cheia e carrega a aplicação na camada de gráficos; vazio, a
+  aplicação de abertura volta em modo de informação. A tela cheia da aplicação de abertura só
+  esconde as informações.
+- **Origem própria:** o gerente grava a origem em `origins:associated` e a aplicação em
+  `session:current-app` ao lançar, e as apaga ao encerrar. Na partida do `aop-cc`, limpa as duas.
 - **Troca:** o fim da aplicação que sai é publicado antes do início da que entra.
 - **Teclas:** a origem é outra, e a casca entrega a tecla, o `timeupdate` e o `stream_event` por
   `postMessage`. A aplicação só os recebe se incluir `bcast/public/js/aop-bridge.js`, que os
   dispara no documento dela.
-- **Esc e Menu**, em tela cheia, encerram a aplicação e abrem a aplicação de abertura em modo de
-  informação, e a aplicação não os recebe
+- **Esc e Menu**, com uma aplicação de emissora, pedem ao gerente que a encerre
+  (`aop/application-lifecycle-manager/end-request`); a aplicação de abertura volta em modo de
+  informação, e a aplicação não recebe as teclas
   ([diverge da norma](../escopo/#onde-o-testbed-difere-da-norma)). PageUp e PageDown, a troca de canal, só vão para o log.
 - **De outra máquina:** `*.apps.localhost` só resolve na máquina de quem abre a página. Para abrir a
   TV de outra máquina, use `APPS_DOMAIN` ([Instalação](../instalacao/#variáveis-do-env)).
