@@ -84,7 +84,8 @@ anuncia; as outras saem numa porta escolhida pelo Docker, que muda quando o cont
 
 | O quê | Porta no host | Para achar ou mudar |
 |---|---|---|
-| Tela do receptor (AoP) e aplicações de emissora | 8080 | `AOP_PUBLIC_PORT`. As aplicações abrem em `http://<app>.apps.localhost:8080/graphicsAppProxy/...`, e o MQTT da página da TV passa por `/mqtt` |
+| Tela do receptor (AoP) | 8080 | `AOP_PUBLIC_PORT`. O MQTT da página da TV passa por `/mqtt` |
+| Comporta de entrega de objeto e aplicações de emissora por radiodifusão | 8081 | `OBJECT_PROXY_PUBLIC_PORT`. Cada aplicação abre em `http://ctx-<h>.apps.localhost:8081/`, com `<h>` tirado do `appContextId` da BALD |
 | APIs, superfície interna (HTTP) | 44642 | fixa pela norma |
 | APIs, superfície externa (HTTPS) | 44643 | `EDGE_EXT_PUBLISH`; outra porta pede também `EDGE_HTTPS_PORT` igual, senão o `/manifest` anuncia a 44643 |
 | WebSockets dos dispositivos remotos | 45000–45199 | — |

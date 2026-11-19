@@ -161,11 +161,13 @@ services:
       - "${AOP_PUBLIC_PORT:-8080}:8080"
     environment:
       PORT: 8080
-      # Each application opens on its own origin,
-      # http://<app>.<APPS_DOMAIN>:<AOP_PUBLIC_PORT>. *.localhost resolves to
-      # the machine of whoever opens the page.
+      # A broadcast application opens on the origin of its Application
+      # Context ID, served by the object proxy of aop-cc,
+      # http://ctx-<h>.<APPS_DOMAIN>:<OBJECT_PROXY_PUBLIC_PORT>. *.localhost
+      # resolves to the machine of whoever opens the page.
       APPS_DOMAIN: ${APPS_DOMAIN:-apps.localhost}
       AOP_PUBLIC_PORT: ${AOP_PUBLIC_PORT:-8080}
+      OBJECT_PROXY_PUBLIC_PORT: ${OBJECT_PROXY_PUBLIC_PORT:-8081}
       MQTT_HOST: mqtt-broker
       # Internal port of mqtt-broker on ginga_net, the target of /mqtt.
       MQTT_WS_PORT: "9001"
@@ -204,8 +206,9 @@ services:
 
   # Common Core of the platform: acquires the transport layer signaling the
   # broadcaster side serves and publishes it on retained topics; its object
-  # proxy serves, on OBJECT_PROXY_PORT, the signaling channel of each service
-  # with a carousel.
+  # proxy serves the broadcast objects of each service with a carousel and the
+  # origins of the broadcast applications, published on
+  # OBJECT_PROXY_PUBLIC_PORT (default 8081).
   aop-cc:
     profiles: ["linux"]
     image: ${DOCKERHUB_NS:-tv30}/tv30-aop-cc:${IMAGE_TAG:-dev}
@@ -217,6 +220,10 @@ services:
       MQTT_HOST: mqtt-broker
       SIGNALING_BASE_URL: http://bcast-sim:8082/signaling/
       OBJECT_PROXY_PORT: 8081
+      OBJECT_PROXY_PUBLIC_PORT: ${OBJECT_PROXY_PUBLIC_PORT:-8081}
+      APPS_DOMAIN: ${APPS_DOMAIN:-apps.localhost}
+    ports:
+      - "${OBJECT_PROXY_PUBLIC_PORT:-8081}:8081"
     depends_on:
       - mqtt-broker
       - bcast-sim
