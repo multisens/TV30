@@ -204,7 +204,6 @@ services:
       LIVE_BASE_URL: http://localhost:${LIVE_PUBLIC_PORT:-8082}/live/
       SERVICES_BASE_URL: http://bcast-sim:8082/services/
       SIGNALING_BASE_URL: http://bcast-sim:8082/signaling/
-      PUBLIC_SERVICES_BASE_URL: http://localhost:${LIVE_PUBLIC_PORT:-8082}/services/
     volumes:
       - ./bcast-sim/example:/emission:ro
     restart: unless-stopped
@@ -212,7 +211,7 @@ services:
   # Common Core of the platform: acquires the transport layer signaling the
   # broadcaster side serves and publishes it on retained topics; its object
   # proxy serves the broadcast objects of each service with a carousel and the
-  # origins of the broadcast applications, published on
+  # origins of the broadcast and broadband applications, published on
   # OBJECT_PROXY_PUBLIC_PORT (default 8081).
   aop-cc:
     profiles: ["linux"]
@@ -221,6 +220,10 @@ services:
       context: ./aop-cc
     container_name: aop-cc
     networks: [ginga_net]
+    # The object proxy passes a broadband application on from its server; a
+    # server on the host is reached as host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       MQTT_HOST: mqtt-broker
       REDIS_HOST: redis

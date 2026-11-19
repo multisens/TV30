@@ -153,7 +153,8 @@ ver o que o gerente de ciclo de vida decidiu: `docker logs aop-cc`.
 | `nenhuma aplicacao em execucao em <host>` (404) | A aplicação foi encerrada ou trocada, e a página antiga ficou aberta | Abra a aplicação de novo pelo catálogo |
 | `Bad Gateway: aplicacao fora do ar` (502) | A casca não alcança o bcast | `docker logs aop-shell` mostra `falha no proxy`; confira o bcast, ou o `BCAST_HOSTNAME` com módulos no host ([Desenvolvimento com serviço no host](../dev-local/#bcast_hostname)) |
 | A casca não sobe: `APPS_DOMAIN invalido` ou `AOP_PUBLIC_PORT invalida` | Valor fora do formato | Corrija o `.env` |
-| Abre, mas não recebe teclas, `timeupdate` nem `stream_event` | A aplicação não inclui a ponte | `<script src="js/aop-bridge.js"></script>` na aplicação ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
+| Aplicação de banda larga: `origin failed` (502) | A comporta não alcança o servidor do `bbandEntryPointUrl`; ela roda no container `aop-cc`, onde `localhost` é o próprio container | Use no `bbandEntryPointUrl` um endereço que o container alcance: `http://host.docker.internal:<porta>/` para um servidor no host |
+| O Esc encerra a aplicação, que trata o Back | A aplicação não cancela o `keydown` do `BrowserBack` | `event.preventDefault()` no tratador ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
 | As chamadas da aplicação às APIs recebem 107, ou 106 nas rotas só do cliente local associado | A origem dela saiu de `origins:associated`: a aplicação foi encerrada ou trocada, e a página ficou aberta | Abra o serviço pelo catálogo |
 
 ### A página da TV não conecta no MQTT (`/mqtt`)

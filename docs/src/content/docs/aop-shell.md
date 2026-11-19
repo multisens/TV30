@@ -68,16 +68,23 @@ casca define como eles se revezam na tela:
   abertura, põe o vídeo em tela cheia e carrega a aplicação na camada de gráficos; vazio, a
   aplicação de abertura volta em modo de informação. A tela cheia da aplicação de abertura só
   esconde as informações.
-- **Origem própria:** o gerente grava a origem em `origins:associated` e a aplicação em
-  `session:current-app` ao lançar, e as apaga ao encerrar. Na partida do `aop-cc`, limpa as duas.
+- **Origem própria:** a aplicação por radiodifusão abre em `ctx-<hash>.<APPS_DOMAIN>`, e a de
+  banda larga em `bb-<hash>.<APPS_DOMAIN>`, as duas servidas pela comporta do `aop-cc`; `<hash>`
+  são os 16 primeiros dígitos hexadecimais do SHA-256 do `appContextId`. Na de banda larga, a
+  comporta repassa cada pedido ao servidor do `bbandEntryPointUrl`, com o mesmo caminho. O gerente
+  grava a origem em `origins:associated` e a aplicação em `session:current-app` ao lançar, e as
+  apaga ao encerrar. Na partida do `aop-cc`, limpa as duas.
 - **Troca:** o fim da aplicação que sai é publicado antes do início da que entra.
 - **Teclas:** a origem é outra, e a casca entrega a tecla, o `timeupdate` e o `stream_event` por
-  `postMessage`. A aplicação só os recebe se incluir `bcast/public/js/aop-bridge.js`, que os
-  dispara no documento dela.
-- **Esc e Menu**, com uma aplicação de emissora, pedem ao gerente que a encerre
-  (`aop/application-lifecycle-manager/end-request`); a aplicação de abertura volta em modo de
-  informação, e a aplicação não recebe as teclas
-  ([diverge da norma](../escopo/#onde-o-testbed-difere-da-norma)). PageUp e PageDown, a troca de canal, só vão para o log.
+  `postMessage`. A comporta põe em todo documento HTML da aplicação, antes de `</head>`, a ponte
+  `/.tv30/bridge.js`, que dispara o `keydown` no elemento em foco do documento (B.5.1). A
+  aplicação não inclui nada.
+- **Esc e Menu**, com uma aplicação de emissora, vão para ela como `BrowserBack` e `ContextMenu`
+  (10.6.3, Tabela 11). O `BrowserBack` que a aplicação não cancela (`preventDefault`) volta à casca,
+  que pede ao gerente que a encerre (`aop/application-lifecycle-manager/end-request`); a aplicação
+  de abertura volta em modo de informação.
+- **Home** é a função fixa de início: encerra a aplicação mesmo quando ela cancela o Back. PageUp
+  e PageDown, a troca de canal, só vão para o log.
 - **De outra máquina:** `*.apps.localhost` só resolve na máquina de quem abre a página. Para abrir a
   TV de outra máquina, use `APPS_DOMAIN` ([Instalação](../instalacao/#variáveis-do-env)).
 

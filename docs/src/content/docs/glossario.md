@@ -49,7 +49,7 @@ sem seção é do testbed.
 | **Aplicação de emissora** | A aplicação associada ao contexto de um serviço, na camada de gráficos (3.14) ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
 | **Camadas** | Vídeo, gráficos e interface da plataforma, com os avisos por cima ([A AoP em 5 minutos](../aop-em-5-minutos/#as-camadas-da-tela)) |
 | **Pop-ups** | O sim ou não da autorização, o QR code e o PIN do pareamento e o aviso de atributos da emissora ([aop-shell](../aop-shell/#pop-ups)) |
-| **Ponte de eventos** | O `aop-bridge.js`, que a aplicação de emissora inclui para receber as teclas e os eventos do vídeo ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
+| **Ponte de eventos** | O `/.tv30/bridge.js`, que a comporta põe em todo documento HTML da aplicação de emissora para dispará-lhe as teclas e os eventos do vídeo ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
 | **Dispositivo remoto** e ***handle*** | Um aparelho da rede registrado para executar parte de uma aplicação (C.6.15). O *handle* identifica o registro ([tv3ws](../tv3ws/)) |
 | **SSDP** e **`/manifest`** | A descoberta do receptor na rede e o endereço que devolve as URLs das APIs (C.3.4) ([Descoberta na rede](../instalacao/#descoberta-na-rede)) |
 | **Esquema na escrita** | O formato declarado de cada tópico e de cada família de chave, conferido na publicação e na gravação ([Mensageria (MQTT)](../mensageria/#esquema-das-mensagens), [Modelo de dados Redis](../modelo-redis/#o-esquema-na-escrita)) |

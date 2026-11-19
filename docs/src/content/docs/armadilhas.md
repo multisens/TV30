@@ -55,8 +55,12 @@ problema já apareceu, comece por [Solução de problemas](../troubleshooting/).
 
 ## Aplicações de emissora
 
-- **A aplicação sem `aop-bridge.js` não recebe teclas.** Ela roda em origem própria, e a casca lhe
-  entrega a tecla por `postMessage` ([aop-shell](../aop-shell/#aplicações-de-emissora)).
+- **O Esc chega à aplicação como `BrowserBack`.** Sem `preventDefault`, a casca encerra a
+  aplicação ([aop-shell](../aop-shell/#aplicações-de-emissora)).
+- **A aplicação de banda larga não roda na origem do servidor dela.** Ela abre em
+  `bb-<hash>.<APPS_DOMAIN>`: URL relativa vai à comporta, que a repassa ao servidor, e URL absoluta
+  para o próprio servidor é pedido entre origens, que pede CORS (B.6.2). A comporta repassa só
+  GET e HEAD ([aop-shell](../aop-shell/#aplicações-de-emissora)).
 - **Com o QR code, o PIN ou um aviso na tela, a tecla segue para a aplicação.** Só o pop-up de sim
   ou não toma as teclas ([aop-shell](../aop-shell/#pop-ups)).
 - **Aplicações NCL não são lançadas.** A casca lança só as `TV30-Ginga-HTML5`
