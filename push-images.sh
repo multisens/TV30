@@ -34,7 +34,6 @@ err()    { echo -e "    ${c_red}[ERRO]${c_off} $*"; }
 declare -a APPS=(
     "tv30-tv3ws|tv3ws|infra/dockerfiles/tv3ws.Dockerfile"
     "tv30-aop-shell|aop-shell|infra/dockerfiles/aop-shell.Dockerfile"
-    "tv30-bcast|bcast|infra/dockerfiles/bcast.Dockerfile"
     "tv30-bcast-sim|bcast-sim|bcast-sim/Dockerfile"
     "tv30-aop-cc|aop-cc|aop-cc/Dockerfile"
 )

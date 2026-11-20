@@ -15,7 +15,8 @@ O testbed tem dois tipos de teste:
 |---|---|
 | tv3ws | `npm test` e `npx tsc --noEmit` no `tv3ws`; nas APIs ou nas credenciais, também `test-auth.sh`; nos dispositivos remotos, `test-remote-device-v100.sh` |
 | Casca (aop-shell) | `npm test` no `aop-shell` |
-| bcast | `npx tsc --noEmit` no `bcast`; na parada, `test-bcast-shutdown.sh` |
+| `aop-cc` | `go vet ./...` e `go test ./...` no `aop-cc` |
+| `bcast-sim` | `npm test` e `npx tsc --noEmit` no `bcast-sim` |
 | Rotas da borda (`routes.json`) | `node --test generate.test.js` e `test-auth.sh` |
 | Plugin de credenciais da borda | os testes Go do `plugin/` e `test-auth.sh` |
 | Anunciante da descoberta | os testes Go do `ssdp/` |
@@ -33,7 +34,8 @@ Para testar o código do clone, e não as imagens publicadas, suba a stack com
 |---|---|---|
 | tv3ws: `npm test`, `npx tsc --noEmit` | não | de 25 a 38 s, 7 s |
 | aop-shell: `npm test` | não | de 7 a 11 s |
-| bcast: `npx tsc --noEmit` | não | 8 s |
+| `aop-cc`: `go vet ./...`, `go test ./...` | não | 4 s |
+| `bcast-sim`: `npm test`, `npx tsc --noEmit` | não | 3 s, 1 s |
 | borda: `node --test generate.test.js` | não | 1 s |
 | borda e anunciante: testes Go | não (Docker) | 15 s e 7 s |
 | Redis: `run.sh all` | não (Docker, containers descartáveis) | — |
@@ -44,17 +46,18 @@ Para testar o código do clone, e não as imagens publicadas, suba a stack com
 | `test-template.sh` | de pé | 30 s |
 | `test-edge-redis.sh` | derruba e sobe | 1 min |
 | `test-broker-smoke.sh` | sobe | 20 s |
-| `test-bcast-shutdown.sh` | de pé; para o bcast | 25 s |
 | `test-virgin-up.sh` | derruba e sobe do zero | — |
 
 ## Testes de unidade
 
-Na pasta de cada módulo, depois do `npm ci`. Dublês fazem o papel do Redis, do broker e do bcast.
+Na pasta de cada módulo, depois do `npm ci` (no `aop-cc`, com o Go 1.25). Dublês fazem o papel do
+Redis, do broker e da emissora.
 
 ```bash
 cd tv3ws && npm test && npx tsc --noEmit   # os 17 arquivos de test/
 cd aop-shell && npm test
-cd bcast && npx tsc --noEmit               # o bcast não tem teste de unidade
+cd aop-cc && go vet ./... && go test ./...
+cd bcast-sim && npm test && npx tsc --noEmit
 ```
 
 ### Borda e anunciante
@@ -124,12 +127,14 @@ bash scripts/test-auth.sh
 
 - **Confere:** a decisão de credencial nas duas superfícies, em `warn` e em `enforce`. Isso cobre os
   códigos de erro, o 106 por superfície e classe de cliente, o CORS, a versão, o bind-token (C.6.8),
-  o pareamento real do cliente não local, o cliente associado de verdade (com a casca e o bcast) e o
-  Redis ou o tv3ws parado.
+  o pareamento real do cliente não local, o cliente associado de verdade (a aplicação do serviço 1002,
+  lançada pelo `aop-cc` na origem dela) e o Redis ou o tv3ws parado.
 - **Mexe:** recria a borda, congela e para por alguns segundos o tv3ws e o Redis, grava chaves de
   teste e publica retidos. No fim, também com Ctrl+C, desfaz tudo e exige a auditoria do Redis vazia.
-- **Precisa:** `edgegateway`, `tv3ws`, `redis` e `mqtt-broker` de pé. Sem a casca em
-  `localhost:8080`, pula os casos do cliente associado.
+- **Precisa:** `edgegateway`, `tv3ws`, `redis`, `mqtt-broker`, `aop-cc` e `bcast-sim` de pé: os
+  serviços anunciados que ela usa são o 1001 e o 1002 do exemplo. Recusa rodar se já houver chave de
+  bind-token registrada para eles. Sem a casca em `localhost:8080`, pula os casos do cliente
+  associado.
 - **Passa:** `== resultado: N PASS, 0 FAIL ==`.
 
 ### `test-remote-device-v100.sh`: dispositivos remotos na 100.0
@@ -151,7 +156,7 @@ bash scripts/test-remote-device-v100.sh
 ### `test-dev-host.sh`: módulos rodando no host
 
 ```bash
-./scripts/test-dev-host.sh               # cenários 1 a 5
+./scripts/test-dev-host.sh               # cenários 1 a 4
 ./scripts/test-dev-host.sh --cenario 2   # um só
 ```
 
@@ -162,7 +167,7 @@ bash scripts/test-remote-device-v100.sh
 - **Mexe:** para os containers dos módulos que vão para o host e recria a borda na variante certa.
   No fim, restaura a stack padrão, ou a derruba se nada estava de pé.
 - **Precisa:** bash 4 (no macOS, `brew install bash`).
-- **Passa:** `RESUMO (N PASS, 0 FAIL)`. Nos cenários 1 e 4, a linha `X-TV30-Auth-Warn com token
+- **Passa:** `RESUMO (N PASS, 0 FAIL)`. Nos cenários 1 e 3, a linha `X-TV30-Auth-Warn com token
   valido` mostra `107`, e isso é esperado.
 
 ### `test-template.sh`: o modelo de componente
@@ -197,16 +202,6 @@ bash scripts/test-broker-smoke.sh
 - **Confere:** o plugin do broker carregado, uma mensagem inválida recusada e uma válida aceita, e
   duas páginas da casca respondendo 200.
 - **Mexe:** sobe a stack, se não estiver de pé.
-- **Passa:** a saída tem de ser lida.
-
-### `test-bcast-shutdown.sh`: parada do bcast
-
-```bash
-bash scripts/test-bcast-shutdown.sh
-```
-
-- **Confere:** o bcast para bem antes do prazo de 10 s e limpa os tópicos retidos que publicou.
-- **Mexe:** para o bcast e o religa.
 - **Passa:** a saída tem de ser lida.
 
 ### `test-virgin-up.sh`: máquina nova

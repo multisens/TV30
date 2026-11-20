@@ -1,23 +1,23 @@
 #!/bin/bash
 # Test of the development scenario: starts the MINIMUM of containers and
-# runs REAL modules (tv3ws, aop-shell, bcast or the example component of the
+# runs REAL modules (tv3ws, aop-shell or the example component of the
 # template) outside Docker, with `npm ci && npm run dev`, checking the
-# communication between the host and the Docker network in five
+# communication between the host and the Docker network in four
 # combinations:
 #
 #   1  tv3ws on the host | containers: redis, mqtt-broker, edgegateway (windows
-#      variant: backends on host.docker.internal:44654/44655), aop-shell, bcast
-#   2  aop-shell on the host   | containers: redis, mqtt-broker, edgegateway (linux
-#      variant), tv3ws, bcast (BCAST_HOSTNAME=localhost,
-#      BCAST_PUBLISH=8081:8081)
-#   3  bcast on the host | containers: redis, mqtt-broker, edgegateway (linux
-#      variant), tv3ws, aop-shell (reaches the host by host.docker.internal)
-#   4  tv3ws, aop-shell and bcast on the host AT THE SAME TIME | containers: redis,
-#      mqtt-broker, edgegateway (windows variant); bcast with
-#      BCAST_HOSTNAME=127.0.0.1 (the aop-shell that reaches it is also on the host)
-#   5  a new component on the host (the example of templates/componente) |
+#      variant: backends on host.docker.internal:44654/44655), aop-shell,
+#      aop-cc, bcast-sim
+#   2  aop-shell on the host | containers: redis, mqtt-broker, edgegateway
+#      (linux variant), tv3ws, aop-cc, bcast-sim
+#   3  tv3ws and aop-shell on the host AT THE SAME TIME | containers: redis,
+#      mqtt-broker, edgegateway (windows variant), aop-cc, bcast-sim
+#   4  a new component on the host (the example of templates/componente) |
 #      containers: redis and mqtt-broker; the edge is STOPPED during the
 #      scenario
+#
+# aop-cc and bcast-sim run only in containers: the compose fixes the address
+# by which the other containers reach them.
 #
 # Every scenario checks host->Redis and host->MQTT from the environment of
 # the module, its connection logs and the specific path of the scenario, with
@@ -35,14 +35,14 @@
 #   auto    node if there is a Linux node in the PATH, otherwise docker
 #           (default)
 #
-# Ports on the host: 44654/44655 and 45000-45199 (tv3ws, scenarios 1 and 4),
-# 8080 (aop-shell, 2 and 4), 8081 (bcast, 3 and 4) and 8090 (component, 5); 8080,
-# 8081 and 45000-45199 are those of the container of the module, which the
-# scenario stops first. The script checks that 44654, 8080, 8081 and 8090 are
-# free before starting the process.
+# Ports on the host: 44654/44655 and 45000-45199 (tv3ws, scenarios 1 and 3),
+# 8080 (aop-shell, 2 and 3) and 8090 (component, 4); 8080 and 45000-45199 are
+# those of the container of the module, which the scenario stops first. The
+# script checks that 44654, 8080 and 8090 are free before starting the
+# process.
 #
 # Usage: ./scripts/test-dev-host.sh [--cenario N[,N...]] [--build] [-h]
-#   --cenario  1, 2, 3, 4 and/or 5 (default: all, in order)
+#   --cenario  1, 2, 3 and/or 4 (default: all, in order)
 #   --build    passes --build to docker compose up (e.g. an edge with a new
 #              plugin)
 #
@@ -74,7 +74,7 @@ ROOT=$(pwd)
 
 uso() { sed -n '2,/^set -u/p' "$0" | sed -e '$d' -e 's/^# \{0,1\}//'; }
 
-CENARIOS="1 2 3 4 5"
+CENARIOS="1 2 3 4"
 BUILD=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -88,7 +88,7 @@ while [ $# -gt 0 ]; do
 done
 CENARIOS=${CENARIOS//,/ }
 for n in $CENARIOS; do
-  case "$n" in 1|2|3|4|5) ;; *) echo "cenario invalido: $n (use 1, 2, 3, 4 ou 5)"; exit 2 ;; esac
+  case "$n" in 1|2|3|4) ;; *) echo "cenario invalido: $n (use 1, 2, 3 ou 4)"; exit 2 ;; esac
 done
 
 case "$(uname -s)" in
@@ -151,12 +151,12 @@ esac
 
 LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/tv30-devhost-logs.XXXXXX")
 
-# Every compose call enables both profiles: tv3ws, aop-shell, bcast and
-# sysctl-init have the "linux" profile and mqtt-broker "mqtt". The edge of the
-# test starts in warn mode (DEVHOST_AUTH_ENFORCE changes it): in enforce, the
-# test token (a sub not in clients:authorized) would get 107 before reaching
-# the module on the host. The restore (compose_env) goes back to the mode of
-# the .env.
+# Every compose call enables both profiles: tv3ws, aop-shell, aop-cc,
+# bcast-sim and sysctl-init have the "linux" profile and mqtt-broker
+# "mqtt". The edge of the test starts in warn mode (DEVHOST_AUTH_ENFORCE
+# changes it): in enforce, the test token (a sub not in clients:authorized)
+# would get 107 before reaching the module on the host. The restore
+# (compose_env) goes back to the mode of the .env.
 compose() { COMPOSE_FILE=docker-compose.yml AUTH_ENFORCE=${DEVHOST_AUTH_ENFORCE:-warn} docker compose --profile mqtt --profile linux "$@"; }
 # Restore: the configuration of the .env (COMPOSE_FILE included).
 compose_env() { docker compose --profile mqtt --profile linux "$@"; }
@@ -165,6 +165,9 @@ compose_env() { docker compose --profile mqtt --profile linux "$@"; }
 # dependency of the edgegateway; userfiles-seed creates ./user-files for the
 # module on the host).
 INFRA="redis mqtt-broker edgegateway userfiles-seed"
+# The transport layer: the broadcaster side and the Common Core that acquires
+# it and serves the applications.
+TRANSPORTE="aop-cc bcast-sim"
 
 # Leftovers of an interrupted run: the tv30-devhost-<module> container (host
 # network) would hold the port of the module, and the scenarios would fail
@@ -244,9 +247,9 @@ subir() {
 }
 
 # parar <service> [reason]: the module on the host cannot coexist with the
-# container (same port and same fixed MQTT clientId: tv3ws-client, aop-core,
-# bcast_svc); the reason changes only the message (e.g. the edge in
-# scenario 5).
+# container (same port and same fixed MQTT clientId: tv3ws-client,
+# aop-core); the reason changes only the message (e.g. the edge in
+# scenario 4).
 parar() {
   compose stop "$1" >>"$LOGDIR/compose.log" 2>&1 || true
   if container_rodando "$1"; then falha "container $1 continua rodando"; return 1; fi
@@ -257,14 +260,14 @@ parar() {
 
 # HOST_* describe the CURRENT module, the one host_vivo, host_logs, host_node
 # and host_stop act on. More than one module may be on the host at the same
-# time (scenario 4): the REG_* registry keeps the state of each, host_usar
+# time (scenario 3): the REG_* registry keeps the state of each, host_usar
 # makes another one current and host_stop_todos stops all of them.
 HOST_MOD=""; HOST_PID=""; HOST_DIR=""; HOST_CTR=""; HOST_LOG=""
 declare -A REG_PID=() REG_DIR=() REG_CTR=() REG_LOG=()
 # Modules up on the host, in the order they started.
 HOST_LISTA=""
 
-# Folder of the module, relative to the root (the component of scenario 5 is
+# Folder of the module, relative to the root (the component of scenario 4 is
 # the example of the template; the other modules have a folder of their own
 # name).
 pasta_modulo() { case "$1" in componente) printf 'templates/componente' ;; *) printf '%s' "$1" ;; esac; }
@@ -459,13 +462,13 @@ const h=b({alg:"HS256",typ:"JWT"}),p=b({iat:n,nbf:n,exp:n+600,iss:process.env.IS
 process.stdout.write(h+"."+p+"."+c.createHmac("sha256",process.env.SEC).update(h+"."+p).digest("base64url"));'
 
 # Both checks run in the environment of the CURRENT module; the label says
-# which one (useful when there is more than one on the host, scenario 4).
+# which one (useful when there is more than one on the host, scenario 3).
 checar_redis_host() {
   local r
   if r=$(host_node "$JS_REDIS" 2>&1); then ok "host ($HOST_MOD) -> Redis 127.0.0.1:6379 (PING: $r)"
   else falha "host ($HOST_MOD) -> Redis 127.0.0.1:6379 (PING: $(recorte "$r"))"; fi
 }
-# Requires the mqtt library of the module (tv3ws, aop-shell and bcast have it; the
+# Requires the mqtt library of the module (tv3ws and aop-shell have it; the
 # component does not).
 checar_mqtt_host() {
   local r
@@ -527,58 +530,65 @@ checar_borda_tv3ws_host() {
   info "X-TV30-Auth-Warn sem token: ${h:-ausente} (em AUTH_ENFORCE=warn a borda deixa passar)"
 }
 
-# BALD of users-test retained in the broker, published by the bcast on the
-# host: bcastEntryPackageUrl must carry the expected host:port.
-# checar_bald <host:port>
-checar_bald() {
-  local r
-  r=$(docker exec mqtt-broker mosquitto_sub -h localhost -t "tlm/sls/$SID_USERS_TEST/bald" -C 1 -W 5 2>/dev/null)
-  if printf '%s' "$r" | grep -q -F -e "$1"; then
-    ok "sinalizacao do bcast do host no broker (bcastEntryPackageUrl em $1)"
-  else
-    falha "sinalizacao do bcast do host no broker — esperado $1, lido: $(recorte "$r")"
-  fi
+# Selects the service 1002 of the bcast-sim example in the catalog of
+# aop-shell: aop-shell tunes it (tlm/tuned), and aop-cc launches its broadcast
+# application (AUTOSTART) on the origin of its Application Context ID,
+# http://ctx-<h>.apps.localhost:8081, once its entry point has passed in the
+# carousel, writing that origin to origins:associated.
+SID_1002="urn:sbtvd:tv3.0:service:1002"
+abrir_app_1002() {
+  resposta "http://127.0.0.1:8080/appcat/select?id=$SID_1002" >/dev/null
 }
 
-# Opens the users-test application of bcast through the real flow of aop-shell:
-# selection in the catalog (subscribes to the signaling of the service) and
-# full screen (startApp -> proxy target = bcastEntryPackageUrl of the BALD).
-# The graphics layer opens the application on its own host,
-# <label>.apps.localhost:8080/graphicsAppProxy/<path> (aop-shell/src/app-hosts.js),
-# and aop-shell writes that origin to origins:associated. Closing = ESC
-# (/keydown/27: closes the graphics layer and removes the origin) and back to
-# the catalog; the catalog alone would leave the origin in Redis.
-SID_USERS_TEST="urn:tv30:service:users-test"
-abrir_users_test() {
-  resposta "http://127.0.0.1:8080/appcat/select?id=$SID_USERS_TEST" >/dev/null
-  sleep 2
-  resposta "http://127.0.0.1:8080/btpapp/fullscr" >/dev/null
-}
-fechar_users_test() {
-  resposta "http://127.0.0.1:8080/keydown/27" >/dev/null
-  resposta "http://127.0.0.1:8080/btpapp/appcat" >/dev/null
-}
-
-# HOST_APP = host:port of the open application, read from the origin aop-shell
-# wrote to origins:associated; empty if none appeared in 10 s. The request
-# goes to 127.0.0.1:8080 with that Host, without depending on the resolver
-# of the test environment knowing *.localhost.
+# HOST_APP = host:port of the open application, read from the origin aop-cc
+# wrote to origins:associated; empty if none appeared in 30 s (the entry
+# point passes in the carousel every 10 s). The request goes to
+# 127.0.0.1:8081 with that Host, without depending on the resolver of the
+# test environment knowing *.localhost.
 HOST_APP=""
 checar_origem_app() {
   local o="" i=0
   HOST_APP=""
-  while [ "$i" -lt 10 ]; do
+  while [ "$i" -lt 30 ]; do
     o=$(docker exec redis redis-cli --raw HKEYS origins:associated 2>/dev/null \
-        | grep -m1 -E '^http://[a-z0-9-]+\.apps\.localhost:8080$')
+        | grep -m1 -E '^http://ctx-[0-9a-f]{16}\.apps\.localhost:8081$')
     [ -n "$o" ] && break
     i=$((i + 1)); sleep 1
   done
   if [ -z "$o" ]; then
-    falha "aop-shell gravou a origem propria da app em origins:associated — nenhuma <rotulo>.apps.localhost:8080"
+    falha "aop-cc gravou a origem da app em origins:associated — nenhuma ctx-<h>.apps.localhost:8081"
     return 1
   fi
   HOST_APP=${o#http://}
-  ok "aop-shell gravou a origem propria da app em origins:associated: $o"
+  ok "aop-cc gravou a origem da app em origins:associated: $o"
+}
+
+# checar_app_aberta <description>: the entry point of the application answers
+# on its own origin, through the object proxy, with the bridge of the
+# platform. Depends on HOST_APP.
+checar_app_aberta() {
+  [ -n "$HOST_APP" ] || return 1
+  checar_http "$1" http://127.0.0.1:8081/index.html '/.tv30/bridge.js' 10 -H "Host: $HOST_APP"
+}
+
+# fechar_app <description>: Escape on the aop-shell under test, which asks
+# aop-cc to end the application (end-request); aop-cc removes the origin from
+# origins:associated. Then back to the catalog. Depends on HOST_APP.
+fechar_app() {
+  [ -n "$HOST_APP" ] || return 1
+  resposta "http://127.0.0.1:8080/keydown/27" >/dev/null
+  local i=0
+  while [ "$i" -lt 10 ]; do
+    if ! docker exec redis redis-cli --raw HKEYS origins:associated 2>/dev/null | grep -q -F -x "http://$HOST_APP"; then
+      ok "$1"
+      resposta "http://127.0.0.1:8080/btpapp/appcat" >/dev/null
+      return 0
+    fi
+    i=$((i + 1)); sleep 1
+  done
+  falha "$1 — a origem http://$HOST_APP continua em origins:associated"
+  resposta "http://127.0.0.1:8080/btpapp/appcat" >/dev/null
+  return 1
 }
 
 # checar_mqtt_ws_aop <description>: the aop-shell on the host serves the MQTT of
@@ -594,19 +604,7 @@ checar_mqtt_ws_aop() {
   else falha "$1 — resposta: ${r:-nenhuma} (porta publicada da 9001: '$(porta_ws_mqtt)')"; fi
 }
 
-# checar_app_aberta <description>: the application answers on its own host,
-# with the /graphicsAppProxy prefix (the URL the graphics layer opens), and
-# the same path on the host of aop-shell redirects (302) to that URL. Depends on
-# HOST_APP.
-checar_app_aberta() {
-  [ -n "$HOST_APP" ] || return 1
-  checar_http "$1 (host proprio da app)" \
-    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 10 -H "Host: $HOST_APP"
-  checar_http "/graphicsAppProxy no host do aop-shell -> 302 para o host da app" \
-    http://127.0.0.1:8080/graphicsAppProxy/users-test "ocation: http://$HOST_APP/graphicsAppProxy/users-test" 5 -D -
-}
-
-# Component of scenario 5 (the example of templates/componente/index.js): a
+# Component of scenario 4 (the example of templates/componente/index.js): a
 # name of this test's own, so that a template container that is up
 # (meu-componente) does not answer in place of the host process. Topic and
 # key come from the name, as in index.js.
@@ -643,14 +641,14 @@ limpar_componente() {
 
 cenario_1() {
   CEN=1
-  titulo "CENARIO 1 — tv3ws no host | containers: infra (borda windows) + aop-shell + bcast"
+  titulo "CENARIO 1 — tv3ws no host | containers: infra (borda windows) + aop-shell + aop-cc + bcast-sim"
   parar tv3ws || return
-  subir windows $INFRA aop-shell bcast || return
+  subir windows $INFRA aop-shell $TRANSPORTE || return
   porta_livre 44654 || { falha "porta 44654 ja ocupada no host"; return; }
   local ud; ud=$(dir_userfiles)
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
-    USER_THUMBS="$ud/thumbs" \
+    USER_THUMBS="$ud/thumbs" OBJECT_PROXY_URL=http://127.0.0.1:8081/ APPS_DOMAIN=apps.localhost \
     SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 \
     LISTEN_ATTEMPTS=10 MAX_REGISTRATIONS=32 PING_INTERVAL_MS=15000 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
@@ -668,13 +666,9 @@ cenario_1() {
 
 cenario_2() {
   CEN=2
-  titulo "CENARIO 2 — aop-shell no host | containers: infra (borda linux) + tv3ws + bcast"
+  titulo "CENARIO 2 — aop-shell no host | containers: infra (borda linux) + tv3ws + aop-cc + bcast-sim"
   parar aop-shell || return
-  # bcast announces bcastEntryPackageUrl = http://BCAST_HOSTNAME:8081 (the
-  # INTERNAL port). For the aop-shell on the host, that is localhost:8081 published
-  # by the container, so 8081 is published FIXED here (BCAST_PUBLISH; by
-  # default it gets any free port).
-  BCAST_HOSTNAME=localhost BCAST_PUBLISH=8081:8081 subir linux $INFRA tv3ws bcast || return
+  subir linux $INFRA tv3ws $TRANSPORTE || return
   porta_livre 8080 || { falha "porta 8080 ja ocupada no host"; return; }
   host_start aop-shell PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$(porta_ws_mqtt)" \
     USER_DATA_PATH="$(dir_userfiles)" REDIS_HOST=127.0.0.1 REDIS_PORT=6379 || return
@@ -683,53 +677,27 @@ cenario_2() {
   checar_redis_mqtt
   checar_log "aop-shell do host leu os perfis no Redis do container" 'Loaded [0-9]+ users from Redis'
   checar_log "aop-shell do host conectou no broker do container" 'Connected to MQTT broker'
-  checar_http "aop-shell do host recebeu o BAMT do bcast em container (MQTT)" \
-    http://127.0.0.1:8080/appcat 'Trocar Usu' 15
-  abrir_users_test
-  checar_origem_app && checar_app_aberta "aop-shell do host -> bcast em container"
+  checar_http "aop-shell do host montou o catalogo pela LLS que o aop-cc publicou (MQTT)" \
+    http://127.0.0.1:8080/appcat 'Sintetico' 30
+  abrir_app_1002
+  checar_origem_app && checar_app_aberta "sintonia do aop-shell do host -> aplicacao lancada pelo aop-cc na comporta"
   checar_mqtt_ws_aop "aop-shell do host -> mqtt-broker em container pelo WebSocket /mqtt"
-  fechar_users_test
+  fechar_app "Esc no aop-shell do host -> aop-cc encerrou a aplicacao (end-request)"
   checar_http "borda (linux) 44642 /health -> tv3ws em container" \
     http://127.0.0.1:44642/health '"status":"ok"' 30 || diag_container tv3ws
   host_stop
+  checar_http_nao "sem o aop-shell do host a 8080 para de responder (resposta vinha do host)" \
+    http://127.0.0.1:8080/appcat 'Sintetico' 5
 }
 
 cenario_3() {
   CEN=3
-  titulo "CENARIO 3 — bcast no host | containers: infra (borda linux) + tv3ws + aop-shell"
-  parar bcast || return
-  subir linux $INFRA tv3ws aop-shell || return
-  if [ "$(docker inspect -f '{{join .HostConfig.ExtraHosts ","}}' aop-shell 2>/dev/null)" = "" ]; then
-    info "o container aop-shell nao tem extra_hosts (host.docker.internal): compose antigo?"
-  fi
-  porta_livre 8081 || { falha "porta 8081 ja ocupada no host"; return; }
-  host_start bcast PORT=8081 MQTT_HOST=127.0.0.1 BCAST_HOSTNAME=host.docker.internal \
-    BSID=tv30-default WEBMEDIA_SID=urn:tv30:service:webmedia \
-    UFF_SID=urn:tv30:service:uff EDUPLAY_SID=urn:tv30:service:eduplay || return
-  esperar_modulo "bcast no host servindo 8081" \
-    http://127.0.0.1:8081/users-test 'Trocar Usu' || { host_stop; return; }
-  checar_redis_mqtt
-  checar_log "bcast do host conectou no broker do container" 'MQTT client connected'
-  checar_bald host.docker.internal:8081
-  checar_http "aop-shell em container recebeu o BAMT do bcast no host (MQTT)" \
-    http://127.0.0.1:8080/appcat 'Trocar Usu' 15
-  abrir_users_test
-  checar_origem_app && checar_app_aberta "aop-shell em container -> bcast no host (via host.docker.internal)"
-  host_stop
-  [ -n "$HOST_APP" ] && checar_http_nao "sem o bcast do host o proxy do aop-shell falha (resposta vinha do host)" \
-    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 5 -H "Host: $HOST_APP"
-  fechar_users_test
-}
-
-cenario_4() {
-  CEN=4
-  titulo "CENARIO 4 — tv3ws, aop-shell e bcast no host | containers: infra (borda windows)"
+  titulo "CENARIO 3 — tv3ws e aop-shell no host | containers: infra (borda windows) + aop-cc + bcast-sim"
   parar tv3ws || return
   parar aop-shell || return
-  parar bcast || return
-  subir windows $INFRA || return
+  subir windows $INFRA $TRANSPORTE || return
   local p ud
-  for p in 44654 8080 8081; do
+  for p in 44654 8080; do
     porta_livre "$p" || { falha "porta $p ja ocupada no host"; return; }
   done
   ud=$(dir_userfiles)
@@ -738,21 +706,11 @@ cenario_4() {
   # 44654).
   host_start tv3ws MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
     HTTP_PORT=44654 HTTPS_PORT=44655 JWT_SECRET="$JWT_SECRET" JWT_ISSUER="$JWT_ISSUER" \
-    USER_THUMBS="$ud/thumbs" \
+    USER_THUMBS="$ud/thumbs" OBJECT_PROXY_URL=http://127.0.0.1:8081/ APPS_DOMAIN=apps.localhost \
     SERVER_URL="$SERVER_URL_CFG" WS_PORT_MIN=45000 WS_PORT_MAX=45199 \
     LISTEN_ATTEMPTS=10 MAX_REGISTRATIONS=32 PING_INTERVAL_MS=15000 LOG_LEVEL=INFO || return
   esperar_modulo "tv3ws no host respondendo em 44654/health" \
     http://127.0.0.1:44654/health '"status":"ok"' || return
-
-  # bcast before aop-shell: the BALD retained in the broker already carries the
-  # address of the host. The one that follows bcastEntryPackageUrl is aop-shell,
-  # also on the host: 127.0.0.1:8081 (the port of the process itself;
-  # 127.0.0.1 and not localhost so as not to depend on IPv6 resolution).
-  host_start bcast PORT=8081 MQTT_HOST=127.0.0.1 BCAST_HOSTNAME=127.0.0.1 \
-    BSID=tv30-default WEBMEDIA_SID=urn:tv30:service:webmedia \
-    UFF_SID=urn:tv30:service:uff EDUPLAY_SID=urn:tv30:service:eduplay || return
-  esperar_modulo "bcast no host servindo 8081" \
-    http://127.0.0.1:8081/users-test 'Trocar Usu' || return
 
   host_start aop-shell PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$(porta_ws_mqtt)" \
     USER_DATA_PATH="$ud" REDIS_HOST=127.0.0.1 REDIS_PORT=6379 || return
@@ -766,9 +724,6 @@ cenario_4() {
   checar_redis_mqtt
   checar_log "tv3ws do host conectou no Redis do container" '\[redis\] pronto em 127\.0\.0\.1:6379'
   checar_log "tv3ws do host conectou no broker do container" 'Connected to MQTT broker'
-  host_usar bcast || return
-  checar_redis_mqtt
-  checar_log "bcast do host conectou no broker do container" 'MQTT client connected'
   host_usar aop-shell || return
   checar_redis_mqtt
   checar_log "aop-shell do host leu os perfis no Redis do container" 'Loaded [0-9]+ users from Redis'
@@ -778,29 +733,27 @@ cenario_4() {
   host_usar tv3ws || return
   checar_borda_tv3ws_host
 
-  # bcast on the host -> broker -> aop-shell on the host, and aop-shell on the host ->
-  # bcast on the host.
-  checar_bald 127.0.0.1:8081
-  checar_http "aop-shell do host recebeu o BAMT do bcast do host (MQTT)" \
-    http://127.0.0.1:8080/appcat 'Trocar Usu' 15
-  abrir_users_test
-  checar_origem_app && checar_app_aberta "aop-shell do host -> bcast do host"
+  # aop-cc (container) -> broker -> aop-shell on the host, and the tuning of
+  # the aop-shell on the host -> aop-cc.
+  checar_http "aop-shell do host montou o catalogo pela LLS que o aop-cc publicou (MQTT)" \
+    http://127.0.0.1:8080/appcat 'Sintetico' 30
+  abrir_app_1002
+  checar_origem_app && checar_app_aberta "sintonia do aop-shell do host -> aplicacao lancada pelo aop-cc na comporta"
   checar_mqtt_ws_aop "aop-shell do host -> mqtt-broker em container pelo WebSocket /mqtt"
+  fechar_app "Esc no aop-shell do host -> aop-cc encerrou a aplicacao (end-request)"
 
   # Negative proofs: each response came from the host process.
-  host_usar bcast && host_stop
-  [ -n "$HOST_APP" ] && checar_http_nao "sem o bcast do host o proxy do aop-shell do host falha (resposta vinha do bcast do host)" \
-    http://127.0.0.1:8080/graphicsAppProxy/users-test 'Trocar Usu' 5 -H "Host: $HOST_APP"
-  fechar_users_test
   host_usar tv3ws && host_stop
   checar_http_nao "sem o tv3ws do host a borda para de responder /health (resposta vinha do host)" \
     http://127.0.0.1:44642/health '"status":"ok"' 10
   host_usar aop-shell && host_stop
+  checar_http_nao "sem o aop-shell do host a 8080 para de responder (resposta vinha do host)" \
+    http://127.0.0.1:8080/appcat 'Sintetico' 5
 }
 
-cenario_5() {
-  CEN=5
-  titulo "CENARIO 5 — componente novo no host (templates/componente) | containers: redis, mqtt-broker (borda parada)"
+cenario_4() {
+  CEN=4
+  titulo "CENARIO 4 — componente novo no host (templates/componente) | containers: redis, mqtt-broker (borda parada)"
   subir linux redis mqtt-broker || return
   # Proof that the path does not go through the edge: it stays stopped during
   # the scenario (another scenario or the restore brings it back).
@@ -849,7 +802,7 @@ restaurar() {
   [ -z "$RESTAURADO" ] || return 0
   RESTAURADO=1
   host_stop_todos
-  # Test key of scenario 5, if it was interrupted.
+  # Test key of scenario 4, if it was interrupted.
   limpar_componente
   CEN="-"
   if [ -n "${ANTES// /}" ]; then

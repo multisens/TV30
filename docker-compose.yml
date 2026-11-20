@@ -156,9 +156,6 @@ services:
         tv30-scripts: ./infra/dockerfiles
     container_name: aop-shell
     networks: [ginga_net]
-    extra_hosts:
-      # host.docker.internal on Linux, for a bcast on the host.
-      - "host.docker.internal:host-gateway"
     ports:
       # Public port of the AoP, fixed (default 8080); inside the container the
       # port is 8080. The MQTT over WebSocket of the TV page (/mqtt) goes

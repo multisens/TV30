@@ -16,7 +16,7 @@ Para um componente novo, o caminho é outro e mais curto:
 | De | Para | Endereço |
 |---|---|---|
 | Módulo no host | Container | `127.0.0.1:<porta no host>`: 6379 (Redis), 1883 (broker), 44642 e 44643 (borda), 8080 (casca). As demais, `docker compose port <serviço> <porta>` |
-| Container | Módulo no host | `host.docker.internal`, que só a borda, a casca e o `aop-cc` resolvem no Linux (`extra_hosts` do compose) |
+| Container | Módulo no host | `host.docker.internal`, que só a borda e o `aop-cc` resolvem no Linux (`extra_hosts` do compose) |
 | Cliente das APIs | tv3ws | Sempre pela borda. O tv3ws no host escuta só na própria máquina (`TV3WS_LISTEN_HOST` muda) |
 
 **Pare o container do módulo antes de rodá-lo no host.** Os dois disputariam a mesma porta e o
@@ -122,7 +122,7 @@ Os dois módulos também leem um `.env` na própria pasta. A variável definida 
 com o broker e com quem depende dele.
 
 ```bash
-./scripts/test-dev-host.sh               # cenários 1 a 5, em ordem
+./scripts/test-dev-host.sh               # cenários 1 a 4, em ordem
 ./scripts/test-dev-host.sh --cenario 2   # um só, ou uma lista: 1,3
 ./scripts/test-dev-host.sh --build       # reconstrói as imagens antes
 ```
@@ -131,9 +131,8 @@ com o broker e com quem depende dele.
 |---|---|---|
 | 1 | tv3ws | `windows` |
 | 2 | casca | `linux` |
-| 3 | bcast | `linux` |
-| 4 | tv3ws, casca e bcast | `windows` |
-| 5 | o componente de exemplo do modelo | parada |
+| 3 | tv3ws e casca | `windows` |
+| 4 | o componente de exemplo do modelo | parada |
 
 - O script precisa do bash 4. No macOS, `brew install bash` e
   `/opt/homebrew/bin/bash scripts/test-dev-host.sh`.

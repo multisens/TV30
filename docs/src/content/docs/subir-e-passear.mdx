@@ -33,14 +33,12 @@ cp .env.example .env
 O `.env` é obrigatório: sem ele, a TV não sobe e ficam de pé só o banco e a borda. Na primeira vez,
 o Docker baixa as imagens, o que leva alguns minutos.
 
-Para conferir, rode `./tv30 status`. Os containers `aop-shell`, `tv3ws`, `bcast`, `edgegateway`,
-`mqtt-broker` e `redis` devem estar de pé, e o anunciante SSDP, rodando.
+Para conferir, rode `./tv30 status`. Os containers `aop-shell`, `tv3ws`, `aop-cc`, `bcast-sim`,
+`edgegateway`, `mqtt-broker` e `redis` devem estar de pé, e o anunciante SSDP, rodando.
 
-<Aside type="note" title="Sem vídeo, por enquanto">
-Os vídeos de exemplo não vêm no clone, e por isso o vídeo dos canais fica preto. Todo o resto
-funciona, inclusive a aplicação da emissora em tela cheia. Está planejado publicar os vídeos de
-exemplo para download.
-</Aside>
+A emissora simulada traz três serviços de exemplo, todos no canal 10. O vídeo de cada um é um padrão
+de barras com o número do serviço e um contador de quadros, com um bipe a cada segundo, repetido em
+laço como se fosse ao vivo.
 
 ## Experimente
 
@@ -67,18 +65,30 @@ As telas estão em inglês. Navegue com as setas e confirme com Enter.
    atingido*.
 
 3. **Entre num serviço.** Escolha um perfil. Aparece o catálogo, com um cartão para cada serviço que
-   a emissora simulada anuncia: *CEFET/RJ TV*, *UFF TV*, *Eduplay Quiz* e *Trocar Usuário*. Escolha
-   um deles.
+   a emissora simulada anuncia: *Sintetico* (10.1), *Radiodifusao* (10.2) e *Guardada* (10.3).
+   Escolha *Radiodifusao*.
 
-   A plataforma passa a ter um serviço corrente:
+   A plataforma sintoniza o serviço e passa a ter um serviço corrente:
 
    ```bash
    docker compose exec redis redis-cli GET session:current-service-id
    ```
 
-4. **Vá para a tela cheia.** A Bootstrap Application mostra o serviço, o programa no ar e o vídeo
-   numa janela. Suba até o vídeo e aperte Enter. O vídeo ocupa a tela e a aplicação da emissora
-   começa sozinha, por cima dele.
+4. **Espere a aplicação da emissora.** A Bootstrap Application mostra o serviço e o vídeo numa
+   janela. A aplicação desse serviço vem pelo ar, num carrossel, e só abre depois de passar nele: em
+   até 10 segundos, o vídeo vai para a tela cheia e a aplicação aparece por cima dele, dizendo que
+   foi entregue pelo carrossel.
+
+   Para ver a aplicação em execução e a origem própria em que ela roda:
+
+   ```bash
+   docker compose exec redis redis-cli HGETALL session:current-app
+   ```
+
+   No *Sintetico*, a aplicação vem pela internet e abre na hora. No *Guardada*, a plataforma primeiro
+   guarda a aplicação inteira no receptor e só então a abre.
+
+   [Como a emissora entrega a aplicação](../emissora-simulada/#os-serviços-de-exemplo)
 
 5. **Volte.** Aperte Esc. A aplicação da emissora termina e a Bootstrap Application volta. O botão
    de voltar leva ao catálogo, e o cartão do perfil, no catálogo, volta à escolha de perfil.
@@ -103,7 +113,8 @@ As telas estão em inglês. Navegue com as setas e confirme com Enter.
 |---|---|
 | As APIs, com a documentação de cada rota | `docker port edgegateway 8085` dá a porta do Swagger |
 | O banco, numa interface web | `docker port redis 18081` dá a porta do Redis Commander; usuário `admin`, senha `tv30-redis-admin` |
-| O que cada peça registra | `docker compose logs -f aop-shell` (ou `tv3ws`, `bcast`) |
+| O que cada peça registra | `docker compose logs -f aop-shell` (ou `aop-cc`, `bcast-sim`, `tv3ws`) |
+| O que a emissora simulada serve | `curl http://localhost:8082/signaling/lls`; o resto está em [Emissora simulada](../emissora-simulada/) |
 
 ## Desligar
 

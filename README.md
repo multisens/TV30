@@ -5,7 +5,8 @@
 Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 25608). Implementa, em microsserviços, os papéis da plataforma TV 3.0:
 - o receptor (AoP);
 - os TV 3.0 WebServices (tv3ws);
-- o broadcaster simulado (bcast).
+- o núcleo comum da plataforma (`aop-cc`): aquisição da sinalização, comporta, Application Context Cache e ciclo de vida das aplicações;
+- a emissora simulada (`bcast-sim`).
 
 Por baixo, uma infraestrutura de apoio escolhida por este projeto:
 - a borda KrakenD (`edgegateway`);
@@ -47,9 +48,9 @@ O `./tv30 up` faz o `docker compose up -d` e sobe o anunciante da descoberta SSD
 >
 > O `tv3ws/.env` é opcional.
 
-> **Importante: não rode `docker compose` em `infra/`.** O `infra/` é submodule, e o compose dele já entra pelo `include:` do `docker-compose.yml` da raiz. Subido de dentro de `infra/`, o compose não vê os serviços `aop-shell`, `tv3ws` e `bcast`.
+> **Importante: não rode `docker compose` em `infra/`.** O `infra/` é submodule, e o compose dele já entra pelo `include:` do `docker-compose.yml` da raiz. Subido de dentro de `infra/`, o compose não vê os serviços `aop-shell`, `tv3ws`, `aop-cc` e `bcast-sim`.
 
-> **Importante: sem `.env` na raiz, os serviços principais ficam de fora sem aviso.** O `aop-shell`, o `tv3ws`, o `bcast`, o `mqtt-broker` e o `sysctl-init` têm `profiles` no compose. Sem `COMPOSE_PROFILES=mqtt,linux`, que vem no `.env.example`, só sobe a infra. Comece sempre com `cp .env.example .env`.
+> **Importante: sem `.env` na raiz, os serviços principais ficam de fora sem aviso.** O `aop-shell`, o `tv3ws`, o `aop-cc`, o `bcast-sim`, o `mqtt-broker` e o `sysctl-init` têm `profiles` no compose. Sem `COMPOSE_PROFILES=mqtt,linux`, que vem no `.env.example`, só sobe a infra. Comece sempre com `cp .env.example .env`.
 
 ---
 
