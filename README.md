@@ -1,8 +1,8 @@
-# TV30 — testbed aberto da camada de Codificação de Aplicações da TV 3.0
+# Testbed de Codificação de Aplicações da TV 3.0
 
 ![Node Version](https://img.shields.io/badge/Node.js-23.11.1-blueviolet?logo=nodedotjs)  ![MQTT](https://img.shields.io/badge/MQTT-blueviolet?logo=mqtt)  ![Docker](https://img.shields.io/badge/Docker-blue?logo=docker)
 
-Testbed do padrão brasileiro de TV digital interativa **TV 3.0** (ABNT NBR 25608). Implementa, em microsserviços, os papéis da plataforma TV 3.0:
+O **Testbed TV 3.0** é um testbed aberto da camada de Codificação de Aplicações (ABNT NBR 25608) do padrão brasileiro de TV digital interativa **TV 3.0**. Implementa, em microsserviços, os papéis da plataforma TV 3.0:
 - o receptor (AoP);
 - os TV 3.0 WebServices (tv3ws);
 - o núcleo comum da plataforma (`aop-cc`): aquisição da sinalização, comporta, Application Context Cache e ciclo de vida das aplicações;
