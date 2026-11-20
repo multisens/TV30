@@ -74,7 +74,7 @@ curl -s -H "Authorization: Bearer <access token>" http://localhost:44642/tv3/cur
 Com um serviço aberto na TV, a resposta diz qual é:
 
 ```json
-{"serviceContextId":"urn:tv30:service:webmedia","transportStreamId":"…","originalNetworkId":"…"}
+{"serviceContextId":"urn:sbtvd:tv3.0:service:1001","transportStreamId":"…","originalNetworkId":"…"}
 ```
 
 ## Cliente em outro aparelho
@@ -102,7 +102,7 @@ Pareado. Guarde para os próximos acessos:
   clientid:      8cb4f242-d72b-4384-9124-efc9a3a7df6c
   refresh token: LaYcKA-AAsiS6B7jtcSmjQ
 Serviço corrente (GET /tv3/current-service, por HTTPS):
-200 {"serviceContextId":"urn:tv30:service:webmedia", …}
+200 {"serviceContextId":"urn:sbtvd:tv3.0:service:1001", …}
 ```
 
 Três pontos do programa valem para qualquer linguagem:

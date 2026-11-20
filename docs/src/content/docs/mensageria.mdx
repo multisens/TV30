@@ -7,8 +7,8 @@ import NameTree from '../../components/name-tree.astro';
 import { mqttTopics } from '../../data/mqtt-topics.ts';
 
 A **mensageria** é o broker Mosquitto do serviço `mqtt-broker`. Por ela passa
-o que dispara comportamento: a sinalização da emissora simulada, as trocas de usuário e de serviço, as
-camadas da tela e os pop-ups. O que precisa ser consultado a qualquer momento fica no Redis
+o que dispara comportamento: a sinalização que o `aop-cc` adquire da emissora simulada, as trocas de
+usuário e de serviço, os eventos dos objetos do carrossel, as camadas da tela e os pop-ups. O que precisa ser consultado a qualquer momento fica no Redis
 ([Modelo de dados Redis](../modelo-redis/)); um dado com as duas naturezas vive nos dois.
 
 O broker tem um plugin que confere o esquema de cada publicação ([Esquema das mensagens](#esquema-das-mensagens)).
@@ -19,7 +19,7 @@ Ele não controla o acesso a tópicos: qualquer cliente assina e publica em qual
 
 | De onde | Endereço |
 |---|---|
-| um serviço em container, na rede do Docker | `mqtt://mosquitto:1883` |
+| um serviço em container, na rede do Docker | `mqtt://mqtt-broker:1883` |
 | um processo no computador | `mqtt://localhost:1883` |
 | a página da TV, no navegador | `ws://<host da página>/mqtt`: a casca repassa a conexão ao WebSocket do broker |
 | um cliente WebSocket de fora, para depurar | a 9001 do broker, em porta escolhida pelo Docker (`docker compose port mqtt-broker 9001`); `MQTT_WS_PUBLISH=<porta>:9001` no `.env` da raiz a fixa |
@@ -31,17 +31,19 @@ Ele não controla o acesso a tópicos: qualquer cliente assina e publica em qual
 ## Os tópicos
 
 Cada ramo junta os tópicos de mesmo prefixo, e cada nome mostra se o tópico fica retido, se não tem
-esquema e se ainda não tem publicador no testbed. O `<sid>` é o `globalServiceId` do serviço. O que a
-emissora simulada publica está em [Emissora simulada](../emissora-simulada/), e como a TV reveza os
-pop-ups, em [aop-shell](../aop-shell/#pop-ups).
+esquema e se ainda não tem publicador no testbed. O `<sid>` é o `globalServiceId` do serviço, e o
+`<serviceId>`, o número do serviço na SLT. A emissora simulada não publica nada: o `aop-cc` busca o que ela
+serve ([Emissora simulada](../emissora-simulada/)) e distribui. Como a TV reveza os pop-ups está em
+[aop-shell](../aop-shell/#pop-ups).
 
 <NameTree id="mqtt-topics" tree={mqttTopics} label="Os tópicos MQTT" />
 
 ### Retenção
 
-- **Estado** (`currentUser`, `currentService`, `services`, `graphics-application`, os `tlm/`): retido, para que
-  quem conecta depois saiba o estado. Publicar vazio apaga o retido.
-- **Evento** (pop-ups, `removedUser`, `application-state`): não retido; só recebe quem está escutando.
+- **Estado** (`currentUser`, `currentService`, `services`, `graphics-application`, os `tlm/` menos os
+  `tlm/object/`): retido, para que quem conecta depois saiba o estado. Publicar vazio apaga o retido.
+- **Evento** (pop-ups, `removedUser`, `application-state`, `end-request`, `tlm/object/`): não retido; só
+  recebe quem está escutando.
 - **Camadas da tela:** não retidas. A página que reabre não recebe a última camada.
 
 As mensagens retidas sobrevivem à reinicialização do broker. `docker compose down -v` as apaga, junto

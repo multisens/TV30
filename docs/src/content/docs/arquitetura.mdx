@@ -22,16 +22,17 @@ Por que o testbed usa mensageria, borda e Redis, se a norma não os pede, está 
 
 ## Containers e portas
 
-Sobem seis containers contínuos e quatro tarefas únicas. O `.env` da raiz precisa de
-`COMPOSE_PROFILES=mqtt,linux` (o `.env.example` já traz): sem ele, o broker, o `tv3ws`, a casca e o
-bcast não sobem.
+Sobem sete containers contínuos e quatro tarefas únicas. O `.env` da raiz precisa de
+`COMPOSE_PROFILES=mqtt,linux` (o `.env.example` já traz): sem ele, o broker, o `tv3ws`, a casca, o
+`aop-cc` e o `bcast-sim` não sobem.
 
 | Container | Porta no host | O que faz |
 |---|---|---|
 | `edgegateway` | 44642 (HTTP), 44643 (HTTPS); documentação das rotas na 8085, em porta escolhida pelo Docker | a borda: confere as credenciais e encaminha ao `tv3ws` |
 | `tv3ws` | 45000 a 45199 (WebSockets dos dispositivos remotos) | os TV 3.0 WebServices; as portas das APIs ficam só na rede do Docker |
 | `aop-shell` | 8080 (`AOP_PUBLIC_PORT`) | a casca: a página da TV, as aplicações de emissora e o `/mqtt` da página |
-| `bcast` | 8081, em porta escolhida pelo Docker (`BCAST_PUBLISH` fixa) | a emissora simulada |
+| `aop-cc` | 8081 (`OBJECT_PROXY_PUBLIC_PORT`) | o núcleo comum da plataforma: aquisição da sinalização, comporta de entrega de objeto, Application Context Cache e gerente de ciclo de vida das aplicações |
+| `bcast-sim` | 8082 (`LIVE_PUBLIC_PORT`) | a emissora simulada: sinalização, arquivos dos serviços e fluxos ao vivo |
 | `mqtt-broker` | 1883; WebSocket na 9001, em porta escolhida pelo Docker (`MQTT_WS_PUBLISH` fixa) | o broker, com o validador de esquema |
 | `redis` | 6379, só em `127.0.0.1`; inspeção na 18081, em porta escolhida pelo Docker | o armazenamento |
 | `tv30-preflight` | — | confere DNS e portas e para a subida se a 44642 estiver ocupada |
@@ -40,7 +41,7 @@ bcast não sobem.
 | `tv30-sysctl-init` | — | ajusta o sysctl da rede (Linux) |
 
 Para saber a porta de host que o Docker escolheu, use `docker compose port <serviço> <porta>`, por
-exemplo `docker compose port bcast 8081`. Como fixar ou trocar as portas está em
+exemplo `docker compose port mqtt-broker 9001`. Como fixar ou trocar as portas está em
 [Instalação](../instalacao/#portas-e-endereços). O anunciante SSDP não é container: roda no computador, e o
 `./tv30 up` o sobe ([Descoberta na rede](../instalacao/#descoberta-na-rede)).
 
@@ -53,7 +54,8 @@ Se um processo de dentro da borda ou do Redis cai, o container inteiro cai, e o 
 | `edgegateway` | `tv30-preflight` e `tv30-tls-init` terminarem sem erro; `redis` saudável |
 | `tv3ws` | `redis` saudável; `mqtt-broker` iniciado; `tv30-userfiles-seed` e `tv30-tls-init` terminarem sem erro |
 | `aop-shell` | `mqtt-broker`, `redis` e `tv30-userfiles-seed` iniciados |
-| `bcast` | `mqtt-broker` iniciado |
+| `bcast-sim` | nada |
+| `aop-cc` | `redis` saudável; `mqtt-broker` e `bcast-sim` iniciados |
 
 O `redis` fica saudável depois de carregar as funções de escrita e aplicar a carga inicial
 ([Modelo de dados Redis](../modelo-redis/)). O compose da raiz inclui o `infra/docker-compose.yml`, que
@@ -66,7 +68,8 @@ não sobe sozinho: a borda depende do `tv30-preflight`, que só existe na raiz.
 | `aop-shell/` | [multisens/aop-shell](https://github.com/multisens/aop-shell) | a casca da plataforma, em Node.js |
 | `tv3ws/` | [multisens/TV3WS](https://github.com/multisens/TV3WS) | os TV 3.0 WebServices, em TypeScript |
 | `infra/` | [multisens/Infra](https://github.com/multisens/Infra) | a borda, o broker com o plugin, o Redis e os Dockerfiles |
-| `bcast/` | [multisens/BcastService](https://github.com/multisens/BcastService) | a [emissora simulada](../emissora-simulada/), em TypeScript |
+| `aop-cc/` | [multisens/aop-cc](https://github.com/multisens/aop-cc) | o núcleo comum da plataforma, em Go |
+| `bcast-sim/` | [multisens/bcast-sim](https://github.com/multisens/bcast-sim) | a [emissora simulada](../emissora-simulada/), em TypeScript |
 
 Como clonar e atualizar os submódulos está em [Instalação](../instalacao/#submódulos).
 
@@ -86,9 +89,10 @@ publicados, construa as imagens localmente (`docker compose up -d --build`).
 | Tecnologia | Uso |
 |---|---|
 | Docker e Compose v2 | tudo roda em containers |
-| Node.js 23 | casca, `tv3ws` e bcast; TypeScript no `tv3ws` e no bcast |
+| Node.js 23 | casca, `tv3ws` e `bcast-sim`; TypeScript no `tv3ws` e no `bcast-sim` |
+| Go 1.25 | o `aop-cc` |
 | KrakenD e plugin Go | a borda |
 | Mosquitto e plugin C | o broker, com validação de esquema |
-| Redis | o armazenamento; ioredis na casca e no `tv3ws`, um cliente próprio em Go na borda |
-| FFmpeg | só para preparar os segmentos de vídeo, fora da stack |
+| Redis | o armazenamento; ioredis na casca e no `tv3ws`, go-redis no `aop-cc`, um cliente próprio em Go na borda |
+| FFmpeg | só para preparar os segmentos de vídeo, com a ferramenta do `bcast-sim`, fora da stack |
 | Astro Starlight | esta documentação, publicada no GitHub Pages |

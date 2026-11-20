@@ -8,6 +8,7 @@ const NONE = '—';
 const SCHEMA_YES = 'sim: o broker recusa a mensagem fora dele';
 const SCHEMA_NO = 'não: o broker não confere a mensagem';
 const TV_PAGE = 'página da TV';
+const CC = '<code>aop-cc</code>';
 
 interface TopicFacts {
     name: string;
@@ -68,7 +69,7 @@ export const mqttTopics: NameTree = {
             subscriber: 'casca, <code>tv3ws</code>',
             retained: 'sim',
             schema: true,
-            carries: 'O id do serviço DTV corrente (<code>urn:tv30:service:...</code>).',
+            carries: 'O <code>globalServiceId</code> do serviço DTV corrente.',
         }),
         topic({
             name: 'aop/services',
@@ -160,13 +161,41 @@ export const mqttTopics: NameTree = {
         }),
         topic({
             name: 'aop/application-lifecycle-manager/application-state',
-            publisher: 'casca',
+            publisher: '<code>aop-cc</code>',
             subscriber: '<code>tv3ws</code>',
             retained: 'não',
             schema: true,
             carries: '<code>{serviceContextId, appId, origin, state}</code>, com <code>state</code> '
                 + 'em <code>started</code> ou <code>ended</code>. Numa troca, o <code>ended</code> da '
                 + 'aplicação que sai vem antes do <code>started</code> da que entra.',
+        }),
+        topic({
+            name: 'aop/application-lifecycle-manager/graphics-application',
+            publisher: '<code>aop-cc</code>',
+            subscriber: 'casca',
+            retained: 'sim',
+            schema: true,
+            carries: 'A aplicação de emissora da camada de gráficos: '
+                + '<code>{serviceContextId, appId, origin, url}</code>. Vazio: a Bootstrap Application '
+                + 'do serviço sintonizado volta.',
+        }),
+        topic({
+            name: 'aop/application-lifecycle-manager/present-applications',
+            publisher: '<code>aop-cc</code>',
+            subscriber: NONE,
+            retained: 'sim',
+            schema: true,
+            carries: 'As aplicações <code>PRESENT</code> e <code>STORED_PRESENT</code> do serviço '
+                + 'sintonizado, que o espectador poderia iniciar pelo Access Panel, que não existe.',
+        }),
+        topic({
+            name: 'aop/application-lifecycle-manager/end-request',
+            publisher: 'casca',
+            subscriber: '<code>aop-cc</code>',
+            retained: 'não',
+            schema: true,
+            carries: 'O pedido do espectador para encerrar a aplicação de emissora: o Back que a aplicação '
+                + 'não cancelou, ou a tecla Home. <code>{serviceContextId, appId}</code>.',
         }),
         topic({
             name: 'aop/access-panel/client-blocked',
@@ -196,37 +225,115 @@ export const mqttTopics: NameTree = {
                 + 'cada registro e remoção. Vazio quando a classe fica sem dispositivo.',
         }),
         topic({
+            name: 'tlm/lls/<bsid>/slt',
+            publisher: CC,
+            subscriber: 'casca, <code>aop-cc</code>',
+            retained: 'sim',
+            schema: true,
+            carries: 'A SLT do canal RF <code>&lt;bsid&gt;</code>, como a emissora a serve, em JSON. '
+                + 'Vazio: o canal saiu.',
+        }),
+        topic({
             name: 'tlm/lls/<bsid>/bamt',
-            publisher: 'bcast',
+            publisher: CC,
             subscriber: 'casca',
             retained: 'sim',
             schema: true,
-            carries: 'A BAMT, com um BAM por serviço. Vazio retira o fluxo <code>&lt;bsid&gt;</code>. '
-                + 'O que o bcast publica está em <a href="../emissora-simulada/">Emissora simulada</a>.',
+            carries: 'A BAMT do canal, com um BAM por serviço. O catálogo se monta dela e da SLT.',
         }),
         topic({
-            name: 'tlm/sls/<sid>/esg',
-            publisher: 'bcast',
+            name: 'tlm/scan',
+            publisher: CC,
+            subscriber: 'casca',
+            retained: 'sim',
+            schema: true,
+            carries: '<code>{completedAt, rfChannels}</code>: o fim de uma varredura da LLS e os canais '
+                + 'achados.',
+        }),
+        topic({
+            name: 'tlm/sls/<serviceId>/usbd',
+            publisher: CC,
+            subscriber: '<code>aop-cc</code>',
+            retained: 'sim',
+            schema: true,
+            carries: 'A USBD do serviço, com os <code>BasePattern</code> de radiodifusão e de banda larga.',
+        }),
+        topic({
+            name: 'tlm/sls/<serviceId>/stsid',
+            publisher: CC,
+            subscriber: '<code>aop-cc</code>, <code>tv3ws</code>',
+            retained: 'sim',
+            schema: true,
+            carries: 'A S-TSID do serviço: os fluxos e os arquivos do carrossel, com o '
+                + '<code>appContextIdList</code> e o tamanho de cada arquivo.',
+        }),
+        topic({
+            name: 'tlm/sls/<serviceId>/mpd',
+            publisher: CC,
             subscriber: 'casca, só a do serviço selecionado',
             retained: 'sim',
             schema: true,
-            carries: 'O ESG do serviço.',
+            carries: 'A MPD do serviço, em XML, a única na forma da norma. Muda a cada segmento novo.',
         }),
         topic({
-            name: 'tlm/sls/<sid>/bald',
-            publisher: 'bcast',
-            subscriber: 'casca, só a do serviço selecionado',
+            name: 'tlm/sls/<serviceId>/bald',
+            publisher: CC,
+            subscriber: '<code>aop-cc</code>, <code>tv3ws</code>',
             retained: 'sim',
             schema: true,
-            carries: 'A BALD do serviço, com o pacote da aplicação de emissora.',
+            carries: 'A BALD do serviço: as aplicações de emissora, com o <code>controlCode</code> e os '
+                + 'pontos de entrada de cada uma.',
+        }),
+        topic({
+            name: 'tlm/sls/<serviceId>/prrd',
+            publisher: CC,
+            subscriber: NONE,
+            retained: 'sim',
+            schema: true,
+            carries: 'A PRRD do serviço, quando declarada.',
+        }),
+        topic({
+            name: 'tlm/emission/<serviceId>',
+            publisher: CC,
+            subscriber: '<code>aop-cc</code>',
+            retained: 'sim',
+            schema: true,
+            carries: 'O descritor de emissão de um serviço com carrossel: o período e a ordem de cada '
+                + 'objeto, de onde a comporta conta as passagens.',
+        }),
+        topic({
+            name: 'tlm/tuned',
+            publisher: 'casca',
+            subscriber: '<code>aop-cc</code>, <code>tv3ws</code>',
+            retained: 'sim',
+            schema: true,
+            carries: '<code>{serviceId, rfChannelId, tunedAt}</code>: o serviço sintonizado ao abrir a '
+                + 'Bootstrap Application. Vazio: nenhum.',
+        }),
+        topic({
+            name: 'tlm/object/<serviceId>/available',
+            publisher: CC,
+            subscriber: '<code>aop-cc</code>',
+            retained: 'não',
+            schema: true,
+            carries: 'Um objeto do carrossel do serviço sintonizado ficou disponível, ou passou com '
+                + '<code>lastModified</code> novo.',
+        }),
+        topic({
+            name: 'tlm/object/<serviceId>/expired',
+            publisher: CC,
+            subscriber: '<code>aop-cc</code>',
+            retained: 'não',
+            schema: true,
+            carries: 'Um objeto do carrossel do serviço sintonizado deixou de estar disponível.',
         }),
         topic({
             name: 'video/event',
-            publisher: 'bcast',
+            publisher: NONE,
             subscriber: TV_PAGE,
             retained: 'não',
             schema: true,
-            carries: 'Os eventos do fluxo simulado, repassados à aplicação da camada de gráficos como '
+            carries: 'Um evento do fluxo, repassado à aplicação da camada de gráficos como '
                 + '<code>stream_event</code>.',
         }),
         topic({

@@ -70,7 +70,10 @@ As funções se chamam com `numkeys` 0: elas montam o nome da chave pelos argume
 | `tv30_broadcaster_attributes` | `<id> <scid> <campo> <valor> ...`; valor vazio apaga o campo | `tv3ws` |
 | `tv30_client_write`, `tv30_client_authorize` | `<id> <campo> <valor> ...` | `tv3ws` |
 | `tv30_client_block`, `tv30_client_add_authorized` | `<id>` | `tv3ws` |
-| `tv30_origin_register`, `tv30_origin_remove`, `tv30_origins_clear` | `<origem> <serviço>`, `<origem>`, nada | casca |
+| `tv30_origin_register`, `tv30_origin_remove`, `tv30_origins_clear` | `<origem> <serviço>`, `<origem>`, nada | `aop-cc` |
+| `tv30_current_app` | `[<campo> <valor> ...]`; nenhum, nenhuma aplicação em execução | `aop-cc` |
+| `tv30_cache_put` | `<appContextId> <serviceId> <caminho> <metadados JSON> <ms> <quota> <total> <corpo>` | `aop-cc` |
+| `tv30_cache_touch`, `tv30_cache_remove`, `tv30_cache_clear_before` | `<appContextId> <ms>`, `<appContextId>`, `<appContextId> <ms>` | `aop-cc` |
 | `tv30_announced_services` | `[<serviço> ...]`; nenhum, nenhum serviço | casca |
 | `tv30_bind_register`, `tv30_bind_remove` | `<serviceId> <entrada JSON>` | borda |
 | `tv30_v100_remote_device_write`, `tv30_v100_remote_device_remove`, `tv30_v100_remote_devices_clear` | `<handle> <campo> <valor> ...`, `<handle>`, nada | `tv3ws` |
@@ -82,7 +85,7 @@ O efeito e o retorno de cada uma estão em `functions` no `infra/redis/schema.js
 ### Gravar à mão
 
 ```bash
-docker exec redis redis-cli FCALL tv30_session_service_id 0 urn:tv30:service:users-test
+docker exec redis redis-cli FCALL tv30_session_service_id 0 urn:sbtvd:tv3.0:service:1001
 docker exec redis redis-cli FCALL tv30_client_block 0 <clientid>
 docker exec redis redis-cli FCALL_RO tv30_version 0
 ```

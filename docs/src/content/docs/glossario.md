@@ -13,7 +13,10 @@ sem seção é do testbed.
 | **AoP** | Na norma, a *TV 3.0 Application-oriented Platform*, a plataforma inteira do receptor (3.40). No testbed, `aop-shell` é o nome do componente da casca ([A AoP em 5 minutos](../aop-em-5-minutos/)) |
 | **Casca** | O componente `aop-shell`: a página da TV, com as camadas, e as telas da plataforma ([aop-shell](../aop-shell/)) |
 | **tv3ws** | O componente dos TV 3.0 WebServices (Anexo C) ([tv3ws](../tv3ws/)) |
-| **bcast** | A emissora simulada, fora do receptor ([Emissora simulada](../emissora-simulada/)) |
+| **bcast-sim** | A emissora simulada, fora do receptor ([Emissora simulada](../emissora-simulada/)) |
+| **aop-cc** | O núcleo comum da plataforma: aquisição da sinalização, comporta, Application Context Cache e gerente de ciclo de vida ([Arquitetura](../arquitetura/)) |
+| **Comporta** | A comporta de entrega de objeto do `aop-cc` (7.3, 10.1): serve o carrossel do serviço sintonizado e as aplicações de emissora, cada uma na origem dela ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
+| **Carrossel** | A transmissão cíclica dos arquivos de um serviço pela radiodifusão, simulada pelo relógio ([Emissora simulada](../emissora-simulada/)) |
 | **Borda** | O container por onde entram as chamadas às APIs, que confere a credencial e a versão ([Borda e credenciais](../borda-credenciais/)) |
 | **Broker** | O Mosquitto, a mensageria entre os componentes ([Mensageria (MQTT)](../mensageria/)) |
 | **Redis** | O armazenamento único da plataforma ([Modelo de dados Redis](../modelo-redis/)) |

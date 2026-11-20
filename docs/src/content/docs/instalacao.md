@@ -10,12 +10,13 @@ outro e o que se pode configurar.
 ## Pré-requisitos
 
 - **Docker** com **Docker Compose v2**.
-- **Git**. Os quatro submódulos vêm por HTTPS, sem chave SSH ([Submódulos](#submódulos)).
+- **Git**. Os cinco submódulos vêm por HTTPS, sem chave SSH ([Submódulos](#submódulos)).
 - **Node.js**, só para rodar os testes de unidade ou um módulo fora do Docker
   ([Como testar](../como-testar/), [Desenvolvimento com serviço no host](../dev-local/)).
 
 :::caution[Sem o `.env`, o receptor não sobe]
-O `aop-shell`, o `tv3ws`, o `bcast` e o broker só sobem com os perfis `mqtt` e `linux` do compose. O
+O `aop-shell`, o `tv3ws`, o `aop-cc`, o `bcast-sim` e o broker só sobem com os perfis `mqtt` e `linux`
+do compose. O
 `.env.example` já os liga (`COMPOSE_PROFILES=mqtt,linux`): copie-o para `.env` antes de subir. Sem
 eles, sobem só o Redis e a borda.
 :::
@@ -94,12 +95,12 @@ anuncia; as outras saem numa porta escolhida pelo Docker, que muda quando o cont
 | Redis | 6379, só em `127.0.0.1` | sem senha |
 | Redis Commander | escolhida pelo Docker | `docker port redis 18081`; login `admin`, senha `tv30-redis-admin` |
 | Documentação Swagger das APIs | escolhida pelo Docker | `docker port edgegateway 8085` |
-| bcast (aplicações e mídia, direto) | escolhida pelo Docker | `docker compose port bcast 8081`; `BCAST_PUBLISH` fixa |
+| Emissora simulada (`bcast-sim`): sinalização, arquivos e fluxos ao vivo | 8082 | `LIVE_PUBLIC_PORT`; muda também as URLs que a MPD e as playlists levam |
 | Anunciante da descoberta | UDP 1900 | fora do Docker |
 
 `docker compose ps` mostra todas. Para fixar uma porta escolhida pelo Docker, defina a variável no
-`.env` como `host:container` (por exemplo, `BCAST_PUBLISH=8081:8081`) e recrie o serviço
-(`docker compose up -d bcast`).
+`.env` como `host:container` (por exemplo, `MQTT_WS_PUBLISH=9003:9001`) e recrie o serviço
+(`docker compose up -d mqtt-broker`).
 
 Na subida, a stack avisa quando a 1883, a 6379, a 44643 ou a 8080 já estão ocupadas no host, e não
 sobe se a 44642 estiver.
@@ -111,10 +112,12 @@ valem o padrão entre parênteses.
 
 | Variável | Valor | Para quê |
 |---|---|---|
-| `COMPOSE_PROFILES` | `mqtt,linux` | Liga o broker, o AoP, o tv3ws e o bcast |
+| `COMPOSE_PROFILES` | `mqtt,linux` | Liga o broker, a casca, o tv3ws, o `aop-cc` e o `bcast-sim` |
 | `DOCKERHUB_NS`, `IMAGE_TAG` | `labmultisens`, `latest` | Nome e tag das imagens |
-| `EDGE_EXT_PUBLISH`, `BCAST_PUBLISH`, `MQTT_WS_PUBLISH` | comentadas | A porta de host da superfície externa, do bcast e do WebSocket do broker ([Portas e endereços](#portas-e-endereços)) |
-| `AOP_PUBLIC_PORT` | comentada (`8080`) | A porta da tela do receptor e das origens das aplicações de emissora |
+| `EDGE_EXT_PUBLISH`, `MQTT_WS_PUBLISH` | comentadas | A porta de host da superfície externa e do WebSocket do broker ([Portas e endereços](#portas-e-endereços)) |
+| `AOP_PUBLIC_PORT` | comentada (`8080`) | A porta da tela do receptor |
+| `OBJECT_PROXY_PUBLIC_PORT` | comentada (`8081`) | A porta da comporta e das origens das aplicações de emissora |
+| `LIVE_PUBLIC_PORT` | comentada (`8082`) | A porta do `bcast-sim` |
 | `APPS_DOMAIN` | comentada (`apps.localhost`) | O domínio dos hosts das aplicações. `*.localhost` só resolve na máquina de quem abre a tela; com a tela aberta de outra máquina, use um domínio resolvível na rede |
 | `EDGE_VARIANT` | `linux` | Onde a borda procura o tv3ws: `linux` (container) ou `windows` (no host; [Desenvolvimento com serviço no host](../dev-local/)) |
 | `JWT_SECRET`, `JWT_ISSUER` | comentadas | Segredo e emissor do access token, os mesmos para o tv3ws e a borda. Troque fora do laboratório |
@@ -123,7 +126,6 @@ valem o padrão entre parênteses.
 | `SERVER_URL` | `localhost` | O host que os aparelhos da rede usam para abrir os WebSockets dos dispositivos remotos: numa rede de verdade, o IP desta máquina |
 | `TV3WS_WS_TLS` | comentada | `false` abre o ponto de entrada do dispositivo remoto em `ws://`, e não em `wss://` |
 | `SSDP_ENABLED`, `SSDP_ADVERTISE_HOST`, `SSDP_INTERFACE` | comentadas | Descoberta na rede: `false` não sobe o anunciante; fixa o host anunciado, em vez do IP detectado; força a interface |
-| `WEBMEDIA_REMOTE_MEDIA_PATH`, `WEBMEDIA_REMOTE_USERFILES_PATH` | comentadas | Caminhos no dispositivo remoto do exemplo webmedia |
 
 ## HTTPS
 

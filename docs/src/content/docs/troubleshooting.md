@@ -75,7 +75,8 @@ As imagens publicadas são só `amd64`. Construa antes de subir: `docker compose
 
 O script foi commitado com CRLF, e o `#!/bin/sh\r` não vale. Converta com `dos2unix <arquivo>` e
 reconstrua a imagem. A raiz e o `infra/` já têm `*.sh text eol=lf` no `.gitattributes`; o `aop-shell`, o
-`bcast` e o `tv3ws` não têm, e um script novo de container num deles precisa da mesma linha. Arquivo
+`tv3ws`, o `aop-cc` e o `bcast-sim` não têm, e um script novo de container num deles precisa da mesma
+linha. Arquivo
 commitado antes da regra só muda com `git add --renormalize .` e um commit.
 
 ### WSL2
@@ -149,9 +150,11 @@ ver o que o gerente de ciclo de vida decidiu: `docker logs aop-cc`.
 | Sintoma | Causa | O que fazer |
 |---|---|---|
 | Não carrega com a TV aberta de outra máquina | `*.apps.localhost` só resolve na máquina de quem abre a página | `APPS_DOMAIN` com um domínio resolvível na rede, com `*.<domínio>` apontando para a máquina da casca, e `docker compose up -d aop-shell` |
-| Não carrega com a casca publicada em outra porta | A origem da aplicação usa `AOP_PUBLIC_PORT` | Mude a porta pelo `AOP_PUBLIC_PORT`, que troca as duas juntas |
-| `nenhuma aplicacao em execucao em <host>` (404) | A aplicação foi encerrada ou trocada, e a página antiga ficou aberta | Abra a aplicação de novo pelo catálogo |
-| `Bad Gateway: aplicacao fora do ar` (502) | A casca não alcança o bcast | `docker logs aop-shell` mostra `falha no proxy`; confira o bcast, ou o `BCAST_HOSTNAME` com módulos no host ([Desenvolvimento com serviço no host](../dev-local/#bcast_hostname)) |
+| Não carrega com a comporta publicada em outra porta | A origem da aplicação usa `OBJECT_PROXY_PUBLIC_PORT`, que o `aop-cc` e a casca leem | Mude a porta só pelo `OBJECT_PROXY_PUBLIC_PORT`, e `docker compose up -d aop-cc aop-shell` |
+| `unknown application origin` (404) | A origem não é de uma aplicação do serviço sintonizado: a aplicação foi encerrada ou trocada, ou outro serviço foi sintonizado, e a página antiga ficou aberta | Abra o serviço de novo pelo catálogo |
+| Um arquivo da aplicação dá `not in the carousel nor in the cache` (404) | O arquivo não está no carrossel do contexto da aplicação, nem no Application Context Cache | Confira o `carrossel.json` e o `appContextIdList` do fluxo ou do arquivo ([Emissora simulada](../emissora-simulada/#declarar-um-serviço)) |
+| Um arquivo da aplicação dá `not passed since the tuning, or expired` (404) | O arquivo ainda não passou no carrossel desde a sintonia, ou venceu (`maxExpiresDelta`) | Tente de novo depois da passagem seguinte; o tempo depende do `cyclePeriod` do fluxo |
+| `origin of the object failed` ou `origin of the entry package failed` (502) | A comporta não alcança o `bcast-sim` | `docker logs aop-cc`; confira se o `bcast-sim` está de pé |
 | A casca não sobe: `APPS_DOMAIN invalido` ou `AOP_PUBLIC_PORT invalida` | Valor fora do formato | Corrija o `.env` |
 | Aplicação de banda larga: `origin failed` (502) | A comporta não alcança o servidor do `bbandEntryPointUrl`; ela roda no container `aop-cc`, onde `localhost` é o próprio container | Use no `bbandEntryPointUrl` um endereço que o container alcance: `http://host.docker.internal:<porta>/` para um servidor no host |
 | O Esc encerra a aplicação, que trata o Back | A aplicação não cancela o `keydown` do `BrowserBack` | `event.preventDefault()` no tratador ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
@@ -181,7 +184,7 @@ como em [Limites](../dev-local/#limites).
 | 106 na 44642 | Cliente não local por HTTP fora do `/tv3/authorize` e do `/tv3/token` (C.4.1.6) | Depois de obter o token, use a 44643 |
 | 107 com access token válido | O cliente não está em `clients:authorized`: o token não veio do fluxo de autorização, o cliente foi desbloqueado à mão ou o volume do Redis foi recriado | Obtenha o token pelo fluxo. Para devolver um cliente desbloqueado: `docker exec redis redis-cli FCALL tv30_client_add_authorized 0 <clientid>` |
 | 300 | Nenhum serviço selecionado, nas rotas que o exigem | Selecione um serviço no catálogo |
-| 304 em `/tv3/<scid>/users/<userid>` | O serviço do caminho não foi anunciado | Use o `globalServiceId` de um serviço de `services:announced`. A lista vazia indica o bcast parado |
+| 304 em `/tv3/<scid>/users/<userid>` | O serviço do caminho não foi anunciado | Use o `globalServiceId` de um serviço de `services:announced`. A lista vazia indica o `bcast-sim` ou o `aop-cc` parado |
 | 104 | Sem o cabeçalho `bind-token` | Mande o bind-token assinado pela emissora |
 | 108 | O bind-token não foi assinado por uma chave registrada para o contexto de serviço da rota | A emissora registra a chave pela C.6.8.2, no serviço corrente |
 | 200, `Platform resource unavailable` | O tv3ws não respondeu em 2 s, ou está fora do ar ([Repasse ao serviço](../borda-credenciais/#repasse-ao-serviço)) | `docker logs tv3ws`. Uma rota que precise de mais tempo declara `timeout` próprio no `routes.json` |
@@ -228,13 +231,20 @@ anuncia.
 | `�` no payload | Um byte que não formava UTF-8 | Confira a codificação de quem publica |
 | A mensagem não chega em `errors/<meu client_id>` | `+`, `#`, `/` e controles do `client_id` viram `_` no tópico | Assine `errors/#` |
 
+## Emissora simulada
+
+| Sintoma | Causa | O que fazer |
+|---|---|---|
+| Um serviço declarado não aparece no catálogo | A declaração foi recusada pelo esquema, ou quebra uma regra entre arquivos | `docker logs bcast-sim` diz o arquivo e o motivo |
+| O canal inteiro some do catálogo | Nenhum serviço do canal tem `mainAvOverTheAir` | Ponha `mainAvOverTheAir: true` num serviço do canal |
+| No Docker Desktop, uma mudança na pasta de emissão não muda o que o `bcast-sim` serve | O vigia de arquivos deixa de ver as mudanças do bind mount depois de algumas ([bcast-sim#1](https://github.com/multisens/bcast-sim/issues/1)) | `docker restart bcast-sim` |
+
 ## Defeitos conhecidos
 
 Defeitos a corrigir, com o contorno até lá.
 
 | Defeito | Contorno |
 |---|---|
-| A página companion do webmedia não se registra como dispositivo remoto com a borda em `enforce`: chama a 44642 sem credencial e recebe 107 | Suba a borda com `AUTH_ENFORCE=warn` para a demonstração do webmedia |
 | O OpenAPI da superfície externa, na documentação Swagger, diz 44643 em qualquer configuração, e o "Try it out" não chega à borda com outra porta ([Infra#3](https://github.com/multisens/Infra/issues/3)) | Mantenha o padrão, `EDGE_EXT_PUBLISH=44643:44643` |
 | O anunciante caído não é percebido: a descoberta para, e a stack continua de pé sem aviso ([TV30#3](https://github.com/multisens/TV30/issues/3)) | `./tv30 status`, e `./tv30 up` o sobe de novo |
 | O certificado do receptor vale só para `localhost` e `127.0.0.1` ([Infra#4](https://github.com/multisens/Infra/issues/4)) | `curl -k`, ou um certificado próprio ([A 44643 recusa o certificado](#a-44643-recusa-o-certificado-ou-o-dispositivo-remoto-não-abre-o-wss)) |
@@ -247,6 +257,7 @@ docker exec redis redis-cli SMEMBERS users:index
 docker exec redis redis-cli HGETALL user:<id>
 docker exec redis redis-cli GET session:current-service-id   # vazio = nenhum
 docker exec redis redis-cli HGETALL origins:associated
+docker exec redis redis-cli HGETALL session:current-app
 docker exec redis redis-cli SMEMBERS services:announced
 docker exec redis redis-cli SMEMBERS clients:authorized
 docker exec redis redis-cli FCALL_RO tv30_audit 0            # vazio = ok
@@ -256,6 +267,8 @@ docker exec mqtt-broker mosquitto_sub -t '#' -v
 
 # Logs
 docker logs aop-shell --tail 50
+docker logs aop-cc --tail 50
+docker logs bcast-sim --tail 50
 docker logs tv3ws --tail 50
 docker logs mqtt-broker --tail 50
 ```

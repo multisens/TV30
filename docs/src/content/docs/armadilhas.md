@@ -8,7 +8,7 @@ problema já apareceu, comece por [Solução de problemas](../troubleshooting/).
 
 ## Subir
 
-- **Sem o `.env`, o receptor não sobe.** A casca, o tv3ws, o bcast e o broker só sobem com os perfis
+- **Sem o `.env`, o receptor não sobe.** A casca, o tv3ws, o `aop-cc`, o `bcast-sim` e o broker só sobem com os perfis
   do compose, que o `.env.example` liga. Sem ele, só o Redis e a borda ficam de pé
   ([Instalação](../instalacao/)).
 - **`docker compose up -d` não anuncia a TV na rede.** Quem sobe o anunciante é o `./tv30 up`

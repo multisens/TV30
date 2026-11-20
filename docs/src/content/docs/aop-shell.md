@@ -5,7 +5,8 @@ description: O componente aop-shell, a casca da plataforma - o que implementa, c
 
 O `aop-shell` é a casca da plataforma: a página da TV, com as camadas de exibição e os avisos, e as telas
 que a plataforma mostra nelas, que são o seletor e o gestor de perfis, o catálogo de aplicações e a
-aplicação de abertura de cada serviço. Ele também lê a LLS e lança a aplicação da emissora. As
+aplicação de abertura de cada serviço. Ele também lê a LLS, publica a sintonia e carrega na camada
+de gráficos a aplicação da emissora que o gerente de ciclo de vida, no `aop-cc`, indica. As
 camadas e o caminho do espectador estão em [A AoP em 5 minutos](../aop-em-5-minutos/); quais
 peças da norma estão implementadas, no mapa de [Escopo, limites e decisões](../escopo/#o-escopo-no-mapa).
 
@@ -13,17 +14,17 @@ peças da norma estão implementadas, no mapa de [Escopo, limites e decisões](.
 
 - **A página da TV**, em `http://localhost:8080` (`AOP_PUBLIC_PORT`). É o navegador quem a abre; a
   casca não tem API da norma, e a borda não passa por ela.
-- **O host de cada aplicação de emissora**, `http://<app>.apps.localhost:8080`. A casca repassa o
-  pedido ao bcast, ao endereço que a BALD declara, e assim cada aplicação tem origem própria.
 - **`/mqtt`.** A página da TV fala MQTT por aqui, e a casca repassa ao WebSocket do broker.
-- **`/videoStreamProxy`.** O vídeo HLS ou DASH do serviço, repassado ao bcast.
+- **`/dash/<serviceId>/mpd`.** A MPD do serviço, como a sinalização a trouxe, para o reprodutor DASH.
+
+A aplicação de emissora não passa pela casca: ela vem da comporta do `aop-cc`, na origem dela.
 
 ## O que troca com o resto do testbed
 
 | Canal | Assina ou lê | Publica ou grava |
 |---|---|---|
-| mensageria | o usuário e o serviço correntes; a BAMT de cada fluxo; o ESG e a BALD do serviço selecionado | a tela de cada camada, o vídeo e o tamanho dele; o usuário e o serviço correntes; o perfil removido; os serviços anunciados; o início e o fim de cada aplicação de emissora |
-| armazenamento | os perfis; o serviço corrente, na criação de perfil | os perfis (criação, remoção e último acesso), as origens das aplicações em execução e os serviços anunciados |
+| mensageria | o usuário e o serviço correntes; a LLS (SLT e BAMT) de cada canal e a varredura; a MPD do serviço selecionado; a aplicação da camada de gráficos | a tela de cada camada, o vídeo e o tamanho dele; o usuário e o serviço correntes; o perfil removido; os serviços anunciados; a sintonia; o pedido de encerramento da aplicação de emissora |
+| armazenamento | os perfis; o serviço corrente, na criação de perfil | os perfis (criação, remoção e último acesso) e os serviços anunciados |
 
 A página da TV assina as camadas e os pop-ups e responde ao pop-up de sim ou não. Os tópicos estão em
 [Mensageria (MQTT)](../mensageria/), e as famílias de chave, em

@@ -159,13 +159,49 @@ export const redisKeys: NameTree = {
                 + 'conjuntos.',
         }),
         family({
+            name: 'cache:services',
+            type: 'HASH',
+            writer: '<code>aop-cc</code> (Application Context Cache)',
+            reader: '<code>aop-cc</code>',
+            functions: ['tv30_cache_put', 'tv30_cache_remove', 'tv30_cache_clear_before'],
+            holds: 'O contexto de serviço DTV de cada <code>appContextId</code> com arquivos no cache, '
+                + 'por onde se contam a quota e o despejo (10.3.3).',
+        }),
+        family({
+            name: 'cache:last-access',
+            type: 'HASH',
+            writer: '<code>aop-cc</code> (Application Context Cache)',
+            reader: '<code>aop-cc</code>',
+            functions: ['tv30_cache_put', 'tv30_cache_touch', 'tv30_cache_remove', 'tv30_cache_clear_before'],
+            holds: 'O instante, em ms, da última gravação ou leitura de cada <code>appContextId</code>; o '
+                + 'contexto de serviço de último acesso mais antigo é o despejado.',
+        }),
+        family({
+            name: 'cache:meta:{appContextId}',
+            type: 'HASH',
+            writer: '<code>aop-cc</code> (Application Context Cache)',
+            reader: '<code>aop-cc</code>, na comporta',
+            functions: ['tv30_cache_put', 'tv30_cache_remove', 'tv30_cache_clear_before'],
+            holds: 'Por caminho, o <code>Content-Type</code>, o <code>Last-Modified</code> e o tamanho de '
+                + 'cada arquivo guardado do contexto.',
+        }),
+        family({
+            name: 'cache:body:{appContextId}',
+            type: 'HASH',
+            writer: '<code>aop-cc</code> (Application Context Cache)',
+            reader: '<code>aop-cc</code>, na comporta',
+            functions: ['tv30_cache_put', 'tv30_cache_remove', 'tv30_cache_clear_before'],
+            holds: 'Por caminho, o corpo de cada arquivo guardado do contexto, como a comporta o serviu.',
+        }),
+        family({
             name: 'origins:associated',
             type: 'HASH',
-            writer: 'casca',
+            writer: '<code>aop-cc</code> (gerente de ciclo de vida)',
             reader: 'borda, <code>tv3ws</code>',
             functions: ['tv30_origin_register', 'tv30_origin_remove', 'tv30_origins_clear'],
-            holds: 'A origem de cada aplicação de emissora em execução → o serviço que a lançou. É '
-                + 'por ela que a borda reconhece o cliente local associado. A casca a limpa na partida.',
+            holds: 'A origem de cada aplicação de emissora em execução (<code>ctx-&lt;h&gt;</code> ou '
+                + '<code>bb-&lt;h&gt;</code>, na comporta) → o serviço que a lançou. É por ela que a '
+                + 'borda reconhece o cliente local associado. O <code>aop-cc</code> a limpa na partida.',
         }),
         family({
             name: 'services:announced',

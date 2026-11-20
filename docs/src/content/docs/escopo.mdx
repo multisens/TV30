@@ -105,8 +105,8 @@ trabalho definido.
 
 | Parte | O que falta | Seção |
 |---|---|---|
-| Sinalização de transporte | A emissora servir a sinalização e a plataforma buscá-la: SLT, USBD, S-TSID, MPD e PRRD não existem, e a BAMT e a BALD chegam pela mensageria. **Planejado** | 7.2 |
-| Vídeo em DASH | Só há HLS. **Planejado** | 7.3 |
+| Sinalização de transporte | Das tabelas LLS, só a SLT e a BAMT são emitidas | 7.2.2 |
+| Eventos de fluxo | Os eventos DASH e os eventos por faixa de segmento: o tópico `video/event` não tem publicador | 7.3 |
 | Cache por serviço | Os Filter Codes na admissão: o conjunto de códigos ativos é de `tv3ws-nrt-filters`, fora do escopo, e vazio não restringe. Os dados privados ficam fora da memória total e do descarte | 7.5, 10.3.3 |
 | Área privativa da aplicação | O Private Base Manager | 7.11 |
 | Privacidade e consentimento | O Privacy Manager. O item "Data Privacy settings" do catálogo não tem função; a visibilidade de cada perfil por serviço existe, mas não é o consentimento da 8.8 | 8.8 |
@@ -117,8 +117,8 @@ trabalho definido.
 | Memória | O descarte por último acesso quando a quota da área privativa enche | 10.3 |
 | Histórico de autorizações | A tela em que o espectador consulta, bloqueia e desbloqueia clientes. Hoje o bloqueio só acontece na recusa do pedido de autorização | C.4.2.2 |
 | Recursos compartilhados | A liberação ao fechar a aplicação, ao remover a autorização ou ao revogar uma chave | C.4.4 |
-| Serviço corrente | O `serviceName` e o `serviceId`, que dependem da SLT, e o erro 302 | C.6.3.1 |
-| Agente de usuário HTTP | Aguarda decisão de desenho do projeto | 10.4, B.6.1 |
+| Serviço corrente | O `serviceName` e o `serviceId`, que a SLT traz e o `tv3ws` não lê, e o erro 302 | C.6.3.1 |
+| Agente de usuário HTTP | O cabeçalho `User-Agent` com o identificador `TV30`: as requisições da aplicação levam o do navegador hospedeiro | 10.4, B.6.1 |
 
 ## Onde o testbed difere da norma
 
@@ -133,7 +133,7 @@ Comportamentos implementados que não seguem a norma.
 | C.6.15.5 | O cliente não local recebe o erro 106, e não o 107 que a Tabela C.80 lista para ele |
 | C.6.15.5 | O ponto de entrada local sai em `ws://`, e não em `wss://` |
 | B.5.1 | O `keydown` que a aplicação de emissora recebe é sintético (`isTrusted` falso), disparado pela ponte que a plataforma põe no documento. As teclas da Tabela B.1 sem equivalente no teclado, como `ColorF0Red` e `Info`, não chegam |
-| 8.4.4, 10.1 | O manifesto da Bootstrap Application e a BALD trafegam em JSON, e não no formato XML da norma; o manifesto não tem todos os campos da Tabela 6 e tem o campo extra `initialMediaURLs` |
+| 7.2, 8.4.4, 10.1 | As tabelas LLS e os fragmentos SLS trafegam em JSON, campo a campo com os nomes da norma, e não no formato da norma; só a MPD é XML |
 
 ## Decisões do projeto
 
@@ -162,7 +162,7 @@ Comportamentos implementados que não seguem a norma.
 | Esquema nas escritas do Redis, por funções do próprio Redis, com auditoria | Evitar que um serviço grave dado fora do formato; a validação fica no armazenamento, com a escrita atômica | [Modelo de dados Redis](../modelo-redis/) |
 | Redis sem senha e sem ACL, publicado só em `127.0.0.1` | O Redis aplica o ACL de quem chama dentro da função: com o usuário `default` sem `@write`, a própria função recebe `ERR ACL failure in script`, e não há como liberar só a escrita pela função. A garantia fica no teste estático e na auditoria | [Modelo de dados Redis](../modelo-redis/) |
 | Broker sem controle de acesso a tópicos; o plugin só valida o esquema | O isolamento que a norma exige é por contexto de serviço DTV, na fronteira das APIs; entre componentes internos, não há isolamento | [Mensageria (MQTT)](../mensageria/) |
-| Aplicações de serviço como módulos do bcast | Um único container serve todas, sem duplicar MQTT e CORS | [Arquitetura](../arquitetura/) |
+| A emissora simulada como motor e declarações (`bcast-sim`) | Um serviço novo é só uma pasta de declarações e arquivos, sem código; a emissora serve a sinalização, e o receptor a busca, como na norma | [Emissora simulada](../emissora-simulada/) |
 | Uma borda com duas superfícies, a interna (44642, HTTP) e a externa (44643, HTTPS) | A C.3.4 define as duas URLs base; concentrar a validação de credencial e a negociação de versão num ponto de entrada por superfície | [Borda e credenciais](../borda-credenciais/) |
 | Credenciais validadas só na borda (plugin `tv30-auth`); o tv3ws não confere credencial | Um ponto de validação; as portas do tv3ws não são publicadas | [Borda e credenciais](../borda-credenciais/) |
 | TLS da 44643 terminado na borda | A borda precisa ler os cabeçalhos para validar a credencial | [Borda e credenciais](../borda-credenciais/) |

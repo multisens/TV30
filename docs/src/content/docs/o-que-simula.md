@@ -15,20 +15,14 @@ especifica. Tudo o que fica em volta dela — a emissora, o aparelho de TV, o co
 | O software do fabricante, que aciona a plataforma | Não existe: abrir a página da TV entrega o controle à plataforma |
 | A tela da TV | Uma página no navegador, em `http://localhost:8080` |
 | O controle remoto | O teclado: setas, Enter e Esc |
-| A emissora, transmitindo pelo ar | O container `bcast`, com quatro serviços de exemplo: `webmedia`, `uff`, `eduplay` e `users-test` |
-| O programa ao vivo | Um vídeo pré-gravado, repetido em loop e servido como transmissão ao vivo em HLS. Trechos do vídeo disparam eventos que chegam à aplicação da emissora |
-| A sinalização dos serviços, na camada de transporte | Mensagens na mensageria interna: a lista de serviços com o manifesto de cada Bootstrap Application (BAMT) e, por serviço, o programa no ar (ESG) e as aplicações (BALD), em JSON |
-| Os arquivos das aplicações, entregues pelo ar | Servidos pela emissora por HTTP, como se viessem pela internet |
+| A emissora, transmitindo pelo ar | O container `bcast-sim`, com três serviços de exemplo no canal 10: um de banda larga (1001), um de radiodifusão (1002) e um com aplicação guardada no receptor (1003) |
+| O programa ao vivo | Um vídeo pré-gravado, repetido em loop e servido como transmissão ao vivo, em HLS e em DASH, com a mesma linha de tempo |
+| A sinalização dos serviços, na camada de transporte | Servida pela emissora por HTTP e buscada pelo receptor, como na norma: a SLT e a BAMT de cada canal e, por serviço, USBD, S-TSID, MPD e BALD. Só a MPD tem a forma da norma; as demais vão em JSON, campo a campo com os nomes da norma |
+| Os arquivos das aplicações, entregues pelo ar | Um carrossel simulado: cada arquivo só fica disponível depois de passar no ciclo declarado, e vence no prazo da S-TSID. A comporta do receptor conta as passagens pelo relógio |
 | A memória não volátil do receptor | O Redis, onde ficam os perfis, as credenciais e a sessão |
 | A rede da casa | A sua rede local. A TV se anuncia de verdade, por SSDP, a partir do seu computador |
 | O celular com um aplicativo da emissora | O seu celular, ou os scripts de teste em `scripts/` |
 | Um dispositivo remoto, como um renderizador de efeitos sensoriais ou óculos de realidade virtual | Software próprio do aparelho, que não faz parte do testbed. O testbed implementa o lado do receptor |
-
-:::note[Planejado]
-Hoje a emissora publica a sinalização direto na mensageria da plataforma. Está planejado o caminho da
-norma: a emissora serve a sinalização — SLT, BAMT, USBD, S-TSID, MPD, BALD e PRRD — e a plataforma a
-busca e a decodifica. Com ele vêm o vídeo em DASH e a entrega de arquivos pelo ar, com carrossel.
-:::
 
 ## O que é de verdade
 

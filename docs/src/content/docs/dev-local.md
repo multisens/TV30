@@ -1,10 +1,12 @@
 ---
 title: Desenvolvimento com serviço no host
-description: Rodar o tv3ws, a casca ou o bcast fora do Docker, com npm run dev, e o resto da stack em containers.
+description: Rodar o tv3ws ou a casca fora do Docker, com npm run dev, e o resto da stack em containers.
 ---
 
 Para mudar o código de um módulo sem reconstruir a imagem a cada vez, rode-o no computador com
-`npm run dev` e deixe o resto da stack em containers. O processo reinicia a cada arquivo salvo.
+`npm run dev` e deixe o resto da stack em containers. O processo reinicia a cada arquivo salvo. Vale
+para o tv3ws e a casca; o `aop-cc` e o `bcast-sim` rodam só em container, porque o compose fixa o
+endereço por que os outros containers os alcançam (`aop-cc:8081`, `bcast-sim:8082`).
 
 Para um componente novo, o caminho é outro e mais curto:
 [Estender o testbed com um componente](../estender-com-componente/#desenvolver-sem-reconstruir-a-imagem).
@@ -14,7 +16,7 @@ Para um componente novo, o caminho é outro e mais curto:
 | De | Para | Endereço |
 |---|---|---|
 | Módulo no host | Container | `127.0.0.1:<porta no host>`: 6379 (Redis), 1883 (broker), 44642 e 44643 (borda), 8080 (casca). As demais, `docker compose port <serviço> <porta>` |
-| Container | Módulo no host | `host.docker.internal`, que só a borda e a casca resolvem no Linux (`extra_hosts` do compose) |
+| Container | Módulo no host | `host.docker.internal`, que só a borda, a casca e o `aop-cc` resolvem no Linux (`extra_hosts` do compose) |
 | Cliente das APIs | tv3ws | Sempre pela borda. O tv3ws no host escuta só na própria máquina (`TV3WS_LISTEN_HOST` muda) |
 
 **Pare o container do módulo antes de rodá-lo no host.** Os dois disputariam a mesma porta e o
@@ -42,10 +44,11 @@ P="--profile mqtt --profile linux"
 
 ```bash
 docker compose $P stop tv3ws
-EDGE_VARIANT=windows docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed aop-shell bcast
+EDGE_VARIANT=windows docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed aop-shell aop-cc bcast-sim
 cd tv3ws && npm ci
 MQTT_HOST=127.0.0.1 REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
 HTTP_PORT=44654 HTTPS_PORT=44655 \
+OBJECT_PROXY_URL=http://127.0.0.1:8081/ APPS_DOMAIN=apps.localhost \
 JWT_SECRET=tv30-dev-secret-nao-usar-em-producao JWT_ISSUER=GenericIssuer \
 USER_THUMBS="$PWD/../user-files/thumbs" TV30_TLS_DIR=../.tv30/tls \
 SERVER_URL=localhost WS_PORT_MIN=45000 WS_PORT_MAX=45199 \
@@ -63,8 +66,7 @@ npm run dev
 
 ```bash
 docker compose $P stop aop-shell
-EDGE_VARIANT=linux BCAST_HOSTNAME=localhost BCAST_PUBLISH=8081:8081 \
-  docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed tv3ws bcast
+EDGE_VARIANT=linux docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed tv3ws aop-cc bcast-sim
 WS=$(docker compose $P port mqtt-broker 9001 | sed 's/.*://')
 cd aop-shell && npm ci
 PORT=8080 MQTT_HOST=127.0.0.1 MQTT_WS_PORT="$WS" REDIS_HOST=127.0.0.1 REDIS_PORT=6379 \
@@ -74,49 +76,20 @@ USER_DATA_PATH="$PWD/../user-files" npm run dev
 - `MQTT_WS_PORT` é a porta em que o Docker publicou a 9001 do broker: a casca repassa a ela o
   `/mqtt` da página da TV. Errada, o `/mqtt` responde 502. Ela muda quando o container do broker é
   recriado; `MQTT_WS_PUBLISH` no `.env` a fixa.
-- `BCAST_PUBLISH=8081:8081` fixa a porta do bcast, porque a casca segue `localhost:8081` para abrir
-  as aplicações de emissora.
+- A casca no host segue os padrões de `APPS_DOMAIN` (`apps.localhost`) e de
+  `OBJECT_PROXY_PUBLIC_PORT` (8081), os mesmos do `aop-cc`; mudou um deles no `.env`, passe o mesmo
+  valor à casca.
 
-### bcast no host
+### Os dois no host
 
-```bash
-docker compose $P stop bcast
-EDGE_VARIANT=linux docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed tv3ws aop-shell
-cd bcast && npm ci
-PORT=8081 MQTT_HOST=127.0.0.1 BCAST_HOSTNAME=host.docker.internal \
-BSID=tv30-default WEBMEDIA_SID=urn:tv30:service:webmedia \
-UFF_SID=urn:tv30:service:uff EDUPLAY_SID=urn:tv30:service:eduplay \
-npm run dev
-```
-
-`BSID` e os `*_SID` têm de ser os do compose. Sem eles, cada partida cria tópicos retidos novos no
-broker.
-
-### Os três no host
-
-Só a infraestrutura em containers, com a borda em `windows`:
+Só a infraestrutura, o `aop-cc` e o `bcast-sim` em containers, com a borda em `windows`:
 
 ```bash
-docker compose $P stop tv3ws aop-shell bcast
-EDGE_VARIANT=windows docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed
+docker compose $P stop tv3ws aop-shell
+EDGE_VARIANT=windows docker compose $P up -d redis mqtt-broker edgegateway userfiles-seed aop-cc bcast-sim
 ```
 
-Depois, um terminal para cada módulo, nesta ordem:
-
-1. o tv3ws, como acima;
-2. o bcast, como acima, mas com `BCAST_HOSTNAME=127.0.0.1`;
-3. a casca, como acima.
-
-### `BCAST_HOSTNAME`
-
-É o host que o bcast põe no endereço das aplicações de emissora, e quem o segue é a casca:
-
-| Casca | bcast | `BCAST_HOSTNAME` |
-|---|---|---|
-| container | container | `bcast` (o padrão) |
-| host | container | `localhost` |
-| container | host | `host.docker.internal` |
-| host | host | `127.0.0.1` |
+Depois, um terminal para cada módulo: o tv3ws e a casca, como acima.
 
 ### Voltar à stack padrão
 
@@ -138,11 +111,10 @@ módulo está no ar.
 
 | Módulo | Obrigatórias | Também no host |
 |---|---|---|
-| tv3ws | `MQTT_HOST`, `REDIS_HOST`, `JWT_SECRET`, `JWT_ISSUER`, `USER_THUMBS`, `HTTP_PORT`, `HTTPS_PORT`, `WS_PORT_MIN`, `WS_PORT_MAX`, `LISTEN_ATTEMPTS`, `MAX_REGISTRATIONS`, `PING_INTERVAL_MS` | `SERVER_URL`, sem a qual os endereços de dispositivo remoto saem com `undefined`. `WS_PORT_MIN` e `WS_PORT_MAX` na faixa 45000–45199, que não colide com as outras portas |
+| tv3ws | `MQTT_HOST`, `REDIS_HOST`, `JWT_SECRET`, `JWT_ISSUER`, `USER_THUMBS`, `HTTP_PORT`, `HTTPS_PORT`, `WS_PORT_MIN`, `WS_PORT_MAX`, `LISTEN_ATTEMPTS`, `MAX_REGISTRATIONS`, `PING_INTERVAL_MS`, `OBJECT_PROXY_URL`, `APPS_DOMAIN` | `SERVER_URL`, sem a qual os endereços de dispositivo remoto saem com `undefined`. `WS_PORT_MIN` e `WS_PORT_MAX` na faixa 45000–45199, que não colide com as outras portas |
 | aop-shell | `MQTT_HOST`, `USER_DATA_PATH`, `REDIS_HOST` | `PORT` (8080) e `MQTT_WS_PORT`. `MQTT_HOST` é só o nome ou IP do broker, sem porta |
-| bcast | `MQTT_HOST`, `BCAST_HOSTNAME` | `BSID` e os `*_SID` do compose |
 
-Os três módulos também leem um `.env` na própria pasta. A variável definida no shell vence.
+Os dois módulos também leem um `.env` na própria pasta. A variável definida no shell vence.
 
 ## O teste automatizado
 

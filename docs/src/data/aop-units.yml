@@ -24,31 +24,32 @@
   status: partial
   box: core-transport
   parent: aop-transport-layer-metadata
-  note: Só a BAMT, publicada pela emissora na mensageria; não há SLT.
+  note: SLT e BAMT em JSON, servidas pela emissora e adquiridas pelo aop-cc a cada llsCyclePeriod; as demais tabelas LLS não são emitidas.
 - id: aop-transport-layer-metadata-sls
   nature: fonte de dados
   sections: 7.2.3
   status: partial
   box: core-transport
   parent: aop-transport-layer-metadata
-  note: ESG e BALD em JSON, publicadas pela emissora; sem USBD, S-TSID, MPD nem PRRD.
+  note: USBD, S-TSID, MPD, BALD e PRRD adquiridos pelo aop-cc, do Signaling Server ou do canal de sinalização do carrossel; só a MPD na forma da norma, os demais em JSON.
 - id: aop-transport-layer-object-proxy
   nature: componente
   sections: 7.3, 10.1
-  status: absent
+  status: implemented
   box: core-transport
+  note: A comporta do aop-cc. Disponibilidade de cada objeto pelas passagens do carrossel e pelo relógio, origem própria por contexto de aplicação e eventos de objeto; serve também a aplicação de banda larga, na origem dela.
 - id: aop-dash-streams
   nature: fonte de dados
   sections: '7.3'
-  status: absent
+  status: implemented
   box: core-media
-  note: A MPD não é publicada na sinalização; só o caminho HLS existe.
+  note: MPD na SLS, com SegmentTimeline; segmentos pela comporta, por radiodifusão, ou direto da emissora, por banda larga.
 - id: aop-hls-streams
   nature: fonte de dados
   sections: '7.4'
   status: implemented
   box: core-media
-  note: Playlist HLS deslizante sobre fluxo pré-gravado transmitido ciclicamente.
+  note: Playlist mestre e de mídia em fMP4, ao vivo sobre fluxo pré-gravado transmitido ciclicamente; MPEG-2 TS é recusado.
 - id: aop-non-real-time-files
   nature: fonte de dados
   sections: '7.5'
@@ -189,7 +190,7 @@
   sections: '6'
   status: partial
   box: lifecycle
-  note: 'Não é componente próprio: a decisão fica em startApp, na bootstrap-application, e só AUTOSTART é tratado.'
+  note: No aop-cc, pelo controlCode da BALD do serviço sintonizado (AUTOSTART, STORED_AUTOSTART, PRESENT, STORED_PRESENT, DESTROY, KILL, STORED_REMOVE); só aplicações TV30-Ginga-HTML5 são lançadas.
 - id: aop-tv2x-backward-compatibility
   nature: componente
   sections: 6; OG 11
@@ -204,8 +205,9 @@
 - id: aop-application-context-cache
   nature: componente
   sections: 3.11, 7.5, 10.1
-  status: absent
+  status: implemented
   box: core-state
+  note: No aop-cc, no Redis. Guarda os arquivos das aplicações STORED_*, com quota por contexto de serviço DTV e despejo do contexto de último acesso mais antigo.
 - id: aop-bald
   nature: formato de dados
   sections: 10.1, 10.1.1, 10.1.2, 10.1.3
@@ -229,13 +231,13 @@
   sections: 10.4, B.6.1, D.5.9
   status: absent
   box: general
-  note: Depende de decisão de desenho (L-08).
+  note: O cabeçalho User-Agent das requisições da aplicação é o do navegador hospedeiro, sem o identificador TV30.
 - id: aop-remote-control
   nature: componente
   sections: 10.6, 10.6.1, 10.6.2, 10.6.3, 10.6.4, B.5.2, D.5.3
   status: partial
   box: general
-  note: Repasse de tecla à camada em foco; sem o mapa de funções de 10.6.
+  note: Repasse de tecla à camada em foco; Esc e Menu vão à aplicação de emissora como BrowserBack e ContextMenu, e Home é a função fixa de início; sem o mapa de funções de 10.6.
 - id: aop-virtual-keyboard
   nature: interface de usuário
   sections: 10.7, B.5.3
@@ -1287,7 +1289,7 @@
   sections: B.1, B.2, B.3
   status: implemented
   box: ginga-html5
-  note: Aplicação de emissora no quadro de gráficos, sob origem própria por aplicação.
+  note: Aplicação de emissora no quadro de gráficos, servida pela comporta sob origem própria por contexto de aplicação.
 - id: ginga-html5-visual-elements
   nature: componente
   sections: B.4, B.4.1, B.4.2
@@ -1303,7 +1305,7 @@
   sections: B.5, B.5.1, B.5.2, B.5.3, B.5.4
   status: partial
   box: ginga-html5
-  note: Teclas entregues como KeyboardEvent; sem o mapa da Tabela B.5 nem a separação de teclas reservadas.
+  note: Teclas entregues como KeyboardEvent sintético, pela ponte que a comporta põe em todo documento HTML da aplicação; sem o mapa da Tabela B.5 nem a separação de teclas reservadas.
 - id: ginga-html5-network
   nature: agrupamento
   sections: B.6
@@ -1315,7 +1317,7 @@
   status: absent
   box: ginga-html5
   parent: ginga-html5-network
-  note: Depende de decisão de desenho (L-08).
+  note: O cabeçalho User-Agent das requisições da aplicação é o do navegador hospedeiro, sem o identificador TV30.
 - id: ginga-html5-network-cors
   nature: requisito transversal
   sections: B.6.2
