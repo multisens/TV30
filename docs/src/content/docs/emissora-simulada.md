@@ -10,7 +10,8 @@ buscar e distribui dentro da plataforma é o `aop-cc`. O que isso representa no 
 [Camada de transporte simulada](../camada-de-transporte/).
 
 O `bcast-sim` é só o motor. Os serviços são declarações e arquivos numa pasta de emissão; a que sobe
-com o testbed é `bcast-sim/example/`, montada somente leitura em `/emission`. Mudar um arquivo dela
+com o testbed é `bcast-sim/example/`, ou a que `EMISSION_HOST_DIR` indicar no `.env`, montada somente
+leitura em `/emission`. Mudar um arquivo dela
 recarrega as declarações, sem reiniciar o container; no Docker Desktop, o recarregamento pode parar de
 acontecer ([Solução de problemas](../troubleshooting/#emissora-simulada)).
 
@@ -56,7 +57,9 @@ servicos/<serviceId>/
 - Um arquivo do carrossel com `contentType` `multipart/related` é um pacote de entrada: a pasta de
   mesmo nome em `arquivos/` vira o pacote.
 
-Um serviço novo é uma pasta nova em `servicos/` e o `serviceId` na lista `services` de um canal.
+Um serviço novo é uma pasta nova em `servicos/` e o `serviceId` na lista `services` de um canal. O
+passo a passo, numa pasta de emissão própria, está em
+[Pôr uma app de emissora no ar](../por-app-de-emissora-no-ar/).
 
 ## Os serviços de exemplo
 

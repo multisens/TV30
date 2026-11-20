@@ -50,6 +50,7 @@ export default defineConfig({
                     label: 'Use',
                     items: [
                         'subir-e-passear',
+                        'por-app-de-emissora-no-ar',
                         'apis-de-outro-aparelho',
                         'estender-com-componente',
                     ],

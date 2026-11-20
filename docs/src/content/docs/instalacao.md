@@ -118,6 +118,7 @@ valem o padrão entre parênteses.
 | `AOP_PUBLIC_PORT` | comentada (`8080`) | A porta da tela do receptor |
 | `OBJECT_PROXY_PUBLIC_PORT` | comentada (`8081`) | A porta da comporta e das origens das aplicações de emissora |
 | `LIVE_PUBLIC_PORT` | comentada (`8082`) | A porta do `bcast-sim` |
+| `EMISSION_HOST_DIR` | comentada (`./bcast-sim/example`) | A pasta de emissão do `bcast-sim`, com `canais/` e `servicos/` ([Pôr uma app de emissora no ar](../por-app-de-emissora-no-ar/)) |
 | `APPS_DOMAIN` | comentada (`apps.localhost`) | O domínio dos hosts das aplicações. `*.localhost` só resolve na máquina de quem abre a tela; com a tela aberta de outra máquina, use um domínio resolvível na rede |
 | `EDGE_VARIANT` | `linux` | Onde a borda procura o tv3ws: `linux` (container) ou `windows` (no host; [Desenvolvimento com serviço no host](../dev-local/)) |
 | `JWT_SECRET`, `JWT_ISSUER` | comentadas | Segredo e emissor do access token, os mesmos para o tv3ws e a borda. Troque fora do laboratório |

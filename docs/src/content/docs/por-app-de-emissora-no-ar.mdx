@@ -1,0 +1,397 @@
+---
+title: Pôr uma app de emissora no ar
+description: Montar o serviço que leva uma aplicação de emissora à TV do testbed - a pasta de emissão, o serviço, o vídeo, o carrossel e a BALD, pelo ar ou por banda larga.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Este guia parte de uma aplicação Ginga-HTML5 pronta, uma pasta com o `index.html` e o que ele usa, e
+monta o serviço que a leva até a TV: o canal, a entrada do serviço, o vídeo, o carrossel e a BALD.
+Como escrever a aplicação é assunto da ABNT NBR 25608, Anexo B; aqui só importa onde ficam os arquivos
+dela e qual é o ponto de entrada.
+
+O exemplo do guia é o serviço 1004, no canal 10 dos exemplos, com uma aplicação na pasta `minha-app/`.
+O que acontece do lado do receptor, da varredura ao lançamento, está em
+[Camada de transporte simulada](../camada-de-transporte/).
+
+## Antes de começar
+
+- O testbed sobe e mostra os serviços de exemplo ([Subir e passear pela TV](../subir-e-passear/)).
+- A aplicação tem um documento de entrada, por exemplo `index.html`, e os arquivos que ele pede
+  vêm por caminho relativo.
+- Para gerar um vídeo próprio, o Node e o `ffmpeg` no host. Sem eles, o serviço reaproveita os
+  segmentos de um exemplo.
+
+## A sua pasta de emissão
+
+O `bcast-sim` serve o que está na pasta de emissão. A padrão é `bcast-sim/example/`, que faz parte do
+repositório do `bcast-sim`; para não mexer nela, trabalhe numa cópia.
+
+<Steps>
+
+1. **Copie os exemplos** para fora do repositório:
+
+   ```bash
+   cp -R bcast-sim/example ~/minha-emissao
+   ```
+
+2. **Aponte o `bcast-sim` para a cópia.** No `.env` da raiz, com o caminho absoluto:
+
+   ```bash
+   EMISSION_HOST_DIR=/Users/voce/minha-emissao
+   ```
+
+3. **Recrie o container** para ele montar a pasta nova:
+
+   ```bash
+   ./tv30 up
+   ```
+
+</Steps>
+
+Daí em diante, mudar um arquivo da pasta recarrega as declarações, sem reiniciar nada, e o receptor vê
+a mudança na varredura seguinte, em até 5 s. No Docker Desktop, o recarregamento costuma perder
+mudanças: se a TV não mudar, rode `docker restart bcast-sim`
+([Solução de problemas](../troubleshooting/#emissora-simulada)).
+
+O `bcast-sim` serve só o que está na pasta indicada. Os serviços de exemplo continuam na TV porque
+vieram na cópia; para ficar só com os seus, apague as pastas deles em `servicos/` e tire-os de
+`services` em `canais/10.json`. Um canal novo é um arquivo novo em `canais/`, com o `bsid` no nome.
+
+Toda declaração tem esquema. A que não o satisfaz, ou que quebra uma regra entre arquivos, é recusada
+e some do que o `bcast-sim` serve, e o motivo vai para o log:
+
+```bash
+docker logs bcast-sim
+```
+
+## O que vai na pasta
+
+Ao fim do guia, com o serviço pelo ar, a pasta fica assim:
+
+```
+minha-emissao/
+    canais/
+        10.json                     o canal RF e a lista dos serviços dele
+    servicos/
+        1001/  1002/  1003/         os exemplos, que vieram na cópia
+        1004/
+            servico.json            a entrada da SLT, a BAM e a entrega
+            fluxos/
+                minha-video.json    a declaração do fluxo de vídeo
+                minha-audio.json    a declaração do fluxo de áudio
+            segmentos/
+                minha-video/        init.mp4, seg-000000.m4s, seg-000001.m4s…
+                minha-audio/        init.mp4, seg-000000.m4s, seg-000001.m4s…
+            carrossel.json          o carrossel: o que passa pelo ar e de quanto em quanto tempo
+            aplicacao.json          as aplicações do serviço, que viram a BALD
+            arquivos/
+                icone.svg           os ícones do catálogo
+                banner.svg
+                app.pkg/            a pasta da aplicação: index.html e o que ele usa
+```
+
+O nome de cada pasta e de cada arquivo tem de bater com o que está dentro dele: `servicos/1004/`
+tem `serviceId` 1004, `canais/10.json` tem `bsid` 10, e `fluxos/minha-video.json` e
+`segmentos/minha-video/` são do fluxo de `streamId` `minha-video`. Por banda larga, não há
+`carrossel.json`, e a aplicação fica no servidor dela.
+
+## Escolher a entrega
+
+| Entrega | O vídeo | A aplicação | Modelo |
+|---|---|---|---|
+| `Broadcast` | passa no carrossel e chega pela comporta | um pacote no carrossel, disponível depois de uma passagem completa | o 1002 |
+| `Broadband` | vem direto do `bcast-sim`, sem carrossel | uma URL de servidor, carregada na hora | o 1001 |
+
+Pelo ar é o caminho do serviço de radiodifusão, com os tempos do carrossel. Banda larga serve para
+desenvolver a aplicação num servidor seu, sem esperar passagem. As duas seções a seguir partem do mesmo
+serviço; escolha uma.
+
+## O serviço pelo ar
+
+<Steps>
+
+1. **Crie a pasta do serviço** a partir do 1002:
+
+   ```bash
+   cd ~/minha-emissao/servicos
+   cp -R 1002 1004
+   rm -r 1004/arquivos/app.pkg 1004/arquivos/aviso.txt 1004/arquivos/marca.txt
+   ```
+
+2. **Ponha o serviço no canal.** Em `canais/10.json`, acrescente 1004 a `services`:
+
+   ```json
+   "services": [1001, 1002, 1003, 1004]
+   ```
+
+   Um canal de 6 MHz (`bandwidth`) mostra no máximo quatro serviços no catálogo; para mais, use outro
+   canal, num `canais/<bsid>.json` novo.
+
+3. **Escreva a entrada do serviço**, em `servico.json`:
+
+   ```json
+   {
+       "slt": {
+           "serviceId": 1004,
+           "globalServiceId": "urn:sbtvd:tv3.0:service:1004",
+           "serviceCategory": 30,
+           "shortServiceName": "MINHA",
+           "majorChannelNo": 10,
+           "minorChannelNo": 4,
+           "broadbandAccessRequired": false,
+           "sltSvcSeqNum": 0
+       },
+       "bam": {
+           "appVersion": 1,
+           "appName": "Minha emissora",
+           "appDescription": "Serviço com a minha app",
+           "backgroundColor": "#102030",
+           "foregroundColor": "#FFFFFF",
+           "appIcon": "arquivos/icone.svg",
+           "bannerIcon": "arquivos/banner.svg"
+       },
+       "delivery": {
+           "configuration": "Broadcast",
+           "mainAvOverTheAir": true,
+           "receptionQuality": 70
+       }
+   }
+   ```
+
+   | Campo | O que é |
+   |---|---|
+   | `serviceId` | o número do serviço no canal; o mesmo da pasta |
+   | `globalServiceId` | o identificador único do serviço, uma URN |
+   | `serviceCategory` | 30 para o serviço com aplicação bootstrap, o caso deste guia; 31 e 32 são serviços adicionais, sem BAM nem BALD, listados em `additionalServices` de um serviço 30 |
+   | `majorChannelNo`, `minorChannelNo` | o número virtual no catálogo, aqui 10.4 |
+   | `sltSvcSeqNum` | a versão da entrada; comece em 0 |
+   | `bam` | a aplicação bootstrap do serviço, no catálogo: nome, descrição até 40 caracteres, cores e dois ícones SVG de até 16 kB |
+   | `mainAvOverTheAir` | se o vídeo principal vem pelo ar; um canal sem nenhum serviço assim some do catálogo |
+   | `receptionQuality` | de 0 a 100; entre serviços iguais em canais diferentes, o catálogo fica com o de melhor recepção |
+
+   Os ícones copiados do 1002 servem; troque-os pelos seus quando quiser.
+
+4. **Dê nome próprio aos fluxos.** O `streamId` é único em toda a pasta de emissão, e os que vieram
+   do 1002 já são dele. Com o Node e o `ffmpeg`, gere um vídeo seu, que escreve os fluxos e os
+   segmentos do 1004:
+
+   ```bash
+   rm -r 1004/fluxos 1004/segmentos
+   cd <testbed>/bcast-sim
+   npm install
+   npm run prepare-content -- --source <arquivo de vídeo> --services-dir ~/minha-emissao/servicos \
+       --service-id 1004 --video-stream-id minha-video --audio-stream-id minha-audio
+   ```
+
+   Sem eles, reaproveite os segmentos do 1002 com nomes novos:
+
+   ```bash
+   cd 1004
+   mv segmentos/broadcast-video segmentos/minha-video
+   mv segmentos/broadcast-audio segmentos/minha-audio
+   mv fluxos/broadcast-video.json fluxos/minha-video.json
+   mv fluxos/broadcast-audio.json fluxos/minha-audio.json
+   ```
+
+   e troque, nos dois `fluxos/*.json`, `broadcast-video` por `minha-video` e `broadcast-audio` por
+   `minha-audio` em `streamId`, `componentTag` e `audioStreamId`. O vídeo continua mostrando o número
+   1002, que está gravado nos segmentos.
+
+5. **Ponha a aplicação no pacote.** Copie a pasta da aplicação para `arquivos/`, com o nome do
+   pacote:
+
+   ```bash
+   cp -R ~/minha-app ~/minha-emissao/servicos/1004/arquivos/app.pkg
+   ```
+
+   O pacote de entrada é a pasta inteira: passa no carrossel como um objeto só, e cada arquivo dela sai
+   com o caminho relativo à pasta.
+
+6. **Declare o carrossel**, em `carrossel.json`:
+
+   ```json
+   {
+       "signalingCyclePeriod": 3000,
+       "cycleEpoch": "2026-01-01T00:00:00Z",
+       "flows": [
+           {
+               "tsi": 10,
+               "cyclePeriod": 10000,
+               "maxExpiresDelta": 120,
+               "files": [
+                   { "contentLocation": "app.pkg", "contentType": "multipart/related" }
+               ]
+           },
+           {
+               "tsi": 12,
+               "cyclePeriod": 1000,
+               "fileTemplate": "live/minha-video/seg/$TOI$.m4s",
+               "files": [
+                   { "contentLocation": "live/minha-video/init.mp4", "contentType": "video/mp4" }
+               ]
+           },
+           {
+               "tsi": 14,
+               "cyclePeriod": 1000,
+               "fileTemplate": "live/minha-audio/seg/$TOI$.m4s",
+               "files": [
+                   { "contentLocation": "live/minha-audio/init.mp4", "contentType": "audio/mp4" }
+               ]
+           }
+       ]
+   }
+   ```
+
+   | Campo | O que é |
+   |---|---|
+   | `signalingCyclePeriod` | de quanto em quanto tempo, em ms, a SLS do serviço passa no carrossel |
+   | `cycleEpoch` | o instante a partir do qual as passagens são contadas |
+   | `tsi` | o número do fluxo, único no serviço; a BALD aponta para ele |
+   | `cyclePeriod` | quanto dura, em ms, um loop do fluxo; os arquivos dividem o loop em partes iguais, na ordem da lista |
+   | `maxExpiresDelta` | por quantos segundos, contados do início da passagem, o arquivo continua valendo; sem ele, não vence |
+   | `contentLocation` | o caminho do arquivo em `arquivos/`; `multipart/related` faz da pasta um pacote de entrada |
+   | `fileTemplate` | só nos fluxos de vídeo e de áudio: o caminho dos segmentos, com `$TOI$` no lugar do número; o único arquivo do fluxo é o `init.mp4` |
+
+   Um arquivo solto, que a aplicação busca pelo caminho, vai num fluxo próprio, com o
+   `contentType` dele, como o `aviso.txt` do 1002. Um `cyclePeriod` maior deixa a aplicação mais
+   tempo sem chegar a quem acabou de sintonizar; um `maxExpiresDelta` menor que o `cyclePeriod` deixa
+   o arquivo indisponível entre uma passagem e outra.
+
+7. **Declare a aplicação**, em `aplicacao.json`:
+
+   ```json
+   [
+       {
+           "appContextId": "urn:sbtvd:app:1004:minha",
+           "appType": "TV30-Ginga-HTML5",
+           "appId": "urn:sbtvd:app:1004:minha",
+           "appName": "Minha app",
+           "controlCode": "AUTOSTART",
+           "bcastEntryPackageUrl": "app.pkg",
+           "bcastEntryPointUrl": "index.html",
+           "lctTSIRef": [10]
+       }
+   ]
+   ```
+
+   | Campo | O que é | Tem de bater com |
+   |---|---|---|
+   | `appContextId` | o contexto da aplicação: a origem em que ela roda e a área do cache | — |
+   | `appId` | a aplicação, uma URN | — |
+   | `controlCode` | o que o receptor faz com ela ([O ciclo de vida](#o-ciclo-de-vida)) | — |
+   | `bcastEntryPackageUrl` | o pacote de entrada | um `contentLocation` do carrossel, num fluxo de `lctTSIRef` |
+   | `bcastEntryPointUrl` | o documento de entrada, dentro do pacote | um arquivo de `arquivos/app.pkg/` |
+   | `lctTSIRef` | os fluxos do carrossel que trazem os arquivos da aplicação | os `tsi` do carrossel |
+
+   Os arquivos soltos que a aplicação usa entram com o `tsi` do fluxo deles em `lctTSIRef`.
+
+</Steps>
+
+Na TV, o 10.4 aparece no catálogo. Escolhido o serviço, a aplicação bootstrap toca o vídeo e, no fim
+da primeira passagem completa do pacote, a aplicação vai para a camada de gráficos: até 10 s depois da
+sintonia, com o `cyclePeriod` acima.
+
+## O serviço por banda larga
+
+Os passos 1, 2 e 4 são os do serviço pelo ar, com o 1001 no lugar do 1002 como modelo:
+
+```bash
+cd ~/minha-emissao/servicos
+cp -R 1001 1004
+rm -r 1004/arquivos/app 1004/carrossel.json
+```
+
+O vídeo do 1001 tem os fluxos `synthetic-video` e `synthetic-audio`, a renomear como no passo 4.
+
+<Steps>
+
+1. **Escreva a entrada do serviço.** Em `servico.json`, a SLT e a BAM são as do serviço pelo ar, e
+   mudam três pontos:
+
+   ```json
+   "slt": {
+       "broadbandAccessRequired": true,
+       "svcInetUrl": [
+           { "urlType": 1, "url": "${SIGNALING_BASE_URL}sls/1004" }
+       ]
+   },
+   "delivery": {
+       "configuration": "Broadband",
+       "mainAvOverTheAir": true,
+       "receptionQuality": 80,
+       "unicastBasePatterns": ["${LIVE_BASE_URL}"]
+   }
+   ```
+
+   | Campo | O que é |
+   |---|---|
+   | `svcInetUrl` com `urlType` 1 | onde o receptor busca a SLS do serviço, que não passa pelo ar |
+   | `unicastBasePatterns` | as bases de onde o vídeo pode vir; tem de ter `${LIVE_BASE_URL}`, a base do vídeo do `bcast-sim` |
+
+   `${SIGNALING_BASE_URL}` e `${LIVE_BASE_URL}` são trocados pelos endereços que o compose define.
+
+2. **Declare a aplicação**, em `aplicacao.json`, com o endereço do documento de entrada em
+   `bbandEntryPointUrl`, sem pacote nem `lctTSIRef`:
+
+   ```json
+   [
+       {
+           "appContextId": "urn:sbtvd:app:1004:minha",
+           "appType": "TV30-Ginga-HTML5",
+           "appId": "urn:sbtvd:app:1004:minha",
+           "appName": "Minha app",
+           "controlCode": "AUTOSTART",
+           "bbandEntryPointUrl": "http://host.docker.internal:5173/index.html"
+       }
+   ]
+   ```
+
+   O endereço é visto de dentro do container. `host.docker.internal` é o host: um servidor de
+   desenvolvimento rodando na sua máquina, na porta dele. Para a aplicação servida pelo próprio
+   `bcast-sim`, a pasta vai em `arquivos/app/` e o endereço é `${SERVICES_BASE_URL}1004/app/index.html`.
+
+</Steps>
+
+A comporta busca cada pedido no servidor e serve a aplicação numa origem própria, com a ponte de teclas
+inserida no HTML. Um endereço absoluto do próprio servidor, dentro da aplicação, vira pedido entre
+origens: o servidor tem de responder com os cabeçalhos de CORS (ABNT NBR 25608, B.6.2). Os caminhos
+relativos não têm esse problema.
+
+## O ciclo de vida
+
+O `controlCode` de cada aplicação de `aplicacao.json` diz o que o receptor faz com ela:
+
+| `controlCode` | O que acontece |
+|---|---|
+| `AUTOSTART` | lança ao sintonizar o serviço, assim que o documento de entrada chega |
+| `PRESENT` | não lança; a aplicação fica só listada |
+| `STORED_AUTOSTART` | guarda a aplicação no cache do receptor e lança quando ela está completa lá; continua disponível quando sai do carrossel |
+| `STORED_PRESENT` | guarda no cache, sem lançar |
+| `DESTROY`, `KILL` | encerra a aplicação no ar |
+| `STORED_REMOVE` | encerra e apaga do cache |
+
+- Os códigos `STORED_` precisam do carrossel: a aplicação é guardada à medida que os arquivos passam.
+  O 1003 é o modelo.
+- Mudar o `controlCode` com o serviço sintonizado vale na varredura seguinte: trocar `AUTOSTART` por
+  `KILL` encerra a aplicação, e voltar a `AUTOSTART` a lança de novo.
+- A aplicação que o espectador encerrou, com o Esc, não volta sozinha enquanto o `controlCode` for o
+  mesmo.
+- Com várias aplicações para lançar, vai para a tela a última da lista.
+
+As regras e um simulador estão em [Camada de transporte simulada](../camada-de-transporte/#o-ciclo-de-vida).
+
+## Quando algo não aparece
+
+| Sintoma | Causa provável | O que fazer |
+|---|---|---|
+| O serviço não aparece no catálogo | a declaração foi recusada, ou o serviço não está em `services` do canal | `docker logs bcast-sim` diz o arquivo e o motivo |
+| O serviço não aparece, e o log não acusa nada | o canal já tem o máximo de serviços para a largura de banda | mude o serviço para outro canal |
+| O vídeo toca e a aplicação não abre | o pacote ainda não passou inteiro no carrossel, ou o `controlCode` não lança | espere um `cyclePeriod` do fluxo do pacote; confira o `controlCode` |
+| A aplicação abre e um arquivo dela dá 404 | o arquivo não está no pacote nem no carrossel, não passou ainda ou venceu | confira o `contentLocation`, o `lctTSIRef` e o `maxExpiresDelta` |
+| A aplicação por banda larga não abre | o servidor não é alcançável de dentro do container | use `host.docker.internal`, e não `localhost`, no `bbandEntryPointUrl` |
+| Uma mudança na pasta não muda nada | o vigia de arquivos parou, no Docker Desktop | `docker restart bcast-sim` |
+
+<Aside>
+Para voltar aos exemplos, comente `EMISSION_HOST_DIR` no `.env` e rode `./tv30 up` de novo.
+</Aside>

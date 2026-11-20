@@ -202,7 +202,7 @@ services:
       SERVICES_BASE_URL: http://bcast-sim:8082/services/
       SIGNALING_BASE_URL: http://bcast-sim:8082/signaling/
     volumes:
-      - ./bcast-sim/example:/emission:ro
+      - ${EMISSION_HOST_DIR:-./bcast-sim/example}:/emission:ro
     restart: unless-stopped
 
   # Common Core of the platform: acquires the transport layer signaling the
