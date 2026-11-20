@@ -6,12 +6,13 @@
 # Usage (Linux/WSL, with docker access):  bash scripts/test-auth.sh
 #
 # Recreates the edge in warn and then in enforce mode, pauses or stops tv3ws
-# and redis in some cases, publishes aop/currentService in place of the
-# platform and a test BAMT in place of bcast (test services in the
-# Application Catalog). At the end (trap EXIT, also on error or Ctrl+C) it
-# restores everything and undoes in Redis what it seeded (ids with the
-# suffix of this run); it writes through the functions of the schema
-# (fcall), as the service would, and ends with the schema audit.
+# and redis in some cases and publishes aop/currentService in place of the
+# platform. The announced services are the services 1001 and 1002 of the
+# bcast-sim example, which the Application Catalog lists. At the end (trap
+# EXIT, also on error or Ctrl+C) it restores everything and undoes in Redis
+# what it seeded (ids with the suffix of this run); it writes through the
+# functions of the schema (fcall), as the service would, and ends with the
+# schema audit.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -59,12 +60,11 @@ C103B=$(uuid)
 WARN_CID=$(uuid)
 # Non-local client that answers yes and does not complete the pairing.
 NL_PEND=$(uuid)
-SVC_A="urn:tv30:test:auth-a-$RUN"
-SVC_B="urn:tv30:test:auth-b-$RUN"
+# Announced: the services 1001 and 1002 of the bcast-sim example.
+SVC_A=${SVC_A:-urn:sbtvd:tv3.0:service:1001}
+SVC_B=${SVC_B:-urn:sbtvd:tv3.0:service:1002}
 # Never announced: not in the Application Catalog.
 SVC_FORA="urn:tv30:test:auth-fora-$RUN"
-# Test BAMT, in place of bcast.
-LLS_TOPIC="tlm/lls/tv30-test-auth-$RUN/bamt"
 # Simulated "associated" origin.
 ASSOC="http://tv30-test-assoc-$RUN.invalid"
 # Any browser (CORS).
@@ -118,14 +118,20 @@ EDGE_SECRET=$(env_of edgegateway JWT_SECRET)
 EDGE_ISSUER=$(env_of edgegateway JWT_ISSUER); EDGE_ISSUER=${EDGE_ISSUER:-GenericIssuer}
 [ -n "$EDGE_SECRET" ] || die "JWT_SECRET ausente no edgegateway"
 ORIG_SVC=$(rc GET session:current-service-id)
+# The running application before the test, field and value one per line
+# (restored in the trap).
+ORIG_APP=$(rc --raw HGETALL session:current-app | tr -d '\r')
 # Retained aop/currentService and hash session:current-service before the
 # test (restored in the trap if the C.6.3.1 cases touch them).
 CS_TOPIC=aop/currentService
 ORIG_CS=$(docker exec mqtt-broker mosquitto_sub -t "$CS_TOPIC" -C 1 -W 2 --retained-only 2>/dev/null)
 ORIG_CS_HASH=$(rc HGETALL session:current-service | base64 | tr -d "\n")
-# Services of the Application Catalog before the test (ids without spaces,
-# one per line).
-ORIG_ANUNCIADOS=$(rc --raw SMEMBERS services:announced | tr -d '\r')
+# The suite registers and at the end deletes the bind-context keys of SVC_A
+# and SVC_B: it does not run over keys registered before it.
+for s in "$SVC_A" "$SVC_B"; do
+  [ "$(rc EXISTS "bind-context:$s" | tr -d '\r')" = 0 ] \
+    || die "bind-context:$s ja existe; a suite o apagaria no fim (apague-o, ou use SVC_A e SVC_B de outros servicos anunciados)"
+done
 echo "== borda: modo=$ORIG_MODE variante=$ORIG_VARIANT; servico corrente='${ORIG_SVC}'; $CS_TOPIC retido='${ORIG_CS}' =="
 # Without the function library the script cannot act as the services.
 VERSAO_ESQUEMA=$(rc --raw FCALL_RO tv30_version 0 2>&1)
@@ -166,11 +172,17 @@ REDIS_TOUCHED=0
 # 1 after the C.6.3.1 cases publish aop/currentService.
 CS_TOUCHED=0
 
-# app_state <state>: publishes the change of state of the test associated
-# application, in place of the Application Lifecycle Manager (not
+# app_state <state>: the test associated application starts or ends, in
+# place of the Application Lifecycle Manager: session:current-app written or
+# cleared by its function, then the change of state published (not
 # retained).
 APP_STATE_TOPIC=aop/application-lifecycle-manager/application-state
 app_state() {
+  if [ "$1" = started ]; then
+    fcall tv30_current_app serviceContextId "$SVC_A" appId "tv30-test-assoc-$RUN" origin "$ASSOC" >/dev/null || return 1
+  else
+    fcall tv30_current_app >/dev/null || return 1
+  fi
   docker exec mqtt-broker mosquitto_pub -q 1 -t "$APP_STATE_TOPIC" \
     -m "{\"serviceContextId\":\"$SVC_A\",\"appId\":\"tv30-test-assoc-$RUN\",\"origin\":\"$ASSOC\",\"state\":\"$1\"}"
 }
@@ -191,44 +203,18 @@ cs_publish() {
   return 1
 }
 
-# anuncia <id>...: puts the services in the Application Catalog; without
-# arguments, removes them. With the AoP up, by a retained test BAMT, which
-# the AoP (aop-transport-layer-metadata-lls) writes to services:announced and
-# publishes on aop/services; without it, or if it does not write, by the
-# function, in place of the AoP.
-ANUNCIO_PELA_LLS=0; LLS_RETIDO=0; ANUNCIO_FCALL=0; TESTE_ANUNCIADOS=""
-ICON_JSON='<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"/>'
-anuncia() {
-  local s i ok n=0 bamt=""
-  if [ "$(docker inspect -f '{{.State.Running}}' aop-shell 2>/dev/null)" = true ]; then
-    if [ $# -gt 0 ]; then
-      for s in "$@"; do
-        n=$((n+1))
-        bamt="$bamt${bamt:+,}{\"globalServiceId\":\"$s\",\"appVersion\":1,\"appName\":\"Teste $n\",\"appIcon\":\"$ICON_JSON\",\"bannerIcon\":\"$ICON_JSON\",\"backgroundColor\":\"#202020\",\"foregroundColor\":\"#e0e0e0\"}"
-      done
-      docker exec mqtt-broker mosquitto_pub -r -q 1 -t "$LLS_TOPIC" -m "[$bamt]" || return 1
-      LLS_RETIDO=1
-    else
-      docker exec mqtt-broker mosquitto_pub -r -q 1 -t "$LLS_TOPIC" -n || return 1
-      LLS_RETIDO=0
-    fi
-    for i in $(seq 1 40); do
-      ok=1
-      if [ $# -gt 0 ]; then
-        for s in "$@"; do [ "$(rc SISMEMBER services:announced "$s")" = 1 ] || ok=0; done
-      else
-        for s in $TESTE_ANUNCIADOS; do [ "$(rc SISMEMBER services:announced "$s")" = 0 ] || ok=0; done
-      fi
-      if [ "$ok" = 1 ]; then ANUNCIO_PELA_LLS=1; ANUNCIO_FCALL=0; TESTE_ANUNCIADOS="$*"; return 0; fi
-      sleep 0.25
-    done
-    echo "ATENCAO: o AoP nao refletiu a BAMT de teste em services:announced em 10 s; gravando pela funcao" >&2
-  fi
-  ANUNCIO_PELA_LLS=0
-  # shellcheck disable=SC2086
-  fcall tv30_announced_services $ORIG_ANUNCIADOS "$@" >/dev/null || return 1
-  if [ $# -gt 0 ]; then ANUNCIO_FCALL=1; else ANUNCIO_FCALL=0; fi
-  TESTE_ANUNCIADOS="$*"
+# anunciados <id>...: waits up to 20 s for the services to be in the
+# Application Catalog (services:announced), where the AoP puts the services
+# of the LLS that aop-cc acquires from bcast-sim.
+anunciados() {
+  local s i ok
+  for i in $(seq 1 80); do
+    ok=1
+    for s in "$@"; do [ "$(rc HEXISTS services:announced "$s" | tr -d '\r')" = 1 ] || ok=0; done
+    [ "$ok" = 1 ] && return 0
+    sleep 0.25
+  done
+  return 1
 }
 
 # Undoes what the suite seeded in Redis (once: at the normal end, before the
@@ -263,13 +249,13 @@ restaura_redis() {
     fi
   fi
   servico_corrente "$ORIG_SVC" || echo "ATENCAO: session:current-service-id de antes ('$ORIG_SVC') nao passou no esquema"
-  # Without the test BAMT the AoP rewrites the list without its services;
-  # written by the function, the previous list comes back.
-  if [ "$LLS_RETIDO" = 1 ] || [ "$ANUNCIO_FCALL" = 1 ]; then
-    anuncia 2>/dev/null || echo "ATENCAO: servicos de teste ainda em services:announced: $(rc --raw SMEMBERS services:announced | tr '\n' ' ')"
-  fi
   fcall tv30_origin_remove "$ASSOC" >/dev/null
   app_state ended >/dev/null 2>&1
+  if [ -n "$ORIG_APP" ]; then
+    local k v app=()
+    while IFS= read -r k && IFS= read -r v; do app+=("$k" "$v"); done <<<"$ORIG_APP"
+    fcall tv30_current_app "${app[@]}" >/dev/null || echo "ATENCAO: session:current-app de antes da suite nao voltou"
+  fi
   # Test data (ids and services with the suffix of this run): a direct write
   # on purpose, since no service deletes a client or the whole bind-context
   # list, so there is no function for it. What is left (the sets without the
@@ -772,9 +758,8 @@ ext_skip() { if [ "$1" = "$H_EXT" ] && [ "$EXT_OK" != 1 ]; then info "pulado (se
 
 # C.6.14.2 and C.6.14.5 with a service not in the Application Catalog give
 # 304: the test services go in it; $SVC_FORA never.
-anuncia "$SVC_A" "$SVC_B" || die "nao consegui por $SVC_A e $SVC_B no Application Catalog"
-if [ "$ANUNCIO_PELA_LLS" = 1 ]; then info "$SVC_A e $SVC_B no Application Catalog pela BAMT de teste ($LLS_TOPIC), gravada pelo AoP"
-else info "$SVC_A e $SVC_B no Application Catalog pela funcao tv30_announced_services, no lugar do AoP"; fi
+anunciados "$SVC_A" "$SVC_B" || die "$SVC_A e $SVC_B fora do Application Catalog (services:announced): suba a stack com o aop-cc e o bcast-sim"
+info "$SVC_A e $SVC_B no Application Catalog, pela LLS do bcast-sim"
 
 # ==================================================================== WARN ===
 echo; echo "== 1. modo warn (borda recriada com AUTH_ENFORCE=warn; o padrao e enforce) =="
@@ -1113,9 +1098,9 @@ expect_pass "[44642] POST /tv3/$SVC_A/users/x (C.6.14.5, do catalogo) com bind-t
 expect_pass "[44642] POST /tv3/current-service/users/x com bind-token valido (sem conferencia do catalogo)" POST "$H_INT/tv3/current-service/users/x" "${TOK[@]}" -H "bind-token: $BT_HS256" -H 'Content-Type: application/json' -d '{}'
 
 echo; echo "-- Application Catalog: os mesmos servicos na tela, em services:announced, em aop/services e na borda --"
-if [ "$ANUNCIO_PELA_LLS" = 1 ] && curl -s -m 5 -o /dev/null "$AOP/appcat"; then
+if curl -s -m 5 -o /dev/null "$AOP/appcat"; then
   TELA=$(curl -s -m 5 "$AOP/appcat" | grep -o 'selectParam="[^"]*"' | sed 's/^selectParam="//; s/"$//' | sort)
-  NO_REDIS=$(rc --raw SMEMBERS services:announced | tr -d '\r' | sort)
+  NO_REDIS=$(rc --raw HKEYS services:announced | tr -d '\r' | sort)
   NO_TOPICO=$(docker exec mqtt-broker mosquitto_sub -t aop/services -C 1 -W 2 --retained-only 2>/dev/null \
     | grep -o '"serviceContextId":"[^"]*"' | sed 's/^"serviceContextId":"//; s/"$//' | sort)
   # shellcheck disable=SC2086
@@ -1125,7 +1110,7 @@ if [ "$ANUNCIO_PELA_LLS" = 1 ] && curl -s -m 5 -o /dev/null "$AOP/appcat"; then
   if [ "$NO_TOPICO" = "$NO_REDIS" ]; then pass "aop/services retido = services:announced"
   else fail "aop/services retido '$(echo $NO_TOPICO)' diferente de services:announced '$(echo $NO_REDIS)'"; fi
   if printf '%s\n' "$TELA" | grep -qxF "$SVC_A" && printf '%s\n' "$TELA" | grep -qxF "$SVC_B" && ! printf '%s\n' "$TELA" | grep -qxF "$SVC_FORA"; then
-    pass "tela do catalogo com $SVC_A e $SVC_B (BAMT de teste) e sem $SVC_FORA"
+    pass "tela do catalogo com $SVC_A e $SVC_B e sem $SVC_FORA"
   else fail "tela do catalogo sem $SVC_A ou $SVC_B, ou com $SVC_FORA: $(echo "$TELA" | tr '\n' ' ')"; fi
   # Every service of the screen is recognized by the edge: an unregistered
   # bind-token gives 108, not 304.
@@ -1138,7 +1123,7 @@ if [ "$ANUNCIO_PELA_LLS" = 1 ] && curl -s -m 5 -o /dev/null "$AOP/appcat"; then
   if [ -z "$N304" ]; then pass "a borda reconhece cada servico da tela (nenhum 304)"
   else fail "a borda respondeu 304 a servico(s) da tela:$N304"; fi
 else
-  info "sem o AoP gravando a LLS (ou fora do ar em $AOP): tela do catalogo e aop/services nao conferidos"
+  info "AoP fora do ar em $AOP: tela do catalogo e aop/services nao conferidos"
 fi
 
 echo; echo "-- bind-token invalido --"
@@ -1197,41 +1182,49 @@ req POST "$H_INT/tv3/bind-context" "${ASSOC_H[@]}" -H 'Content-Type: application
 servico_corrente "$SVC_A"
 expect_pass "associado em /tv3/$SVC_B/users/x com bind-token valido de $SVC_B" GET "$H_INT/tv3/$SVC_B/users/x" "${ASSOC_H[@]}" -H "bind-token: $BT_HS512"
 
-echo; echo "-- associado de verdade: app do bcast aberta pelo AoP na origem propria --"
-# The AoP opens each broadcaster application on
-# http://<label>.apps.localhost:8080 and writes that origin to
-# origins:associated when it launches it (and removes it when it closes);
-# it is the Origin the browser sends in the calls of the application. The
-# script acts as the browser: opens users-test by the flow of the AoP
-# (catalog and full screen), reads the stored origin and calls the edge with
-# it. Selecting the service publishes aop/currentService again (the trap
-# restores the retained one), and the script sets session:current-service-id
-# back to SVC_A right after.
-SID_USERS_TEST=${USERS_TEST_SID:-urn:tv30:service:users-test}
+echo; echo "-- associado de verdade: app do bcast-sim aberta na origem propria --"
+# Tuning a service whose BALD has an AUTOSTART application makes aop-cc launch
+# it on http://ctx-<label>.apps.localhost:8081, served by the object proxy,
+# and write that origin to origins:associated (and remove it when the
+# application ends); it is the Origin the browser sends in the calls of the
+# application. The script acts as the browser: tunes the service 1002 of the
+# bcast-sim example by the catalog of the AoP, reads the stored origin and
+# calls the edge with it. Escape on the AoP asks aop-cc to end the
+# application. Selecting the service publishes aop/currentService again (the
+# trap restores the retained one), and the script sets
+# session:current-service-id back to SVC_A right after.
+SID_1002=${APP_SID:-urn:sbtvd:tv3.0:service:1002}
 if curl -s -m 5 -o /dev/null "$AOP/appcat"; then
-  curl -s -m 5 -o /dev/null "$AOP/appcat/select?id=$SID_USERS_TEST"
-  sleep 2
-  curl -s -m 5 -o /dev/null "$AOP/btpapp/fullscr"
+  curl -s -m 5 -o /dev/null "$AOP/appcat/select?id=$SID_1002"
   APP_ORIGIN=""
-  for _ in $(seq 1 10); do
-    APP_ORIGIN=$(rc --raw HKEYS origins:associated | tr -d '\r' | grep -m1 -E '^http://[a-z0-9-]+\.apps\.localhost:[0-9]+$')
+  # The entry point passes in the carousel every 10 s.
+  for _ in $(seq 1 30); do
+    APP_ORIGIN=$(rc --raw HKEYS origins:associated | tr -d '\r' | grep -m1 -E '^http://ctx-[0-9a-f]{16}\.apps\.localhost:[0-9]+$')
     [ -n "$APP_ORIGIN" ] && break
     sleep 1
   done
   if [ -n "$APP_ORIGIN" ]; then
-    pass "AoP gravou a origem propria da app em origins:associated: $APP_ORIGIN"
-    expect_pass "app aberta pelo AoP (Origin $APP_ORIGIN) em $CU sem credencial" GET "$H_INT$CU" -H "Origin: $APP_ORIGIN"
+    pass "aop-cc gravou a origem da app em origins:associated: $APP_ORIGIN"
+    expect_pass "app aberta (Origin $APP_ORIGIN) em $CU sem credencial" GET "$H_INT$CU" -H "Origin: $APP_ORIGIN"
     expect_err "Origin do proprio AoP ($AOP), sem credencial" 107 borda GET "$H_INT$CU" -H "Origin: $AOP"
-    # ESC: closes the graphics layer.
+    # Escape: the AoP asks aop-cc to end the application.
     curl -s -m 5 -o /dev/null "$AOP/keydown/27"
-    if [ -z "$(rc HEXISTS origins:associated "$APP_ORIGIN" | tr -d '\r' | grep -x 1)" ]; then
-      pass "ESC no AoP removeu $APP_ORIGIN de origins:associated"
+    REMOVED=""
+    for _ in $(seq 1 10); do
+      if [ -z "$(rc HEXISTS origins:associated "$APP_ORIGIN" | tr -d '\r' | grep -x 1)" ]; then
+        REMOVED=1
+        break
+      fi
+      sleep 1
+    done
+    if [ -n "$REMOVED" ]; then
+      pass "Esc no AoP encerrou a app, e $APP_ORIGIN saiu de origins:associated"
     else
-      fail "ESC no AoP nao removeu $APP_ORIGIN de origins:associated"
+      fail "Esc no AoP nao tirou $APP_ORIGIN de origins:associated"
     fi
     expect_err "a mesma origem depois de a app fechar, sem credencial" 107 borda GET "$H_INT$CU" -H "Origin: $APP_ORIGIN"
   else
-    fail "AoP nao gravou origem <rotulo>.apps.localhost em origins:associated depois de abrir $SID_USERS_TEST: $(rc --raw HKEYS origins:associated | tr '\n' ' ')"
+    fail "aop-cc nao gravou origem ctx-<rotulo>.apps.localhost em origins:associated depois de sintonizar $SID_1002: $(rc --raw HKEYS origins:associated | tr '\n' ' ')"
     curl -s -m 5 -o /dev/null "$AOP/keydown/27"
   fi
   curl -s -m 5 -o /dev/null "$AOP/btpapp/appcat"
@@ -1566,20 +1559,6 @@ if [ "$ST" = 200 ] && [ -n "$(json_str challenge)" ]; then
   fi
 else
   fail "[nao local] sim no pop-up: /tv3/authorize sem desafio (status=$ST corpo=$(short))"
-fi
-
-echo; echo "-- BAMT de teste retirada: o servico sai do catalogo e a borda passa a dar 304 --"
-# tv3ws, started again above, rewrites session:current-service-id from the
-# retained message.
-servico_corrente "$SVC_A"
-if anuncia; then
-  expect_err "[44642] GET /tv3/$SVC_A/users/x depois da retirada, com bind-token valido" 304 borda GET "$H_INT/tv3/$SVC_A/users/x" "${TOK[@]}" -H "bind-token: $BT_HS512"
-  if [ "$ANUNCIO_PELA_LLS" = 1 ]; then
-    if curl -s -m 5 "$AOP/appcat" | grep -qF "selectParam=\"$SVC_A\""; then fail "tela do catalogo ainda mostra $SVC_A depois da retirada"
-    else pass "tela do catalogo sem $SVC_A depois da retirada"; fi
-  fi
-else
-  fail "nao consegui retirar $SVC_A e $SVC_B do Application Catalog"
 fi
 
 echo; echo "-- esquema do Redis: auditoria depois de desfazer o que a suite semeou --"
