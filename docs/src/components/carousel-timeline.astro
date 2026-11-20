@@ -1,0 +1,120 @@
+---
+// Carousel of service 1002 of the example on a timeline: the passes of each
+// object, the instant of tuning and the instant now, both set by sliders, and
+// what the object proxy answers for each object at that instant.
+import '../styles/diagram-detail.css';
+import '../styles/carousel-timeline.css';
+
+interface CarouselObject {
+    name: string;
+    tsi: number;
+    cyclePeriod: number;
+    order: number;
+    count: number;
+    maxExpiresDelta: number | null;
+}
+
+const WINDOW_SECONDS = 60;
+const TUNED_MAX_SECONDS = 40;
+const DEFAULT_TUNED_SECONDS = 4;
+const DEFAULT_NOW_SECONDS = 12;
+const SLIDER_STEP_SECONDS = 0.5;
+const AXIS_STEP_SECONDS = 10;
+const PLAY_LABEL = 'Correr o relógio';
+
+// bcast-sim/example/servicos/1002/carrossel.json: cyclePeriod in seconds.
+const OBJECTS: CarouselObject[] = [
+    { name: 'app.pkg', tsi: 10, cyclePeriod: 10, order: 0, count: 1, maxExpiresDelta: 120 },
+    { name: 'aviso.txt', tsi: 13, cyclePeriod: 20, order: 0, count: 2, maxExpiresDelta: 15 },
+    { name: 'marca.txt', tsi: 13, cyclePeriod: 20, order: 1, count: 2, maxExpiresDelta: 15 },
+    { name: 'init.mp4 (vídeo)', tsi: 12, cyclePeriod: 1, order: 0, count: 1, maxExpiresDelta: null },
+];
+
+const axis: number[] = [];
+for (let second = 0; second < WINDOW_SECONDS; second = second + AXIS_STEP_SECONDS) {
+    axis.push(second);
+}
+---
+
+<div
+    class="ct-diagram not-content"
+    data-carousel-timeline
+    data-objects={JSON.stringify(OBJECTS)}
+    data-window={WINDOW_SECONDS}
+>
+    <div class="ct-controls">
+        <label class="ct-control">
+            <span>Sintonia em <output data-output="tuned">{DEFAULT_TUNED_SECONDS} s</output></span>
+            <input
+                type="range"
+                min="0"
+                max={TUNED_MAX_SECONDS}
+                step={SLIDER_STEP_SECONDS}
+                value={DEFAULT_TUNED_SECONDS}
+                data-input="tuned"
+            />
+        </label>
+        <label class="ct-control">
+            <span>Agora <output data-output="now">{DEFAULT_NOW_SECONDS} s</output></span>
+            <input
+                type="range"
+                min="0"
+                max={WINDOW_SECONDS}
+                step={SLIDER_STEP_SECONDS}
+                value={DEFAULT_NOW_SECONDS}
+                data-input="now"
+            />
+        </label>
+        <button type="button" class="dg-play" aria-pressed="false" data-play-label={PLAY_LABEL}>{PLAY_LABEL}</button>
+    </div>
+    <div class="ct-chart">
+        {OBJECTS.map((object) => (
+            <div class="ct-row">
+                <span class="ct-name">
+                    {object.name}
+                    <span class="ct-flow">TSI {object.tsi}</span>
+                </span>
+                <svg
+                    class="ct-track"
+                    viewBox={`0 0 ${WINDOW_SECONDS} 1`}
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                    data-track
+                ></svg>
+            </div>
+        ))}
+        <div class="ct-row ct-axis-row">
+            <span class="ct-name"></span>
+            <span class="ct-axis">
+                {axis.map((second) => (
+                    <span class="ct-tick">{second} s</span>
+                ))}
+                <span class="ct-tick ct-tick-end">{WINDOW_SECONDS} s</span>
+            </span>
+        </div>
+    </div>
+    <ul class="ct-legend">
+        <li class="ct-key ct-key-pass"><span class="ct-swatch" aria-hidden="true"></span>passagem no carrossel</li>
+        <li class="ct-key ct-key-available"><span class="ct-swatch" aria-hidden="true"></span>disponível na comporta</li>
+        <li class="ct-key ct-key-tuned"><span class="ct-swatch" aria-hidden="true"></span>sintonia</li>
+        <li class="ct-key ct-key-now"><span class="ct-swatch" aria-hidden="true"></span>agora</li>
+    </ul>
+    <div class="ct-panels">
+        <table class="ct-status">
+            <thead>
+                <tr>
+                    <th>Objeto</th>
+                    <th>Resposta</th>
+                    <th>Por quê</th>
+                </tr>
+            </thead>
+            <tbody data-status></tbody>
+        </table>
+        <div class="ct-events">
+            <p class="ct-events-title">Eventos até agora</p>
+            <ol data-events></ol>
+        </div>
+    </div>
+</div>
+
+<script src="../scripts/carousel-timeline.ts"></script>

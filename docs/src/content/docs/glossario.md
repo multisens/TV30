@@ -48,7 +48,7 @@ sem seção é do testbed.
 | **LLS e SLS** | A sinalização de baixo nível, dos serviços do canal (7.2.2), e a de cada serviço (7.2.3) ([Emissora simulada](../emissora-simulada/)) |
 | **BAMT e BAM** | A tabela da LLS com um *Bootstrap Application Manifest* por serviço (8.4.4) |
 | **BALD** | A sinalização das aplicações de emissora de um serviço (10.1) |
-| **Bootstrap Application** | A aplicação inicial de um serviço, que o testbed chama de aplicação de abertura (3.13) |
+| **Bootstrap Application** | A aplicação inicial de um serviço, também chamada de aplicação bootstrap (3.13) |
 | **Aplicação de emissora** | A aplicação associada ao contexto de um serviço, na camada de gráficos (3.14) ([aop-shell](../aop-shell/#aplicações-de-emissora)) |
 | **Camadas** | Vídeo, gráficos e interface da plataforma, com os avisos por cima ([A AoP em 5 minutos](../aop-em-5-minutos/#as-camadas-da-tela)) |
 | **Pop-ups** | O sim ou não da autorização, o QR code e o PIN do pareamento e o aviso de atributos da emissora ([aop-shell](../aop-shell/#pop-ups)) |

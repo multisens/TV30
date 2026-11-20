@@ -5,8 +5,8 @@ description: O componente aop-shell, a casca da plataforma - o que implementa, c
 
 O `aop-shell` é a casca da plataforma: a página da TV, com as camadas de exibição e os avisos, e as telas
 que a plataforma mostra nelas, que são o seletor e o gestor de perfis, o catálogo de aplicações e a
-aplicação de abertura de cada serviço. Ele também lê a LLS, publica a sintonia e carrega na camada
-de gráficos a aplicação da emissora que o gerente de ciclo de vida, no `aop-cc`, indica. As
+aplicação bootstrap de cada serviço. Ele também lê a LLS, publica a sintonia e carrega na camada
+de gráficos a aplicação da emissora que o gerente de ciclo de vida, no [`aop-cc`](../aop-cc/), indica. As
 camadas e o caminho do espectador estão em [A AoP em 5 minutos](../aop-em-5-minutos/); quais
 peças da norma estão implementadas, no mapa de [Escopo, limites e decisões](../escopo/#o-escopo-no-mapa).
 
@@ -65,10 +65,10 @@ casca define como eles se revezam na tela:
 
 - **Lançamento:** quem decide é o gerente de ciclo de vida, no `aop-cc`, pelo `controlCode` da BALD
   do serviço sintonizado, sem esperar a tela cheia. A casca assina
-  `aop/application-lifecycle-manager/graphics-application`: com uma aplicação, fecha a aplicação de
-  abertura, põe o vídeo em tela cheia e carrega a aplicação na camada de gráficos; vazio, a
-  aplicação de abertura volta em modo de informação. A tela cheia da aplicação de abertura só
-  esconde as informações.
+  `aop/application-lifecycle-manager/graphics-application`: com uma aplicação, fecha a aplicação
+  bootstrap, põe o vídeo em tela cheia e carrega a aplicação na camada de gráficos; vazio, a
+  aplicação bootstrap volta em modo de informação. A tela cheia da aplicação bootstrap só esconde
+  as informações.
 - **Origem própria:** a aplicação por radiodifusão abre em `ctx-<hash>.<APPS_DOMAIN>`, e a de
   banda larga em `bb-<hash>.<APPS_DOMAIN>`, as duas servidas pela comporta do `aop-cc`; `<hash>`
   são os 16 primeiros dígitos hexadecimais do SHA-256 do `appContextId`. Na de banda larga, a
@@ -83,7 +83,7 @@ casca define como eles se revezam na tela:
 - **Esc e Menu**, com uma aplicação de emissora, vão para ela como `BrowserBack` e `ContextMenu`
   (10.6.3, Tabela 11). O `BrowserBack` que a aplicação não cancela (`preventDefault`) volta à casca,
   que pede ao gerente que a encerre (`aop/application-lifecycle-manager/end-request`); a aplicação
-  de abertura volta em modo de informação.
+  bootstrap volta em modo de informação.
 - **Home** é a função fixa de início: encerra a aplicação mesmo quando ela cancela o Back. PageUp
   e PageDown, a troca de canal, só vão para o log.
 - **De outra máquina:** `*.apps.localhost` só resolve na máquina de quem abre a página. Para abrir a

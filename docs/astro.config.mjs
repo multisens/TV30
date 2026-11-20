@@ -70,6 +70,7 @@ export default defineConfig({
                             items: [
                                 'arquitetura',
                                 'emissora-simulada',
+                                'camada-de-transporte',
                                 'borda-credenciais',
                                 'modelo-redis',
                                 'mensageria',
@@ -80,6 +81,7 @@ export default defineConfig({
                             items: [
                                 'tv3ws',
                                 'aop-shell',
+                                'aop-cc',
                             ],
                         },
                     ],

@@ -6,7 +6,8 @@ description: O bcast-sim, a emissora simulada do testbed - o que ele serve, como
 O `bcast-sim` faz o papel da emissora, fora do receptor. Ele serve, por HTTP, a sinalização da camada
 de transporte, os arquivos dos serviços e o vídeo ao vivo, e não publica nada na mensageria: quem vai
 buscar e distribui dentro da plataforma é o `aop-cc`. O que isso representa no mundo real está em
-[O que o testbed simula](../o-que-simula/).
+[O que o testbed simula](../o-que-simula/), e o caminho do lado do receptor, em
+[Camada de transporte simulada](../camada-de-transporte/).
 
 O `bcast-sim` é só o motor. Os serviços são declarações e arquivos numa pasta de emissão; a que sobe
 com o testbed é `bcast-sim/example/`, montada somente leitura em `/emission`. Mudar um arquivo dela
@@ -69,7 +70,7 @@ Todos no canal 10:
 
 ## O vídeo
 
-Cada fluxo é um vídeo pré-gravado, repetido em laço como se fosse ao vivo. Toda resposta é função da
+Cada fluxo é um vídeo pré-gravado, repetido em loop como se fosse ao vivo. Toda resposta é função da
 declaração do fluxo e do relógio: a janela ao vivo avança sozinha, sem estado guardado. O mesmo fluxo
 sai em HLS (fMP4) e em DASH, com a mesma linha de tempo.
 

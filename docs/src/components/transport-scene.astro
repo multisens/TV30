@@ -1,0 +1,138 @@
+---
+// Scene "Do sinal à tela": the blocks of the simulated transport layer on the
+// left, the TV screen on the right. Each step runs its messages from block to
+// block and leaves the screen as the viewer sees it; the buttons go back,
+// forward or through all the steps.
+import '../styles/diagram-detail.css';
+import '../styles/transport-scene.css';
+import { SCENE_STEPS } from '../data/transport-scene.ts';
+import type { SceneChannel } from '../data/transport-scene.ts';
+
+interface Service {
+    id: number;
+    name: string;
+}
+
+const PLAY_LABEL = 'Percorrer';
+const SERVICES: Service[] = [
+    { id: 1001, name: 'Sintetico' },
+    { id: 1002, name: 'Radiodifusao' },
+    { id: 1003, name: 'Guardada' },
+];
+const CHANNEL_LABELS: Record<SceneChannel, string> = {
+    http: 'HTTP',
+    mqtt: 'mensageria (MQTT)',
+    internal: 'dentro da plataforma, ou o carrossel',
+};
+---
+
+<div class="ts-diagram not-content" data-transport-scene data-steps={JSON.stringify(SCENE_STEPS)}>
+    <div class="ts-scene">
+        <div class="ts-architecture" data-stage>
+            <div class="ts-column ts-zone-broadcaster">
+                <p class="ts-column-title">Emissora</p>
+                <div class="ts-node" data-node="bcast">
+                    <span class="ts-node-title">bcast-sim</span>
+                    <span class="ts-node-note">sinalização, carrossel e vídeo</span>
+                </div>
+            </div>
+            <div class="ts-column ts-zone-receiver">
+                <p class="ts-column-title">aop-cc</p>
+                <div class="ts-node" data-node="acquisition">
+                    <span class="ts-node-title">Aquisição</span>
+                </div>
+                <div class="ts-node" data-node="proxy">
+                    <span class="ts-node-title">Comporta</span>
+                    <span class="ts-node-note">porta 8081</span>
+                </div>
+                <div class="ts-node" data-node="lifecycle">
+                    <span class="ts-node-title">Gerente de ciclo de vida</span>
+                </div>
+            </div>
+            <div class="ts-column ts-zone-substrate">
+                <p class="ts-column-title">Broker</p>
+                <div class="ts-node" data-node="broker">
+                    <span class="ts-node-title">Mensageria</span>
+                    <span class="ts-node-note">broker MQTT</span>
+                </div>
+            </div>
+            <div class="ts-column ts-zone-tv">
+                <p class="ts-column-title">aop-shell</p>
+                <div class="ts-node" data-node="shell">
+                    <span class="ts-node-title">Casca</span>
+                    <span class="ts-node-note">catálogo, aplicação bootstrap e vídeo</span>
+                </div>
+                <div class="ts-node" data-node="app">
+                    <span class="ts-node-title">Aplicação</span>
+                    <span class="ts-node-note">camada de gráficos</span>
+                </div>
+            </div>
+            <span class="ts-packet" data-packet hidden>
+                <span class="ts-packet-dot"></span>
+                <span class="ts-packet-label" data-packet-label></span>
+            </span>
+        </div>
+        <div class="ts-tv-frame">
+            <p class="ts-column-title">Tela da TV</p>
+            <div class="ts-tv" data-screen data-view="search" data-selected="false" data-carousel="none" data-key="false">
+                <span class="ts-video" aria-hidden="true"></span>
+                <p class="ts-search">Procurando serviços…</p>
+                <ul class="ts-catalog">
+                    {SERVICES.map((service) => (
+                        <li class="ts-card" data-service={service.id}>
+                            <span class="ts-card-icon" aria-hidden="true"></span>
+                            <span>{service.name}</span>
+                        </li>
+                    ))}
+                </ul>
+                <div class="ts-bootstrap">
+                    <p class="ts-layer-label">aplicação bootstrap</p>
+                    <p class="ts-bootstrap-name">Radiodifusao</p>
+                    <p>Serviço de exemplo só pelo ar</p>
+                </div>
+                <div class="ts-app">
+                    <p class="ts-layer-label">camada de gráficos</p>
+                    <p class="ts-app-name">Carrossel</p>
+                    <p>aplicação da emissora</p>
+                </div>
+                <div class="ts-carousel">
+                    <span>app.pkg no carrossel</span>
+                    <span class="ts-carousel-bar"><span class="ts-carousel-fill"></span></span>
+                </div>
+                <span class="ts-key">Esc</span>
+            </div>
+        </div>
+    </div>
+    <ul class="ts-legend">
+        {(Object.keys(CHANNEL_LABELS) as SceneChannel[]).map((channel) => (
+            <li class={`ts-key-item ts-${channel}`}>
+                <span class="ts-swatch" aria-hidden="true"></span>
+                {CHANNEL_LABELS[channel]}
+            </li>
+        ))}
+    </ul>
+    <div class="ts-controls">
+        <button type="button" class="dg-play" data-action="previous" aria-label="Passo anterior">◀</button>
+        <button type="button" class="dg-play" data-action="next" aria-label="Próximo passo">▶</button>
+        <button type="button" class="dg-play" aria-pressed="false" data-action="play" data-play-label={PLAY_LABEL}>{PLAY_LABEL}</button>
+        <span class="ts-counter" data-counter></span>
+    </div>
+    <aside class="dg-detail" aria-live="polite">
+        <p class="dg-hint" data-detail="hint">
+            Avance passo a passo com ▶, ou percorra a sequência inteira.
+        </p>
+        {SCENE_STEPS.map((step, index) => (
+            <div data-detail={step.id} hidden>
+                <p class="dg-detail-title">{index + 1}. {step.title}</p>
+                <p set:html={step.detail}></p>
+                <ol class="ts-hops">
+                    {step.hops.map((hop) => (
+                        <li class={`ts-${hop.channel}`}><code>{hop.label}</code></li>
+                    ))}
+                </ol>
+            </div>
+        ))}
+    </aside>
+</div>
+
+<script src="../scripts/transport-scene.ts"></script>

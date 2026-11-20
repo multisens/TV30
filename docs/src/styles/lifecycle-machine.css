@@ -1,0 +1,138 @@
+/* Lifecycle machine: controlCode of a BALD entry and the graphics layer
+   (lifecycle-machine component). */
+
+.lm-diagram {
+    --lm-border: var(--sl-color-gray-5);
+    --lm-text: var(--sl-color-white);
+    --lm-muted: var(--sl-color-gray-3);
+    --lm-accent: var(--sl-color-accent);
+    --lm-app: var(--tv30-app);
+    --lm-platform: var(--tv30-platform);
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 0.9rem;
+    color: var(--lm-text);
+    font-size: var(--sl-text-sm);
+    line-height: 1.35;
+}
+
+.lm-controls {
+    display: flex;
+    grid-column: 1 / -1;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.lm-caption {
+    margin: 0;
+    color: var(--lm-muted);
+}
+
+.lm-codes,
+.lm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.lm-code,
+.lm-action {
+    margin: 0;
+    padding: 0.25rem 0.7rem;
+    border: 1px solid var(--lm-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--lm-text);
+    font: inherit;
+    font-size: var(--sl-text-xs);
+    cursor: pointer;
+}
+
+.lm-code {
+    font-family: var(--__sl-font-mono);
+}
+
+.lm-code[aria-pressed="true"] {
+    border-color: var(--lm-accent);
+    background: color-mix(in srgb, var(--lm-accent) 25%, transparent);
+}
+
+.lm-action:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.lm-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-right: 0.6rem;
+    font-size: var(--sl-text-xs);
+}
+
+.lm-screen {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 9rem;
+    padding: 0.8rem 1rem;
+    border: 2px solid var(--lm-platform);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--lm-platform) 12%, transparent);
+}
+
+.lm-screen[data-screen="application"] {
+    border-color: var(--lm-app);
+    background: color-mix(in srgb, var(--lm-app) 15%, transparent);
+}
+
+.lm-screen p {
+    margin: 0;
+}
+
+.lm-layer {
+    color: var(--lm-muted);
+    font-size: var(--sl-text-xs);
+}
+
+.lm-showing {
+    font-weight: 600;
+}
+
+.lm-present {
+    font-size: var(--sl-text-xs);
+}
+
+.lm-log {
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--lm-border);
+    border-radius: 0.5rem;
+    font-size: var(--sl-text-xs);
+}
+
+.lm-log-title {
+    margin: 0 0 0.3rem;
+    font-weight: 600;
+}
+
+.lm-log ol {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    max-height: 11rem;
+    margin: 0;
+    padding-left: 1.2rem;
+    overflow-y: auto;
+}
+
+.lm-log li {
+    margin: 0;
+}
+
+@media (max-width: 50rem) {
+    .lm-diagram {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

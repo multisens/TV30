@@ -1,0 +1,200 @@
+---
+title: Camada de transporte simulada
+description: Como o testbed simula a camada de transporte da TV 3.0 - a aquisição da sinalização, a sintonia, o carrossel de radiodifusão, a comporta, o vídeo, o cache e o ciclo de vida das aplicações, com o que cada passo simula das normas.
+---
+
+import CarouselTimeline from '../../components/carousel-timeline.astro';
+import LifecycleMachine from '../../components/lifecycle-machine.astro';
+import TransportOverview from '../../components/transport-overview.astro';
+import TransportScene from '../../components/transport-scene.astro';
+
+No receptor de verdade, a sinalização, os arquivos das aplicações e o vídeo chegam pelo ar, em pacotes
+IP dentro do sinal do canal. O testbed não tem sinal nem pacotes: tudo trafega por HTTP, e o que o ar
+decide — o que já passou, o que ainda não chegou, o que venceu — é decidido por uma declaração e pelo
+relógio.
+
+## Visão geral
+
+Três componentes repartem o trabalho:
+
+- **[`bcast-sim`](../emissora-simulada/), a emissora.** Serve a sinalização dos serviços, os arquivos
+  das aplicações e o vídeo ao vivo, e declara quando cada arquivo passa no carrossel.
+- **[`aop-cc`](../aop-cc/), o lado do receptor.** Tem quatro partes:
+  - a **aquisição** busca a sinalização e a distribui na plataforma;
+  - a **comporta** entrega os arquivos à TV só depois que eles teriam chegado pelo ar;
+  - o **cache** guarda as aplicações que a emissora manda armazenar;
+  - o **gerente de ciclo de vida** decide que aplicação roda.
+- **[`aop-shell`](../aop-shell/), a TV.** Sintoniza o serviço escolhido, toca o vídeo e mostra a
+  aplicação da emissora na camada de gráficos.
+
+As partes conversam pela mensageria, e o que precisa ficar guardado vai para o Redis. Clique num
+bloco para ver o que ele faz:
+
+<TransportOverview />
+
+## Do ar para o HTTP
+
+| No receptor | No testbed |
+|---|---|
+| A varredura percorre os canais RF e lê a LLS (SLT e BAMT) de cada um | `GET /signaling/lls` ao `bcast-sim`, a cada `llsCyclePeriod` |
+| A SLS de um serviço de radiodifusão vem num canal do próprio sinal | O canal de sinalização do carrossel: a comporta entrega a SLS no fim de cada passagem dele |
+| A SLS de um serviço só de banda larga vem do Signaling Server da emissora, um servidor na internet | O `aop-cc` busca a SLS no endereço do Signaling Server que a SLT indica para o serviço |
+| Sintonizar o canal | A casca publica `tlm/tuned`, com o instante da sintonia |
+| Os arquivos passam em carrossel por ROUTE, repetidos em loop | A comporta conta as passagens pelo relógio e só entrega o que já passou inteiro |
+| Um arquivo vence no prazo da S-TSID | A comporta passa a responder 404 no vencimento |
+| O vídeo por radiodifusão vem em segmentos DASH no sinal | O reprodutor pede os segmentos à comporta, que os busca no `bcast-sim` |
+| O vídeo por banda larga vem do servidor da emissora | O reprodutor pede direto ao `bcast-sim`, em DASH ou HLS |
+
+## O caminho de um serviço de radiodifusão
+
+O serviço 1002 do exemplo, da varredura ao Esc do espectador. À esquerda, as mensagens correm entre
+os blocos; à direita, a tela da TV mostra o que o espectador vê ao fim de cada passo.
+
+<TransportScene />
+
+## Aquisição
+
+De tempos em tempos, o `aop-cc` busca a LLS e publica cada tabela cuja `LLS_table_version` mudou em
+`tlm/lls/<bsid>/slt` ou `tlm/lls/<bsid>/bamt`; no fim, `tlm/scan` marca a varredura completa. O
+intervalo é o menor `llsCyclePeriod` entre os canais RF, e cada serviço é revisitado no período do
+seu canal.
+
+Para cada serviço da SLT, o `aop-cc` pede o descritor de emissão:
+
+- **Com descritor**, o serviço tem carrossel, e a SLS chega como um objeto dele: no fim de cada
+  passagem do canal de sinalização, a aquisição a pede à comporta.
+- **Sem descritor**, o serviço é só de banda larga, e a SLS vem do Signaling Server, no endereço que
+  a SLT indica para o serviço.
+
+A SLS é um pacote `multipart/related`: um envelope, que lista os fragmentos e a versão de cada um, e
+os fragmentos. Cada fragmento cuja versão mudou vai para `tlm/sls/<serviceId>/<fragmento>`.
+
+Toda mensagem da aquisição é retida. Tabela, fragmento ou serviço que sai da sinalização tem o tópico
+limpo, com a mensagem retida vazia. Uma falha do `bcast-sim` não publica nem limpa nada: a plataforma
+continua com o que já tinha. Os tópicos estão em [Mensageria](../mensageria/#os-tópicos).
+
+## O carrossel
+
+No ar, cada fluxo do carrossel repete os seus objetos em loop. O descritor de emissão diz, para cada
+fluxo, o período do loop e a ordem de cada objeto, e o loop se divide em fatias iguais, uma por
+objeto. Um objeto passa inteiro na fatia dele, e a comporta trata essa passagem assim:
+
+- **Disponível** a partir do fim da primeira passagem completa que começou depois da sintonia. Quem
+  sintoniza no meio de uma passagem espera a seguinte, como o receptor que perdeu o começo do objeto.
+- **Vencido** no `maxExpiresDelta` da S-TSID, contado do começo da passagem que o trouxe. O objeto
+  volta a ficar disponível no fim da passagem seguinte.
+- Disponível, a resposta é 200. Ainda não passou ou venceu, é 404.
+
+Cada mudança vira um evento, não retido: `tlm/object/<serviceId>/available` quando o objeto fica
+disponível e `tlm/object/<serviceId>/expired` quando deixa de estar. A troca de sintonia não gera
+`expired`.
+
+O carrossel do serviço 1002, com os valores da declaração do exemplo: mova a sintonia e o relógio, ou
+deixe o relógio correr.
+
+<CarouselTimeline />
+
+Para experimentar:
+
+- Sintonia em 10 s e depois em 10,5 s: meio segundo de atraso custa um loop inteiro de `app.pkg`.
+- `aviso.txt` vence 15 s depois de começar a passar, e o loop dele tem 20 s: fica 5 s indisponível
+  a cada loop. `marca.txt`, no mesmo fluxo, passa na outra metade do loop.
+- `init.mp4`, num loop de 1 s, fica disponível quase de imediato, e não vence.
+
+Fora dos objetos listados na S-TSID, os segmentos de vídeo seguem o `fileTemplate` do fluxo: o
+caminho com um número de segmento no lugar de `$TOI$` vai ao `bcast-sim`, e é ele que responde.
+
+## A comporta
+
+A comporta é o servidor HTTP do `aop-cc`, na porta 8081. Ela responde por quatro famílias de
+endereço:
+
+| Família | Endereço | Serve |
+|---|---|---|
+| serviço | `/svc/<serviceId>/<caminho>` | a SLS pelo canal de sinalização, os arquivos da S-TSID e os segmentos de vídeo do serviço sintonizado |
+| aplicação | `ctx-<h>.<APPS_DOMAIN>:8081` | os arquivos e as partes de pacote do contexto de aplicação `<h>`, no carrossel do serviço sintonizado |
+| banda larga | `bb-<h>.<APPS_DOMAIN>:8081` | o servidor do `bbandEntryPointUrl` do mesmo contexto, repassado pedido a pedido |
+| ponte | `/.tv30/bridge.js`, nas duas famílias de aplicação | a ponte de teclas, que a comporta insere em todo documento HTML que serve |
+
+`<h>` são os 16 primeiros dígitos hexadecimais do SHA-256 do `appContextId`. Cada aplicação tem
+assim origem própria, que é o que permite à plataforma reconhecê-la como cliente associado
+([Borda e credenciais](../borda-credenciais/)). As respostas de cada família, caso a caso, estão em
+[aop-cc](../aop-cc/#como-recebe-as-chamadas).
+
+## O vídeo
+
+A MPD não vem do servidor: chega na SLS, como fragmento. A casca a guarda e a serve ao reprodutor
+DASH em `/dash/<serviceId>/mpd`.
+
+- **Radiodifusão** (`Broadcast`, como o 1002): o `BaseURL` da MPD é relativo, e a casca o resolve
+  contra a família de serviço da comporta. Os segmentos passam pelo carrossel.
+- **Banda larga** (`Broadband`, como o 1001): o `BaseURL` é o endereço do `bcast-sim`, e os
+  segmentos vêm direto dele.
+
+O mesmo fluxo sai também em HLS, com a mesma linha de tempo. A casca só toca HLS num serviço de banda
+larga, porque na TV 3.0 o HLS é só entrega pela internet.
+
+## O cache de aplicações
+
+Uma aplicação com `controlCode` `STORED_AUTOSTART` ou `STORED_PRESENT` fica guardada no receptor. A
+cada `available` de um objeto do contexto dela, o `aop-cc` o busca na comporta e o grava no Redis.
+Quando o carrossel não oferece o arquivo — não passou desde a sintonia, venceu ou saiu do carrossel —,
+a comporta o serve do cache. O serviço 1003 do exemplo tem uma aplicação assim.
+
+| Na BALD | O que acontece no cache |
+|---|---|
+| `STORED_REMOVE` | os arquivos do contexto saem |
+| `clearAppContextCacheDate` | saem os arquivos com `Last-Modified` anterior à data |
+
+Cada contexto tem uma quota (`CACHE_QUOTA_BYTES`), e o objeto que a passaria não é guardado. O cache
+tem um total (`CACHE_TOTAL_BYTES`): passado o total, sai inteiro o contexto de último acesso mais
+antigo. Toda leitura conta como acesso. As chaves estão em
+[Modelo de dados Redis](../modelo-redis/#as-famílias-de-chave).
+
+## O ciclo de vida
+
+O gerente de ciclo de vida, no `aop-cc`, lê a BALD do serviço sintonizado e decide que aplicação fica
+na camada de gráficos. Conta só a entrada `TV30-Ginga-HTML5` dentro de `validFrom` e `validUntil`.
+
+| `controlCode` | O que o gerente faz |
+|---|---|
+| `AUTOSTART`, ou sem `controlCode` | lança a aplicação quando a entrada passa a ter esse código; de várias ao mesmo tempo, a última da BALD |
+| `STORED_AUTOSTART` | o mesmo, quando o cache tem a aplicação completa |
+| `PRESENT`, `STORED_PRESENT` | não lança; lista a aplicação em `present-applications` |
+| `DESTROY`, `KILL`, `STORED_REMOVE`, ou a entrada sai da BALD | encerra a aplicação no ar, e a Bootstrap Application volta |
+
+Com os dois pontos de entrada na BALD, vale o de banda larga. O de radiodifusão espera o `available`
+do arquivo de entrada no carrossel. O Back que a aplicação não cancela encerra a aplicação, e ela só
+volta quando o `controlCode` mudar e voltar. Trocar de serviço também a encerra.
+
+Escolha os códigos da entrada em sequência e veja o que fica na tela:
+
+<LifecycleMachine />
+
+## Correspondência com as normas
+
+| Passo | Onde está |
+|---|---|
+| LLS: SLT e BAMT | ABNT NBR 25602, 8.1 e 8.2; ATSC A/331, 6.3; ABNT NBR 25608, 7.2.2 |
+| SLS: envelope, USBD, S-TSID, MPD | ATSC A/331, 7.1 (USBD em 7.1.3.1; S-TSID na Tabela 7.4); ABNT NBR 25608, 7.2.3 |
+| Vencimento dos objetos e `fileTemplate` | ATSC A/331, A.3.3.2.3 e A.3.3.2.7 |
+| Pacote de entrada | ATSC A/331, A.3.3.4; ABNT NBR 25608, 10.1.3 |
+| BALD e `controlCode` | ABNT NBR 25608, 10.1.3 |
+| Fluxos DASH e HLS | ABNT NBR 25608, 7.3 e 7.4; ABNT NBR 25602, Anexos B e C |
+| Cache de contexto de aplicação | ABNT NBR 25608, 3.11 e 10.1 |
+| Origem própria e CORS | ABNT NBR 25608, B.6.2 |
+
+## O que fica de fora
+
+- **Camada física e de enlace.** Não há canal RF, PLP nem pacotes IP.
+- **ROUTE como protocolo.** Não há sessões LCT, pacotes ALC, correção de erros nem reparo de
+  arquivo. O carrossel é só a conta das passagens.
+- **Tabelas e fragmentos não emitidos.** Da LLS, só SLT e BAMT; da SLS, só USBD, S-TSID, MPD, BALD e
+  PRRD.
+- **Forma dos fragmentos.** Só a MPD tem a forma XML da norma; os demais trafegam em JSON, campo a
+  campo com os nomes da norma.
+- **Pedidos da aplicação de banda larga.** A comporta repassa só `GET` e `HEAD`, sem os cabeçalhos do
+  pedido.
+- **Mesma origem para os dois caminhos.** A radiodifusão e a banda larga terminam no mesmo
+  `bcast-sim`; a falta de um objeto no carrossel é a recusa da comporta, não a falta do servidor.
+- **Eventos de fluxo.** O `bcast-sim` não gera `video/event`.

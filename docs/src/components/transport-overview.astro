@@ -1,0 +1,187 @@
+---
+// Overview of the simulated transport layer: what the broadcaster serves,
+// the parts of aop-cc that receive it and what reaches the TV. A click on a
+// block shows its description and the section of the page about it.
+import '../styles/diagram-detail.css';
+import '../styles/overview-diagram.css';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+function page(slug: string): string {
+    return `${base}/${slug}/`;
+}
+---
+
+<div class="ov-diagram not-content" data-detail-diagram>
+    <div class="ov-stage">
+        <div class="ov-column ov-zone-broadcaster">
+            <p class="ov-column-title">Emissora · bcast-sim</p>
+            <button type="button" class="ov-node" data-node="signaling">
+                <span class="ov-node-title">Sinalização</span>
+                <span class="ov-chip">LLS: SLT e BAMT</span>
+                <span class="ov-chip">SLS de cada serviço</span>
+            </button>
+            <button type="button" class="ov-node" data-node="emission">
+                <span class="ov-node-title">Emissão</span>
+                <span class="ov-chip">descritor do carrossel</span>
+                <span class="ov-chip">arquivos das aplicações</span>
+            </button>
+            <button type="button" class="ov-node" data-node="live">
+                <span class="ov-node-title">Vídeo ao vivo</span>
+                <span class="ov-chip">DASH</span>
+                <span class="ov-chip">HLS</span>
+            </button>
+        </div>
+        <div class="ov-link">
+            <span class="ov-line"></span>
+            <span class="ov-link-label">HTTP, no lugar do sinal</span>
+        </div>
+        <div class="ov-column ov-zone-receiver">
+            <p class="ov-column-title">Receptor · aop-cc</p>
+            <button type="button" class="ov-node ov-zone-platform" data-node="acquisition">
+                <span class="ov-node-title">Aquisição</span>
+                <span class="ov-chip">busca a sinalização</span>
+                <span class="ov-chip">publica na mensageria</span>
+            </button>
+            <button type="button" class="ov-node ov-zone-platform" data-node="proxy">
+                <span class="ov-node-title">Comporta</span>
+                <span class="ov-chip">carrossel pelo relógio</span>
+                <span class="ov-chip">origem de cada aplicação</span>
+            </button>
+            <button type="button" class="ov-node ov-zone-platform" data-node="cache">
+                <span class="ov-node-title">Cache de aplicações</span>
+                <span class="ov-chip">aplicações guardadas</span>
+            </button>
+            <button type="button" class="ov-node ov-zone-platform" data-node="lifecycle">
+                <span class="ov-node-title">Gerente de ciclo de vida</span>
+                <span class="ov-chip">controlCode da BALD</span>
+            </button>
+            <button type="button" class="ov-node ov-node-substrate" data-node="substrate">
+                <span class="ov-node-title">Mensageria e Redis</span>
+                <span class="ov-chip">sinalização retida</span>
+                <span class="ov-chip">eventos de objeto</span>
+                <span class="ov-chip">arquivos guardados</span>
+            </button>
+        </div>
+        <div class="ov-link">
+            <span class="ov-line"></span>
+            <span class="ov-link-label">mensageria e HTTP</span>
+        </div>
+        <div class="ov-column ov-zone-users">
+            <p class="ov-column-title">Na TV · aop-shell</p>
+            <button type="button" class="ov-node" data-node="catalog">
+                <span class="ov-node-title">Catálogo e sintonia</span>
+                <span class="ov-chip">serviços da SLT</span>
+                <span class="ov-chip">tlm/tuned</span>
+            </button>
+            <button type="button" class="ov-node" data-node="player">
+                <span class="ov-node-title">Reprodutor de vídeo</span>
+                <span class="ov-chip">MPD da SLS</span>
+            </button>
+            <button type="button" class="ov-node" data-node="graphics">
+                <span class="ov-node-title">Camada de gráficos</span>
+                <span class="ov-chip">aplicação da emissora</span>
+            </button>
+        </div>
+    </div>
+    <aside class="dg-detail" aria-live="polite">
+        <p class="dg-hint" data-detail="hint">
+            Clique num bloco para saber o que ele faz.
+        </p>
+        <div data-detail="signaling" hidden>
+            <p class="dg-detail-title">Sinalização</p>
+            <p>
+                A LLS lista os canais e os serviços de cada um (SLT) e a aplicação bootstrap de cada
+                serviço (BAMT). A SLS de cada serviço descreve os seus componentes: os arquivos que passam
+                no carrossel (S-TSID), o vídeo (MPD) e as aplicações da emissora (BALD).
+            </p>
+            <a href="#aquisição">Aquisição</a>
+        </div>
+        <div data-detail="emission" hidden>
+            <p class="dg-detail-title">Emissão</p>
+            <p>
+                O descritor de emissão diz quando cada arquivo passa no carrossel: o período de cada loop
+                e a ordem de cada arquivo nele. Os arquivos das aplicações ficam no <code>bcast-sim</code>,
+                que os serve a qualquer hora; quem decide se já chegaram é a comporta.
+            </p>
+            <a href="#o-carrossel">O carrossel</a>
+        </div>
+        <div data-detail="live" hidden>
+            <p class="dg-detail-title">Vídeo ao vivo</p>
+            <p>
+                Um vídeo pré-gravado, repetido em loop como se fosse ao vivo, em DASH e em HLS, com a mesma
+                linha de tempo.
+            </p>
+            <a href="#o-vídeo">O vídeo</a>
+        </div>
+        <div data-detail="acquisition" hidden>
+            <p class="dg-detail-title">Aquisição</p>
+            <p>
+                Busca a LLS de tempos em tempos e, para cada serviço, a SLS, e publica cada tabela e cada
+                fragmento na mensageria. É assim que o resto da plataforma fica sabendo dos serviços.
+            </p>
+            <a href="#aquisição">Aquisição</a>
+        </div>
+        <div data-detail="proxy" hidden>
+            <p class="dg-detail-title">Comporta</p>
+            <p>
+                O servidor HTTP que entrega à TV o que veio pelo ar. Busca cada arquivo
+                no <code>bcast-sim</code>, mas só o entrega depois que ele passou inteiro no carrossel, e
+                deixa de entregar quando vence. Serve cada aplicação da emissora em origem própria.
+            </p>
+            <a href="#a-comporta">A comporta</a>
+        </div>
+        <div data-detail="cache" hidden>
+            <p class="dg-detail-title">Cache de aplicações</p>
+            <p>
+                Guarda as aplicações que a emissora manda armazenar no receptor, para que fiquem
+                disponíveis mesmo quando não estão passando no carrossel.
+            </p>
+            <a href="#o-cache-de-aplicações">O cache de aplicações</a>
+        </div>
+        <div data-detail="lifecycle" hidden>
+            <p class="dg-detail-title">Gerente de ciclo de vida</p>
+            <p>
+                Lê a BALD do serviço sintonizado e decide, pelo <code>controlCode</code> de cada aplicação,
+                qual fica na camada de gráficos e quando ela é encerrada.
+            </p>
+            <a href="#o-ciclo-de-vida">O ciclo de vida</a>
+        </div>
+        <div data-detail="substrate" hidden>
+            <p class="dg-detail-title">Mensageria e Redis</p>
+            <p>
+                As peças conversam pela mensageria: a sinalização fica retida nos tópicos <code>tlm/</code>,
+                e os eventos de objeto avisam quando um arquivo chega ou vence. O Redis
+                guarda os arquivos do cache e a aplicação no ar.
+            </p>
+            <a href={page('mensageria')}>Mensageria (MQTT)</a>
+        </div>
+        <div data-detail="catalog" hidden>
+            <p class="dg-detail-title">Catálogo e sintonia</p>
+            <p>
+                A casca monta o catálogo com os serviços da SLT. Quando o espectador escolhe um, ela
+                publica a sintonia, com o instante em que ela aconteceu: daí em diante, a comporta só
+                entrega o que passou no carrossel depois desse instante.
+            </p>
+            <a href={page('aop-shell')}>aop-shell</a>
+        </div>
+        <div data-detail="player" hidden>
+            <p class="dg-detail-title">Reprodutor de vídeo</p>
+            <p>
+                Toca a MPD que chegou na SLS. Num serviço de radiodifusão, pede os segmentos à comporta;
+                num de banda larga, direto ao <code>bcast-sim</code>.
+            </p>
+            <a href="#o-vídeo">O vídeo</a>
+        </div>
+        <div data-detail="graphics" hidden>
+            <p class="dg-detail-title">Camada de gráficos</p>
+            <p>
+                Onde a aplicação da emissora roda, sobre o vídeo, carregada da comporta na origem dela. As
+                teclas chegam a ela pela casca.
+            </p>
+            <a href="#o-ciclo-de-vida">O ciclo de vida</a>
+        </div>
+    </aside>
+</div>
+
+<script src="../scripts/detail-diagram.ts"></script>

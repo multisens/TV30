@@ -1,0 +1,438 @@
+/* Scene "Do sinal à tela": blocks, packet and TV screen
+   (transport-scene component). */
+
+.ts-diagram {
+    --ts-border: var(--sl-color-gray-5);
+    --ts-text: var(--sl-color-white);
+    --ts-muted: var(--sl-color-gray-3);
+    --ts-active: var(--sl-color-accent);
+    --ts-zone-broadcaster: #f59e0b;
+    --ts-zone-receiver: #8b5cf6;
+    --ts-zone-substrate: var(--sl-color-gray-3);
+    --ts-zone-tv: #10b981;
+    --ts-http: var(--tv30-channel-http);
+    --ts-mqtt: var(--tv30-channel-mqtt);
+    --ts-internal: var(--tv30-platform);
+    --ts-tv-bg: #0f172a;
+    --ts-tv-text: #f8fafc;
+    --ts-tv-muted: #94a3b8;
+    --ts-tv-panel: rgb(15 23 42 / 0.82);
+    --ts-tv-app: var(--tv30-app);
+    color: var(--ts-text);
+    font-size: var(--sl-text-sm);
+    line-height: 1.35;
+}
+
+.ts-diagram p {
+    margin: 0;
+}
+
+.ts-scene {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 1rem;
+    align-items: stretch;
+}
+
+/* Blocks */
+
+.ts-architecture {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.ts-column {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.4rem;
+    border: 1px solid var(--ts-zone);
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--ts-zone) 10%, transparent);
+}
+
+.ts-zone-broadcaster {
+    --ts-zone: var(--ts-zone-broadcaster);
+}
+
+.ts-zone-receiver {
+    --ts-zone: var(--ts-zone-receiver);
+}
+
+.ts-zone-substrate {
+    --ts-zone: var(--ts-zone-substrate);
+}
+
+.ts-zone-tv {
+    --ts-zone: var(--ts-zone-tv);
+}
+
+.ts-column-title {
+    font-size: var(--sl-text-xs);
+    font-weight: 600;
+}
+
+.ts-node {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.2rem;
+    padding: 0.4rem;
+    border: 1px solid var(--ts-border);
+    border-radius: 0.4rem;
+    background: var(--sl-color-bg);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ts-node.is-active {
+    border-color: var(--ts-active);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ts-active) 35%, transparent);
+}
+
+.ts-node-title {
+    font-weight: 600;
+}
+
+.ts-node-note {
+    color: var(--ts-muted);
+    font-size: var(--sl-text-xs);
+}
+
+/* Packet: a dot with the name of the message, moved by the script */
+
+.ts-packet {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    pointer-events: none;
+}
+
+.ts-packet[hidden] {
+    display: none;
+}
+
+.ts-packet-dot {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--ts-channel);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ts-channel) 30%, transparent);
+}
+
+.ts-packet-label {
+    padding: 0.05rem 0.4rem;
+    border: 1px solid var(--ts-channel);
+    border-radius: 999px;
+    background: var(--sl-color-bg);
+    font-family: var(--__sl-font-mono);
+    font-size: var(--sl-text-xs);
+    white-space: nowrap;
+}
+
+.ts-http {
+    --ts-channel: var(--ts-http);
+}
+
+.ts-mqtt {
+    --ts-channel: var(--ts-mqtt);
+}
+
+.ts-internal {
+    --ts-channel: var(--ts-internal);
+}
+
+/* TV screen: what shows depends on the data attributes of the screen */
+
+.ts-tv-frame {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.4rem;
+}
+
+.ts-tv {
+    position: relative;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+    border: 6px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    background: var(--ts-tv-bg);
+    color: var(--ts-tv-text);
+    font-size: var(--sl-text-xs);
+}
+
+.ts-video,
+.ts-search,
+.ts-catalog,
+.ts-bootstrap,
+.ts-app,
+.ts-carousel,
+.ts-key {
+    position: absolute;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.ts-video {
+    inset: 0;
+    background: linear-gradient(90deg, #e5e7eb 0 14%, #facc15 14% 28%, #22d3ee 28% 42%, #22c55e 42% 56%,
+        #d946ef 56% 70%, #ef4444 70% 84%, #3b82f6 84% 100%);
+}
+
+.ts-search {
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ts-tv-muted);
+}
+
+.ts-catalog {
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0.5rem;
+    list-style: none;
+}
+
+.ts-card {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0;
+    padding: 0.4rem 0.2rem;
+    border: 1px solid var(--ts-tv-muted);
+    border-radius: 0.3rem;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.3s ease, transform 0.3s ease, border-color 0.2s ease;
+}
+
+.ts-card-icon {
+    width: 1.6rem;
+    height: 1.1rem;
+    border-radius: 0.2rem;
+    background: var(--ts-tv-muted);
+}
+
+.ts-bootstrap {
+    right: 0.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.3rem;
+    background: var(--ts-tv-panel);
+}
+
+.ts-app {
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 45%;
+    padding: 0.4rem 0.6rem;
+    border: 2px solid var(--ts-tv-app);
+    border-radius: 0.3rem;
+    background: var(--ts-tv-panel);
+}
+
+.ts-layer-label {
+    color: var(--ts-tv-muted);
+}
+
+.ts-bootstrap-name,
+.ts-app-name {
+    font-weight: 600;
+}
+
+.ts-carousel {
+    top: 0.5rem;
+    left: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    width: 40%;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.3rem;
+    background: var(--ts-tv-panel);
+}
+
+.ts-carousel-bar {
+    height: 0.35rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--ts-tv-muted);
+}
+
+.ts-carousel-fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: var(--ts-tv-app);
+}
+
+.ts-key {
+    top: 0.5rem;
+    left: 0.5rem;
+    padding: 0.2rem 0.5rem;
+    border: 1px solid var(--ts-tv-text);
+    border-radius: 0.3rem;
+    background: var(--ts-tv-panel);
+    font-weight: 600;
+}
+
+[data-view="search"] .ts-search,
+[data-view="catalog"] .ts-catalog,
+[data-view="bootstrap"] .ts-video,
+[data-view="bootstrap"] .ts-bootstrap,
+[data-view="application"] .ts-video,
+[data-view="application"] .ts-app,
+[data-view="bootstrap"][data-carousel="passing"] .ts-carousel,
+[data-view="bootstrap"][data-carousel="passed"][data-key="false"] .ts-carousel,
+[data-key="true"] .ts-key {
+    opacity: 1;
+}
+
+[data-view="catalog"] .ts-card {
+    opacity: 1;
+    transform: none;
+}
+
+[data-view="catalog"] .ts-card:nth-child(2) {
+    transition-delay: 0.3s;
+}
+
+[data-view="catalog"] .ts-card:nth-child(3) {
+    transition-delay: 0.6s;
+}
+
+[data-selected="true"] .ts-card[data-service="1002"] {
+    border-color: var(--ts-tv-app);
+    box-shadow: 0 0 0 2px var(--ts-tv-app);
+}
+
+[data-carousel="passing"] .ts-carousel-fill {
+    width: 100%;
+    transition: width 2s linear;
+}
+
+[data-carousel="passed"] .ts-carousel-fill {
+    width: 100%;
+}
+
+/* Legend, controls and the messages of each step */
+
+.ts-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.2rem;
+    margin: 0.8rem 0 0;
+    padding: 0;
+    color: var(--ts-muted);
+    font-size: var(--sl-text-xs);
+    list-style: none;
+}
+
+.ts-key-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+}
+
+.ts-swatch {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: var(--ts-channel);
+}
+
+.ts-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+}
+
+.ts-controls .dg-play:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.ts-counter {
+    color: var(--ts-muted);
+    font-size: var(--sl-text-xs);
+}
+
+.ts-hops {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 1.2rem;
+    margin: 0;
+    padding: 0;
+    font-size: var(--sl-text-xs);
+    list-style-position: inside;
+}
+
+.ts-hops li {
+    margin: 0;
+}
+
+.ts-hops li::marker {
+    color: var(--ts-channel);
+}
+
+@media (max-width: 50rem) {
+    .ts-scene {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .ts-architecture {
+        gap: 0.3rem;
+    }
+
+    .ts-column {
+        padding: 0.25rem;
+    }
+
+    .ts-node {
+        padding: 0.3rem;
+    }
+
+    .ts-column-title,
+    .ts-node-title {
+        font-size: var(--sl-text-xs);
+        hyphens: auto;
+    }
+
+    .ts-node-note {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ts-node,
+    .ts-card,
+    .ts-video,
+    .ts-search,
+    .ts-catalog,
+    .ts-bootstrap,
+    .ts-app,
+    .ts-carousel,
+    .ts-key,
+    .ts-carousel-fill {
+        transition: none;
+    }
+}

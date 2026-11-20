@@ -1,0 +1,52 @@
+---
+// Application lifecycle manager of aop-cc for one BALD entry of the tuned
+// service: a button per controlCode, the cache and the Back of the viewer,
+// and what the graphics layer shows after each of them.
+import '../styles/lifecycle-machine.css';
+
+interface Control {
+    code: string;
+    label: string;
+}
+
+const CONTROLS: Control[] = [
+    { code: 'AUTOSTART', label: 'AUTOSTART' },
+    { code: 'PRESENT', label: 'PRESENT' },
+    { code: 'STORED_AUTOSTART', label: 'STORED_AUTOSTART' },
+    { code: 'STORED_PRESENT', label: 'STORED_PRESENT' },
+    { code: 'DESTROY', label: 'DESTROY' },
+    { code: 'KILL', label: 'KILL' },
+    { code: 'STORED_REMOVE', label: 'STORED_REMOVE' },
+    { code: '', label: 'fora da BALD' },
+];
+---
+
+<div class="lm-diagram not-content" data-lifecycle-machine>
+    <div class="lm-controls">
+        <p class="lm-caption">O <code>controlCode</code> da entrada, na BALD do serviço sintonizado</p>
+        <div class="lm-codes" role="group" aria-label="controlCode">
+            {CONTROLS.map((control) => (
+                <button type="button" class="lm-code" aria-pressed="false" data-code={control.code}>{control.label}</button>
+            ))}
+        </div>
+        <div class="lm-actions">
+            <label class="lm-toggle">
+                <input type="checkbox" data-input="cache" />
+                o cache tem a aplicação completa
+            </label>
+            <button type="button" class="lm-action" data-action="back">Esc, sem <code>preventDefault</code></button>
+            <button type="button" class="lm-action" data-action="reset">Recomeçar</button>
+        </div>
+    </div>
+    <div class="lm-screen" data-screen="bootstrap">
+        <p class="lm-layer">Camada de gráficos</p>
+        <p class="lm-showing" data-showing></p>
+        <p class="lm-present" data-present hidden>No painel de acesso, em <code>present-applications</code></p>
+    </div>
+    <div class="lm-log">
+        <p class="lm-log-title">O que o gerente fez</p>
+        <ol data-log></ol>
+    </div>
+</div>
+
+<script src="../scripts/lifecycle-machine.ts"></script>
